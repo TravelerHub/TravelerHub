@@ -1,2 +1,2 @@
-# TravelHub
-the repo for the Travel Hub Senior Project, CECS 491 Sec 02  
+# TravelerHub
+the repo for the Traveler Hub Senior Project, CECS 491 Sec 02  
