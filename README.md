@@ -9,11 +9,13 @@ This command will install all the required dependencies listed in the package.js
 
 **Step 3:** Create an environment file **.env** in root directory (the same folder of index.html - aka TravelerHub folder), go to database, find the url, key and update the **.env** file.
 
-`SUPABASE_URL=
+`VITE_SUPABASE_URL=[url-go-here]
 
-SUPABASE_ANON_KEY=`
+VITE_SUPABASE_ANON_KEY=[key-go-here]`
 
- I already update .gitignore so you dont accidentally commit our key to public but NEVER commit our key here.
+Make sure your type the same thing otherwise database won't work
+
+I already update .gitignore so you dont accidentally commit our key to public but NEVER commit our key here.
 
 **Step 4:** Start the Server
 
