@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
-function LandingPage() {
+function Landing() {
   const navigate = useNavigate();
 
   return (
@@ -15,4 +15,4 @@ function LandingPage() {
   );
 }
 
-export default LandingPage;
+export default Landing;
