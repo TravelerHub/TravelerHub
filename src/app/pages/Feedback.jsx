@@ -1,4 +1,4 @@
-function FeedbackPage() {
+function Feedback() {
   return (
     <div>
         <h1>Feedback</h1>
@@ -6,4 +6,4 @@ function FeedbackPage() {
   );
 }
 
-export default FeedbackPage;
+export default Feedback;

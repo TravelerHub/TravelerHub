@@ -1,4 +1,4 @@
-function ServicePage() {
+function Service() {
   return (
     <div>
         <h1>Service</h1>
@@ -6,4 +6,4 @@ function ServicePage() {
   );
 }
 
-export default ServicePage;
+export default Service;
