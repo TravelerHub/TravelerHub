@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "./../../supabaseClient.jsx";
+import bcrypt from "bcryptjs";
 
 function Login() {
   const navigate = useNavigate();
@@ -9,13 +10,18 @@ function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
+  async function _verifyPassword(password, hashedPassword) {
+    const isMatch = await bcrypt.compare(password, hashedPassword);
+    return isMatch;
+  }
+
   async function _Login(e) {
     e.preventDefault();
     setError("");
     // Check if username exists
     const { data: userData, error: userError } = await supabase
       .from("users")
-      .select("*")
+      .select("username, password")
       .eq("username", username)
       .single();
 
@@ -25,7 +31,7 @@ function Login() {
     }
 
     // Check if password matches
-    if (userData.password !== password) {
+    if (!await _verifyPassword(password, userData.password)) {
       setError("Incorrect password!");
       return;
     }
