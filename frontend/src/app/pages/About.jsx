@@ -1,6 +1,6 @@
 function About() {
   return (
-    <div>
+    <div className="text-black">
         <h1>About Us</h1>
     </div>
   );
