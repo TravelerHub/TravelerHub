@@ -1,16 +1,64 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
+import { supabase } from "./../../supabaseClient.jsx";
 
 function SignUp() {
   const navigate = useNavigate();
 
+  const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [email, setEmail] = useState("");
+  const [error, setError] = useState("");
+
+  async function _SignUp(e) {
+    e.preventDefault();
+    setError("");
+    // Check if email exists
+    const { data: emailData, error: emailError } = await supabase
+      .from("users")
+      .select("email")
+      .eq("email", email)
+      .single();
+
+    if (emailData) {
+      setError("Email already exists!");
+      return;
+    }
+
+    // Check if username exists
+    const { data: usernameData, error: usernameError } = await supabase
+      .from("users")
+      .select("username")
+      .eq("username", username)
+      .single();
+
+    if (usernameData) {
+      setError("Username already exists!");
+      return;
+    }
+
+    // Insert new user
+    const { data, error: insertError } = await supabase
+      .from("users")
+      .insert([{
+        email: email,
+        username: username,
+        password: password,
+      }])
+      .single();
+
+    if (insertError) {
+      setError("Error creating account. Please try again!");
+      return;
+    }
+
+    // Redirect to Dashboard
+    navigate("/dashboard");
+  }
 
   return (
     <div>
-      <form>
+      <form onSubmit={_SignUp}>
         <h1>Sign Up</h1>
 
         <input
@@ -39,8 +87,9 @@ function SignUp() {
 
         <button type="submit">Sign Up</button>
         
-        <button onClick={() => navigate("/login")}>Login</button>
+        <p>Already have an account? <Link to="/login">Log In</Link></p>
       </form>
+      {error && <p>{error}</p>}
     </div>
   );
 }
