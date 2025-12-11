@@ -1,8 +1,7 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from supabase_client import supabase
-from schemas import SignupRequest, LoginRequest
+from routers import auth
 
 app = FastAPI()
 
@@ -13,3 +12,5 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth.router)
