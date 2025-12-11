@@ -18,10 +18,10 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Landing />} />
-        <Route path="/AboutUsPage" element={<About />} />
-        <Route path="/ContactUsPage" element={<ContactUs />} />
-        <Route path="/ServicePage" element={<Service />} />
-        <Route path="/FeedbackPage" element={<Feedback />} />
+        <Route path="/about" element={<About />} />
+        <Route path="/contactus" element={<ContactUs />} />
+        <Route path="/service" element={<Service />} />
+        <Route path="/feedback" element={<Feedback />} />
       </Routes>
     </Router>
   );
