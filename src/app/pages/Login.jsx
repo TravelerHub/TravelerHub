@@ -1,15 +1,42 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
+import { supabase } from "./../../supabaseClient.jsx";
 
 function Login() {
   const navigate = useNavigate();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+
+  async function _Login(e) {
+    e.preventDefault();
+    setError("");
+    // Check if username exists
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("username", username)
+      .single();
+
+    if (!userData) {
+      setError("Username does not exist!");
+      return;
+    }
+
+    // Check if password matches
+    if (userData.password !== password) {
+      setError("Incorrect password!");
+      return;
+    }
+
+    // Redirect to Dashboard
+    navigate("/dashboard");
+  }
 
   return (
     <div>
-      <form>
+      <form onSubmit={_Login}>
         <h1>Login</h1>
 
         <input
@@ -30,8 +57,9 @@ function Login() {
 
         <button type="submit">Login</button>
         
-        <button onClick={() => navigate("/signup")}>Sign up</button>
+        <p>Don't have an account? <Link to="/signup">Sign Up</Link></p>
       </form>
+      {error && <p>{error}</p>}
     </div>
   );
 }
