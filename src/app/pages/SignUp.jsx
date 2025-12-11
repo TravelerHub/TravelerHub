@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "./../../supabaseClient.jsx";
+import bcrypt from "bcryptjs";
 
 function SignUp() {
   const navigate = useNavigate();
@@ -9,6 +10,15 @@ function SignUp() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+
+  async function _hashPassword(password) {
+    const saltRounds = 10;
+
+    const salt = await bcrypt.genSalt(saltRounds);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    return hashedPassword;
+  }
 
   async function _SignUp(e) {
     e.preventDefault();
@@ -38,12 +48,14 @@ function SignUp() {
     }
 
     // Insert new user
+    const hashedPassword = await _hashPassword(password);
+
     const { data, error: insertError } = await supabase
       .from("users")
       .insert([{
         email: email,
         username: username,
-        password: password,
+        password: hashedPassword,
       }])
       .single();
 
