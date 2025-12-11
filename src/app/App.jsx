@@ -1,4 +1,3 @@
-import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { createClient } from "@supabase/supabase-js";
 
@@ -7,6 +6,9 @@ import About from "./pages/About.jsx";
 import ContactUs from "./pages/ContactUs.jsx";
 import Service from "./pages/Service.jsx";
 import Feedback from "./pages/Feedback.jsx";
+import Login from "./pages/Login.jsx";
+import SignUp from "./pages/SignUp.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
 
 // const supabase = createClient(
 //   import.meta.env.VITE_SUPABASE_URL,
@@ -22,6 +24,9 @@ function App() {
         <Route path="/contactus" element={<ContactUs />} />
         <Route path="/service" element={<Service />} />
         <Route path="/feedback" element={<Feedback />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<SignUp />} />
+        <Route path="/dashboard" element={<Dashboard />} />
       </Routes>
     </Router>
   );
