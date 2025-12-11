@@ -1,6 +1,8 @@
+import React from "react";
+
 function About() {
   return (
-    <div className="bg-red-600">
+    <div>
         <h1>About Us</h1>
     </div>
   );
