@@ -78,6 +78,9 @@ def signup(data: SignupRequest):
 
 # login
 
+# ----------------
+# LOGIN
+# ----------------
 @router.post("/login")
 def login(data: LoginRequest):
     # Get user by username
