@@ -2,3 +2,5 @@ fastapi
 uvicorn
 supabase
 python-dotenv
+bcrypt
+pydantic
