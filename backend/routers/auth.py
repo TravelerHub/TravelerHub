@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from supabase_client import supabase
 from schemas import SignupRequest, LoginRequest
+import bcrypt
 
 router = APIRouter(
     tags=["auth"]  # keep tag for docs
@@ -22,10 +23,12 @@ def signup(data: SignupRequest):
     if (data.password != data.confirmPassword):
         raise HTTPException(status_code=400, detail="Passwords do not match!")
 
+    hashed_password = bcrypt.hashpw(data.password.encode("utf-8"), bcrypt.gensalt())
+
     res = supabase.table("users").insert({
         "email": data.email,
         "username": data.username,
-        "password": data.password,
+        "password": hashed_password.decode("utf-8"),
         "street": data.street,
         "city": data.city,
         "state": data.state,
@@ -44,7 +47,7 @@ def login(data: LoginRequest):
         raise HTTPException(status_code=400, detail="Username does not exist!")
     
     stored_password = existing_username.data['password']
-    if stored_password != data.password:
+    if not bcrypt.checkpw(data.password.encode("utf-8"), stored_password.encode("utf-8")):
         raise HTTPException(status_code=400, detail="Incorrect password!")
     
     return {"message": "Login successful", "user": existing_username.data}

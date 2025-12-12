@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import bcrypt from "bcryptjs";
 
 function Login() {
   const navigate = useNavigate();
