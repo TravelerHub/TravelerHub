@@ -6,6 +6,9 @@ router = APIRouter(
     tags=["auth"]  # keep tag for docs
 )
 
+# ----------------
+# SIGN UP
+# ----------------
 @router.post("/signup")
 def signup(data: SignupRequest):
     existing_email = supabase.table("users").select("email").eq("email", data.email).execute()
@@ -16,22 +19,32 @@ def signup(data: SignupRequest):
     if len(existing_username.data) > 0:
         raise HTTPException(status_code=400, detail="Username already exists!")
 
+    if (data.password != data.confirmPassword):
+        raise HTTPException(status_code=400, detail="Passwords do not match!")
+
     res = supabase.table("users").insert({
         "email": data.email,
         "username": data.username,
-        "password": data.password
+        "password": data.password,
+        "street": data.street,
+        "city": data.city,
+        "state": data.state,
+        "zip_code": data.zip_code
     }).execute()
 
     return {"message": "Signup successful", "user": res.data}
 
+# ----------------
+# LOGIN
+# ----------------
 @router.post("/login")
 def login(data: LoginRequest):
-    user = supabase.table("users")\
-                   .select("*")\
-                   .eq("username", data.username)\
-                   .eq("password", data.password)\
-                   .execute()
-    if len(user.data) == 0:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-
-    return {"message": "Login successful", "redirect": "/dashboard"}
+    existing_username = supabase.table("users").select("*").eq("username", data.username).single().execute()
+    if len(existing_username.data) == 0:
+        raise HTTPException(status_code=400, detail="Username does not exist!")
+    
+    stored_password = existing_username.data['password']
+    if stored_password != data.password:
+        raise HTTPException(status_code=400, detail="Incorrect password!")
+    
+    return {"message": "Login successful", "user": existing_username.data}

@@ -1,7 +1,5 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "./../../supabaseClient.jsx";
-import bcrypt from "bcryptjs";
 
 // todo:
 // - add address box ✅
@@ -22,74 +20,31 @@ function SignUp() {
 
   const [error, setError] = useState("");
 
-  async function _hashPassword(password) {
-    const saltRounds = 10;
-    const salt = await bcrypt.genSalt(saltRounds);
-    const hashedPassword = await bcrypt.hash(password, salt);
-    return hashedPassword;
-  }
-
   async function _SignUp(e) {
     e.preventDefault();
     setError("");
 
-    // Confirm password check
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
+    const response = await fetch("http://localhost:8000/signup", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email: email,
+        username: username,
+        password: password,
+        confirmPassword: confirmPassword,
+        street: street,
+        city: city,
+        state: stateValue,
+        zip_code: zipCode,
+      }),
+    });
+    
+    const data = await response.json();
+    if (response.ok) {
+      navigate("/dashboard");
     }
-
-    // Check if email exists
-    const { data: emailData } = await supabase
-      .from("users")
-      .select("email")
-      .eq("email", email)
-      .single();
-
-    if (emailData) {
-      setError("Email already exists!");
-      return;
-    }
-
-    // Check if username exists
-    const { data: usernameData } = await supabase
-      .from("users")
-      .select("username")
-      .eq("username", username)
-      .single();
-
-    if (usernameData) {
-      setError("Username already exists!");
-      return;
-    }
-
-    // Insert new user
-    const hashedPassword = await _hashPassword(password);
-
-    const { error: insertError } = await supabase
-      .from("users")
-      .insert([
-        {
-          email: email,
-          username: username,
-          password: hashedPassword,
-          // Make sure these columns exist in your "users" table:
-          street: street,
-          city: city,
-          state: stateValue,
-          zip_code: zipCode,
-        },
-      ])
-      .single();
-
-    if (insertError) {
-      console.error(insertError);
-      setError("Error creating account. Please try again!");
-      return;
-    }
-
-    // Redirect to Dashboard
-    navigate("/dashboard");
   }
 
   return (
