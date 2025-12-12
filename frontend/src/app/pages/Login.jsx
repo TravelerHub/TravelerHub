@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "./../../supabaseClient.jsx";
 import bcrypt from "bcryptjs";
 
 function Login() {
@@ -18,26 +17,21 @@ function Login() {
   async function _Login(e) {
     e.preventDefault();
     setError("");
-    // Check if username exists
-    const { data: userData, error: userError } = await supabase
-      .from("users")
-      .select("username, password")
-      .eq("username", username)
-      .single();
+    const response = await fetch("http://localhost:8000/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        username: username,
+        password: password,
+      }),
+    });
 
-    if (!userData) {
-      setError("Username does not exist!");
-      return;
+    const data = await response.json();
+    if (response.ok) {
+      navigate("/dashboard");
     }
-
-    // Check if password matches
-    if (!await _verifyPassword(password, userData.password)) {
-      setError("Incorrect password!");
-      return;
-    }
-
-    // Redirect to Dashboard
-    navigate("/dashboard");
   }
 
   return (
