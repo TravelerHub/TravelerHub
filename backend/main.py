@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from routers import auth
-
+from routers import user
 app = FastAPI()
 
 app.add_middleware(
@@ -13,4 +13,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router)
+
+# Include routers
+app.include_router(auth.router)      # /auth
+app.include_router(user.router)      # /users (or whatever you set)
+
+
+
+# testing default route
+@app.get("/") 
+def root():
+    #the data get send back to the client
+    return {"message": "Hello World kinoko from TravelHub Backend!"}
