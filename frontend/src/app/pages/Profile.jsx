@@ -11,10 +11,11 @@ function Profile() {
         return {
         username: parsed.username || "",
         email: parsed.email || "",
-        phone: parsed.phone || "",
+        // phone: parsed.phone || "",
         };
     }
-    return { username: "", email: "", phone: "" };
+    // return { username: "", email: "", phone: "" };
+    return { username: "", email: "" };
     };
 
     const [user, setUser] = useState(getStoredUser);
@@ -22,9 +23,42 @@ function Profile() {
     const [isEditing, setIsEditing] = useState(false);
     const [formData, setFormData] = useState(user);
 
-    const handleSave = () => {
-        setUser(formData);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
+
+    const handleSave = async () => {
+    setSaving(true);
+    setError("");
+
+    try {
+        const token = localStorage.getItem("token");
+        
+        const response = await fetch("http://localhost:8000/users/me", {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify(formData),
+        });
+
+        if (response.ok) {
+        const updatedUser = await response.json();
+        setUser(updatedUser);
+        setFormData(updatedUser);
+        // Update localStorage too
+        localStorage.setItem("user", JSON.stringify(updatedUser));
         setIsEditing(false);
+        } else {
+        const data = await response.json();
+        setError(data.detail || "Failed to save changes");
+        }
+    } catch (err) {
+        console.error("Save error:", err);
+        setError("Cannot connect to server");
+    } finally {
+        setSaving(false);
+    }
     };
 
     const handleCancel = () => {
@@ -104,7 +138,7 @@ function Profile() {
                     />
                     </div>
 
-                    <div>
+                    {/* <div>
                     <label className="text-gray-600 text-sm font-medium block mb-2">
                         Phone
                     </label>
@@ -114,14 +148,15 @@ function Profile() {
                         onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                         className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
                     />
-                    </div>
+                    </div> */}
 
                     <div className="flex gap-3 pt-2">
                     <button
                         onClick={handleSave}
-                        className="flex-1 bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 font-medium transition"
+                        disabled={saving}
+                        className="flex-1 bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 font-medium transition disabled:bg-blue-400"
                     >
-                        Save Changes
+                        {saving ? "Saving..." : "Save Changes"}
                     </button>
                     <button
                         onClick={handleCancel}
@@ -130,6 +165,9 @@ function Profile() {
                         Cancel
                     </button>
                     </div>
+                    {error && (
+                        <p className="text-red-500 text-sm mt-3">{error}</p>
+                    )}
                 </div>
                 ) : (
                 <div className="space-y-4">
@@ -143,10 +181,10 @@ function Profile() {
                     <span className="text-gray-900 font-medium">{user.email}</span>
                     </div>
 
-                    <div className="flex justify-between py-3">
+                    {/* <div className="flex justify-between py-3">
                     <span className="text-gray-500">Phone</span>
                     <span className="text-gray-900 font-medium">{user.phone}</span>
-                    </div>
+                    </div> */}
                 </div>
                 )}
             </div>
