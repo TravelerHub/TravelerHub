@@ -35,3 +35,6 @@ class UserOut(BaseModel):
     id: int
     email: EmailStr
     username: str
+
+class TokenData(BaseModel):
+    id: str | None = None

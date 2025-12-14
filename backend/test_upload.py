@@ -4,7 +4,7 @@ import os
 # 1. Configuration
 BASE_URL = "http://127.0.0.1:8000"
 USERNAME = "testuser"       # Ensure this user exists in your DB
-PASSWORD = "password123"    # Ensure this matches the user's password
+PASSWORD = "pass"    # Ensure this matches the user's password
 
 # Create a dummy image for testing if one doesn't exist
 image_filename = "test_image.jpg"

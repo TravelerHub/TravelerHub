@@ -1,15 +1,9 @@
 import os
-from supabase import create_client, Client
-
-# Setup Client
-# Best practice: Load these from environment variables or a .env file
-url: str = "YOUR_SUPABASE_PROJECT_URL"
-key: str = "YOUR_SUPABASE_ANON_KEY"
-supabase: Client = create_client(url, key)
+from supabase_client import supabase
 
 def upload_and_save_image(filepath: str):
     filename = os.path.basename(filepath)
-    bucket_name = "images"
+    bucket_name = "Media"
 
     try:
         # Upload to Storage Bucket
