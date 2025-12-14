@@ -169,3 +169,40 @@ def update_me(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error updating profile"
         )
+    
+# Change password
+@router.put("/me/password")
+def change_password(
+    password_data: schemas.PasswordChange,
+    current_user=Depends(oauth2.get_current_user)
+):
+    try:
+        # Verify current password
+        if not hasing.verify_password(password_data.current_password, current_user["password"]):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect"
+            )
+
+        # Hash new password
+        new_hashed = hasing.hash_password(password_data.new_password)
+
+        # Update in Supabase
+        response = (
+            supabase
+            .table("users")
+            .update({"password": new_hashed})
+            .eq("id", current_user["id"])
+            .execute()
+        )
+
+        return {"message": "Password changed successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error changing password:", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error changing password"
+        )

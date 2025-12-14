@@ -45,3 +45,8 @@ class UserUpdate(BaseModel):
 
 class TokenData(BaseModel):
     id: str | None = None
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
