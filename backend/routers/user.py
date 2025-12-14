@@ -145,8 +145,8 @@ def update_me(
             update_data["username"] = user_update.username
         if user_update.email is not None:
             update_data["email"] = user_update.email
-        if user_update.phone is not None:
-            update_data["phone"] = user_update.phone
+        # if user_update.phone is not None:
+        #     update_data["phone"] = user_update.phone
 
         if not update_data:
             return current_user  # Nothing to update
