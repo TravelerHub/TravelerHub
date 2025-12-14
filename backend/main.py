@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from routers import auth
 from routers import user
+from routers import images
 app = FastAPI()
 
 app.add_middleware(
@@ -17,6 +18,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router)      # /auth
 app.include_router(user.router)      # /users (or whatever you set)
+app.include_router(images.router)
 
 
 
