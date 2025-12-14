@@ -35,3 +35,9 @@ class UserOut(BaseModel):
     id: int
     email: EmailStr
     username: str
+
+
+class UserUpdate(BaseModel):
+    username: str | None = None
+    email: EmailStr | None = None
+    phone: str | None = None
