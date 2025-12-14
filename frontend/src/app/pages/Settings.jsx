@@ -13,12 +13,76 @@ function Settings() {
 
   const [locationSharing, setLocationSharing] = useState(false);
 
+  // Password change
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
+
   // Delete account modal
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
+  const handlePasswordChange = async () => {
+    setPasswordError("");
+    setPasswordSuccess("");
+
+    // Validate
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setPasswordError("New passwords do not match");
+      return;
+    }
+
+    if (passwordData.newPassword.length < 6) {
+      setPasswordError("New password must be at least 6 characters");
+      return;
+    }
+
+    setPasswordSaving(true);
+
+    try {
+      const token = localStorage.getItem("token");
+
+      const response = await fetch("http://localhost:8000/users/me/password", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          current_password: passwordData.currentPassword,
+          new_password: passwordData.newPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setPasswordSuccess("Password changed successfully!");
+        setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+        setShowPasswordForm(false);
+      } else {
+        setPasswordError(data.detail || "Failed to change password");
+      }
+    } catch (err) {
+      console.error("Password change error:", err);
+      setPasswordError("Cannot connect to server");
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
   const handleDeleteAccount = () => {
-    // For now, just navigate to home
-    // Later: call backend to delete account
+    navigate("/");
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
     navigate("/");
   };
 
@@ -123,6 +187,89 @@ function Settings() {
             </label>
           </div>
 
+          {/* Security Section */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-1">Security</h2>
+            <p className="text-gray-500 text-sm mb-5">Manage your password</p>
+
+            {passwordSuccess && (
+              <div className="bg-green-50 text-green-700 px-4 py-3 rounded-lg mb-4 text-sm">
+                {passwordSuccess}
+              </div>
+            )}
+
+            {!showPasswordForm ? (
+              <button
+                onClick={() => setShowPasswordForm(true)}
+                className="w-full bg-gray-100 text-gray-700 py-3 rounded-lg hover:bg-gray-200 font-medium transition"
+              >
+                Change Password
+              </button>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="text-gray-600 text-sm font-medium block mb-2">
+                    Current Password
+                  </label>
+                  <input
+                    type="password"
+                    value={passwordData.currentPassword}
+                    onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-gray-600 text-sm font-medium block mb-2">
+                    New Password
+                  </label>
+                  <input
+                    type="password"
+                    value={passwordData.newPassword}
+                    onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-gray-600 text-sm font-medium block mb-2">
+                    Confirm New Password
+                  </label>
+                  <input
+                    type="password"
+                    value={passwordData.confirmPassword}
+                    onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                  />
+                </div>
+
+                {passwordError && (
+                  <p className="text-red-500 text-sm">{passwordError}</p>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={handlePasswordChange}
+                    disabled={passwordSaving}
+                    className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 font-medium transition disabled:bg-blue-400"
+                  >
+                    {passwordSaving ? "Saving..." : "Update Password"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowPasswordForm(false);
+                      setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+                      setPasswordError("");
+                    }}
+                    className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-lg hover:bg-gray-200 font-medium transition"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Account Section */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-1">Account</h2>
@@ -130,7 +277,7 @@ function Settings() {
 
             <div className="space-y-3">
               <button
-                onClick={() => navigate("/")}
+                onClick={handleLogout}
                 className="w-full bg-gray-100 text-gray-700 py-3 rounded-lg hover:bg-gray-200 font-medium transition"
               >
                 Log Out
