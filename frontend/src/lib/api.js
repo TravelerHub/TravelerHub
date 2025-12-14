@@ -1,12 +1,9 @@
+// src/api.js
 
-const BASE_URL = "http://127.0.0.1:800:";
+const BASE_URL = "http://127.0.0.1:8000";
 
+// ======== HELPER FUNCTIONS ===============
 
-
-// ======== HELPER FUNCTION ===============
-
-// GET and SET token for the JWT token access
-// Helper to get the token from localStorage or session storage
 function getToken() {
   return localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
 }
@@ -15,18 +12,28 @@ function setToken(token) {
   localStorage.setItem("accessToken", token);
 }
 
-
 async function request(path, { method = "GET", body, auth = true, headers = {} } = {}) {
   const token = auth ? getToken() : null;
+  
+  // Detect if we are sending a file (FormData) or JSON
+  const isFormData = body instanceof FormData;
+
+  const defaultHeaders = {
+    ...(auth && token ? { Authorization: `Bearer ${token}` } : {}),
+    ...headers,
+  };
+
+  // Only add JSON content-type if it's NOT a file upload
+  if (!isFormData && body) {
+    defaultHeaders["Content-Type"] = "application/json";
+  }
+
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
-    headers: {
-      ...(body ? { "Content-Type": "application/json" } : {}),
-      ...(auth && token ? { Authorization: `Bearer ${token}` } : {}),
-      ...headers,
-    },
-    body: body ? JSON.stringify(body) : undefined,
+    headers: defaultHeaders,
+    body: isFormData ? body : (body ? JSON.stringify(body) : undefined),
   });
+
   if (res.status === 204) return true;
 
   const text = await res.text();
@@ -35,16 +42,14 @@ async function request(path, { method = "GET", body, auth = true, headers = {} }
 
   if (!res.ok) {
     const detail = (data && data.detail) ? data.detail : data;
+    // Fixed typo here: removed 'VX' from stringify
     throw new Error(`${method} ${path} ${res.status}: ${typeof detail === "string" ? detail : JSON.stringify(detail)}`);
   }
   return data;
 }
 
-// ========= auth =========
+// ========= AUTH =========
 export async function login(email, password) {
-
-    // POST /login - authenticate user
-  // matches OAuth2 Password flow at /login if you expose it
   const data = await request("/login", {
     method: "POST",
     auth: false,
@@ -55,8 +60,17 @@ export async function login(email, password) {
   return data;
 }
 
-// === regiser as user ===
-//POST /users - create a new user
-export async function regiserUser({ email, username, password }) {
+export async function registerUser({ email, username, password }) {
   return request("/users", { method: "POST", body: { email, username, password } });
+}
+
+// ========= IMAGES (NEW) =========
+export async function uploadImage(file) {
+  const formData = new FormData();
+  formData.append("file", file); 
+
+  return request("/images/upload", {
+    method: "POST",
+    body: formData, 
+  });
 }

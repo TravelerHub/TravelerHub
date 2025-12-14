@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import ImageUpload from "../../components/ImageUpload.jsx";
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -53,6 +54,16 @@ function Dashboard() {
               <span className="text-gray-700 font-medium">Settings</span>
             </button>
           </div>
+        </div>
+
+        {/* --- NEW UPLOAD SECTION --- */}
+        <div className="mb-6"> 
+           {/* Note: We don't need a white card wrapper here because 
+               ImageUpload.jsx already has its own card styling. 
+               We just center it. */}
+           <div className="flex justify-center">
+             <ImageUpload onUploadSuccess={(data) => console.log("New image:", data)} />
+           </div>
         </div>
 
         {/* Coming Soon Section */}
