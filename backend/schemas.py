@@ -32,7 +32,7 @@ class UserLogin(BaseModel):
 
 # ---- OUTPUT SCHEMAS (what API returns) ----
 class UserOut(BaseModel):
-    id: int
+    id: str
     email: EmailStr
     username: str
 
