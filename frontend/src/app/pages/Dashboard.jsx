@@ -3,12 +3,44 @@ import { useNavigate } from "react-router-dom";
 function Dashboard() {
   const navigate = useNavigate();
 
-  // Mock user data (same as Profile)
-  const username = "johndoe";
+  // Load user from localStorage
+  const getStoredUser = () => {
+    const stored = localStorage.getItem("user");
+    if (stored) {
+      return JSON.parse(stored);
+    }
+    return null;
+  };
+
+  const user = getStoredUser();
 
   const getInitials = (name) => {
+    if (!name) return "?";
     return name.slice(0, 2).toUpperCase();
   };
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    navigate("/");
+  };
+
+  // If no user, redirect to login
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-8">
+        <div className="max-w-md mx-auto text-center">
+          <p className="text-gray-600 mb-4">You are not logged in.</p>
+          <button
+            onClick={() => navigate("/login")}
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
+          >
+            Go to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-8">
@@ -18,12 +50,12 @@ function Dashboard() {
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow">
               <span className="text-xl font-bold text-white">
-                {getInitials(username)}
+                {getInitials(user.username)}
               </span>
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Welcome back, {username}!</h1>
-              <p className="text-gray-500">Ready to plan your next adventure?</p>
+              <h1 className="text-2xl font-bold text-gray-900">Welcome back, {user.username}!</h1>
+              <p className="text-gray-500">{user.email}</p>
             </div>
           </div>
         </div>
@@ -71,7 +103,7 @@ function Dashboard() {
         {/* Log Out */}
         <div className="mt-6 text-center">
           <button
-            onClick={() => navigate("/")}
+            onClick={handleLogout}
             className="text-gray-400 hover:text-red-500 text-sm transition"
           >
             Log Out
