@@ -32,6 +32,16 @@ class UserLogin(BaseModel):
 
 # ---- OUTPUT SCHEMAS (what API returns) ----
 class UserOut(BaseModel):
-    id: int
+    id: str
     email: EmailStr
     username: str
+
+
+class UserUpdate(BaseModel):
+    username: str | None = None
+    email: EmailStr | None = None
+    phone: str | None = None
+
+
+class TokenData(BaseModel):
+    id: str | None = None
