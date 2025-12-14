@@ -27,7 +27,7 @@ async def upload_image(
     file_content = await file.read()
 
     # 3. Upload to Supabase Storage
-    bucket_name = "images"
+    bucket_name = "Media"
     try:
         supabase.storage.from_(bucket_name).upload(
             path=file_path,

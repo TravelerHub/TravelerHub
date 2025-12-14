@@ -10,6 +10,8 @@ url = os.getenv("VITE_SUPABASE_URL")
 # --- PASTE YOUR SERVICE ROLE KEY DIRECTLY HERE FOR TESTING ---
 key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVpbGpkdXh4aHhncWt4eWd4cmhmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTMyMTYxMCwiZXhwIjoyMDgwODk3NjEwfQ.crfevqxaRWhjKcOYL-jRmz71qljSAzPoFbVI2Jf27Kg" 
 
+
+
 supabase = create_client(url, key)
 
 def check_buckets():
