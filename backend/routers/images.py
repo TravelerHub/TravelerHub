@@ -51,7 +51,7 @@ async def upload_image(
             "filename": file.filename,
             "url": public_url,
             # Optional: if you added a user_id column to your images table:
-            # "user_id": current_user['id'] 
+            "user_id": current_user['id'] 
         }
         
         res = supabase.table("images").insert(data_to_insert).execute()
