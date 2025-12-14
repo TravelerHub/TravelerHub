@@ -131,3 +131,41 @@ def create_user(user: schemas.UserCreate):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error creating user"
         )
+    
+# Update current user's profile
+@router.put("/me", response_model=schemas.UserOut)
+def update_me(
+    user_update: schemas.UserUpdate,
+    current_user=Depends(oauth2.get_current_user)
+):
+    try:
+        # Build update payload with only provided fields
+        update_data = {}
+        if user_update.username is not None:
+            update_data["username"] = user_update.username
+        if user_update.email is not None:
+            update_data["email"] = user_update.email
+        if user_update.phone is not None:
+            update_data["phone"] = user_update.phone
+
+        if not update_data:
+            return current_user  # Nothing to update
+
+        # Update user in Supabase
+        response = (
+            supabase
+            .table("users")
+            .update(update_data)
+            .eq("id", current_user["id"])
+            .execute()
+        )
+
+        updated_user = response.data[0] if response.data else current_user
+        return updated_user
+
+    except Exception as e:
+        print("Error updating user:", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error updating profile"
+        )
