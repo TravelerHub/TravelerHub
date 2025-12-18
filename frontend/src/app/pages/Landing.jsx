@@ -22,7 +22,7 @@ function Landing() {
             <div className="mt-4 flex gap-4 justify-center flex-wrap">
               <button
                 onClick={() => navigate("/login")}
-                className="border-2 border-white font-bold py-3 px-8 rounded-lg hover:bg-white hover:text-indigo-600 transition"
+                className="border-2 border-white font-bold py-3 px-8 rounded-lg hover:bg-white text-black hover:text-indigo-600 transition"
               >
                 Log In
               </button>
