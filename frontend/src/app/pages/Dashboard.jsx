@@ -30,10 +30,10 @@ function Dashboard() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-8">
         <div className="max-w-md mx-auto text-center">
-          <p className="text-gray-600 mb-4">You are not logged in.</p>
+          <p className="text-black-600 mb-4">You are not logged in.</p>
           <button
             onClick={() => navigate("/login")}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
+            className="bg-blue-600 text-black px-6 py-2 rounded-lg hover:bg-blue-700"
           >
             Go to Login
           </button>
