@@ -22,6 +22,10 @@ function Dashboard() {
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+
+    // uncomment this if using sessionStorage
+    // sessionStorage.removeItem('token');
+    // sessionStorage.removeItem('user');
     navigate("/");
   };
 
