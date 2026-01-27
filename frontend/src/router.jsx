@@ -10,6 +10,7 @@ import SignUp from "./app/pages/SignUp.jsx";
 import Dashboard from "./app/pages/Dashboard.jsx";
 import Settings from "./app/pages/Settings.jsx";
 import Profile  from "./app/pages/Profile.jsx"; 
+import Navigation from "./app/pages/Navigation.jsx";
 
 const router = createBrowserRouter([
     { path: "/", element: <Landing /> },
@@ -21,7 +22,8 @@ const router = createBrowserRouter([
     { path: "/signup", element: <SignUp /> },
     { path: "/dashboard", element: <Dashboard /> },
     { path: "/settings", element: <Settings /> },
-    { path: "/profile", element: <Profile />}
+    { path: "/profile", element: <Profile />}, 
+    { path: "/navigation", element: <Navigation /> }
 ]);
 
 export default router;
