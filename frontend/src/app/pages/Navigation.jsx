@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Map from '../../components/Map';
 import { searchPlaces, getPlaceName } from '../../services/geocodingService';
+import { getOptimizedRoute } from '../../services/routeService';
 
 function Navigation() {
   const navigate = useNavigate();
@@ -18,6 +19,9 @@ function Navigation() {
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [currentRoute, setCurrentRoute] = useState(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routeError, setRouteError] = useState('');
 
   // Handle search - NOW WITH REAL FUNCTIONALITY!
   const handleSearch = async () => {
@@ -118,6 +122,26 @@ function Navigation() {
         alert(errorMessage);
       }
     );
+  };
+  const handlePlanRoute = async () => {
+    if (markers.length < 2) {
+      setRouteError('Please add at least 2 locations');
+      return;
+    }
+
+    setRouteLoading(true);
+    setRouteError('');
+
+    try {
+      const waypoints = markers.map(m => m.coordinates);
+      const route = await getOptimizedRoute(waypoints);
+      setCurrentRoute(route);
+    } catch (error) {
+      setRouteError('Unable to calculate route. Please try again.');
+      console.error(error);
+    } finally {
+      setRouteLoading(false);
+    }
   };
 
   return (
@@ -254,10 +278,11 @@ function Navigation() {
                     📍 Add Current Location
                   </button>
                   <button 
-                    className="w-full text-left px-4 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition text-sm font-medium"
-                    onClick={() => alert('Route planning feature coming next!')}
+                    onClick={handlePlanRoute}
+                    disabled={routeLoading || markers.length < 2}
+                    className="w-full text-left px-4 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    🗺️ Plan Route
+                    🗺️ {routeLoading ? 'Planning...' : 'Plan Route'}
                   </button>
                   <button 
                     className="w-full text-left px-4 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition text-sm font-medium"
@@ -277,6 +302,7 @@ function Navigation() {
                 markers={markers} 
                 center={markers.length > 0 ? markers[0].coordinates : [-118.2437, 34.0522]} 
                 zoom={12}
+                route={currentRoute}
               />
             </div>
           </div>
@@ -287,13 +313,68 @@ function Navigation() {
           <h2 className="text-lg font-semibold text-gray-800 mb-4">
             Route Details
           </h2>
-          <div className="text-center py-8 text-gray-500">
-            <div className="text-4xl mb-3">🚗</div>
-            <p>No route planned yet</p>
-            <p className="text-sm mt-1">
-              Add 2 or more destinations and click "Plan Route" to get started
-            </p>
-          </div>
+          
+          {routeError && (
+            <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+              {routeError}
+            </div>
+          )}
+
+          {currentRoute ? (
+            <div className="space-y-4">
+              {/* Summary cards */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600 mb-1">Distance</div>
+                  <div className="text-xl font-bold text-gray-900">
+                    {currentRoute.summary.totalDistance}
+                  </div>
+                </div>
+                
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600 mb-1">Duration</div>
+                  <div className="text-xl font-bold text-gray-900">
+                    {currentRoute.summary.totalDuration}
+                  </div>
+                </div>
+                
+                <div className="bg-purple-50 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600 mb-1">ETA</div>
+                  <div className="text-xl font-bold text-gray-900">
+                    {currentRoute.summary.estimatedArrival}
+                  </div>
+                </div>
+              </div>
+
+              {/* Turn-by-turn directions */}
+              <div className="border-t border-gray-200 pt-4">
+                <h3 className="font-semibold text-gray-800 mb-3">Directions</h3>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {currentRoute.steps.map((step, index) => (
+                    <div key={index} className="flex gap-3 text-sm">
+                      <div className="font-semibold text-blue-600 min-w-[24px]">
+                        {index + 1}
+                      </div>
+                      <div className="text-gray-700">
+                        {step.maneuver.instruction}
+                        <span className="text-gray-500 ml-2">
+                          ({(step.distance / 1000).toFixed(1)} km)
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <div className="text-4xl mb-3">🚗</div>
+              <p>No route planned yet</p>
+              <p className="text-sm mt-1">
+                Add 2 or more destinations and click "Plan Route" to get started
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
