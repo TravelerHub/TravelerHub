@@ -47,7 +47,7 @@ function Navbar() {
             onClick={() => navigate("/service")}
             className="text-gray-700 font-medium hover:text-indigo-600 transition"
           >
-            Service
+              
           </button>
         </div>
 
