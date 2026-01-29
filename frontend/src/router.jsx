@@ -11,6 +11,7 @@ import Dashboard from "./app/pages/Dashboard.jsx";
 import Settings from "./app/pages/Settings.jsx";
 import Profile  from "./app/pages/Profile.jsx";
 import ResetPassword from "./app/pages/ResetPassword.jsx"; 
+import OTP from "./app/pages/OTP.jsx";
 
 const router = createBrowserRouter([
     { path: "/", element: <Landing /> },
@@ -23,7 +24,8 @@ const router = createBrowserRouter([
     { path: "/dashboard", element: <Dashboard /> },
     { path: "/settings", element: <Settings /> },
     { path: "/profile", element: <Profile />},
-    { path: "/resetpassword", element: <ResetPassword /> }
+    { path: "/resetpassword", element: <ResetPassword /> },
+    { path: "/otp", element: <OTP /> }
 ]);
 
 export default router;
