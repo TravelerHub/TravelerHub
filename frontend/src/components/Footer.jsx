@@ -5,9 +5,9 @@ function Footer() {
 
   return (
     <footer className="bg-gray-900 text-white">
-      <div className="w-screen px-6 py-6">
+      <div className="flex justify-center align-center w-screen px-6 py-6">
         {/* Main Footer Content */}
-        <div className="flex justify-between gap-6 mb-8">
+        <div className="flex justify-in-between space-x-5 gap-6 mb-8">
           <Link
             to="/about"
             className="bg-gray-600 hover:bg-gray-700 !text-white font-semibold py-2 px-6 rounded transition"
