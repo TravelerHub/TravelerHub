@@ -9,6 +9,8 @@ import Login from "./app/pages/Login.jsx";
 import SignUp from "./app/pages/SignUp.jsx";
 import Dashboard from "./app/pages/Dashboard.jsx";
 import Settings from "./app/pages/Settings.jsx";
+import Profile  from "./app/pages/Profile.jsx"; 
+import Navigation from "./app/pages/Navigation.jsx";
 import Profile  from "./app/pages/Profile.jsx";
 import ResetPassword from "./app/pages/ResetPassword.jsx"; 
 import OTP from "./app/pages/OTP.jsx";
@@ -23,6 +25,8 @@ const router = createBrowserRouter([
     { path: "/signup", element: <SignUp /> },
     { path: "/dashboard", element: <Dashboard /> },
     { path: "/settings", element: <Settings /> },
+    { path: "/profile", element: <Profile />}, 
+    { path: "/navigation", element: <Navigation /> }
     { path: "/profile", element: <Profile />},
     { path: "/resetpassword", element: <ResetPassword /> },
     { path: "/otp", element: <OTP /> }
