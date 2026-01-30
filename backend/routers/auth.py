@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from supabase_client import supabase
 
-from schemas import SignupRequest, LoginRequest  
+from schemas import SignupRequest, LoginRequest, OtpRequest  
 
 # hasing: hash_password, verify_password; oauth2: create_access_token
 from utils import hasing, oauth2  
@@ -122,3 +122,40 @@ def login(data: LoginRequest):
         # keep this if your frontend is using it:
         "redirect": "/dashboard",
     }
+
+
+
+@router.post("/resetpassword")
+def check_email_for_otp(data: OtpRequest):
+    """Check whether the provided email exists in the users table.
+
+    Returns JSON: {"exists": bool}
+    """
+    try:
+        res = (
+            supabase
+            .table("users")
+            .select("id")
+            .eq("email", data.email)
+            .single()
+            .execute()
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error accessing database"
+        )
+
+    # If Supabase returned an error payload, treat as server error
+    if getattr(res, "error", None):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error checking email"
+        )
+
+    # If no user found, return a friendly, non-error response so frontend can show a message
+    if not res.data:
+        return {"exists": False, "message": "Email not found"}
+
+    return {"exists": True}
+
