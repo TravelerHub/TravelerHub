@@ -6,23 +6,38 @@ function ResetPassword() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   async function _ResetPassword(e) {
     e.preventDefault();
     setError("");
-    const response = await fetch("http://localhost:8000/resetpassword", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email: email,
-      }),
-    });
+    setLoading(true);
 
-    const data = await response.json();
-    if (response.ok) {
-      navigate("/otp");
+    try {
+      const response = await fetch("http://localhost:8000/resetpassword", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.exists) {
+        // Email exists, navigate to OTP and pass email
+        navigate("/otp", { state: { email } });
+      } else {
+        // Email not found
+        setError(data.message || "Email not found in our system");
+      }
+    } catch (err) {
+      console.error("Error checking email:", err);
+      setError("Network error. Please try again!");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -37,6 +52,7 @@ function ResetPassword() {
             {/* Header */}
             <div className="text-center mb-8">
               <h1 className="text-2xl font-bold text-gray-900 mb-2">Reset Password</h1>
+              <p className="text-gray-600">Enter your email to verify your identity</p>
             </div>
 
             {/* Form */}
@@ -56,17 +72,41 @@ function ResetPassword() {
                 />
               </div>
 
+              {/* Error Message */}
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                  {error}
+                </div>
+              )}
+
               {/* Submit Button */}
-              <div>
-                <button
-                  type="submit"
-                  className="w-full bg-indigo-600 text-black py-2 px-4 rounded-md hover:bg-indigo-700 transition duration-300"
-                >
-                  Reset
-                </button>
-              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold py-2.5 px-4 rounded-lg transition duration-200 mt-6"
+              >
+                {loading ? "Checking..." : "Continue"}
+              </button>
             </form>
+
+            {/* Back to Login Link */}
+            <div className="text-center mt-6">
+              <p className="text-gray-600 text-sm">
+                Remember your password?{" "}
+                <Link
+                  to="/login"
+                  className="text-indigo-600 hover:text-indigo-700 font-semibold transition"
+                >
+                  Log In
+                </Link>
+              </p>
+            </div>
           </div>
+
+          {/* Footer Note */}
+          <p className="text-center text-gray-600 text-xs mt-6">
+            Your data is secure with TravelerHub
+          </p>
         </div>
       </div>
     </>

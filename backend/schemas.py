@@ -30,6 +30,11 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+
+# OTP request schema (frontend will send email to check)
+class OtpRequest(BaseModel):
+    email: EmailStr
+
 # ---- OUTPUT SCHEMAS (what API returns) ----
 class UserOut(BaseModel):
     id: str
