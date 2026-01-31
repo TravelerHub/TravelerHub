@@ -60,8 +60,8 @@ VITE_MAPBOX_TOKEN=pk.your_actual_token_here
 
 ### For Gmail:
 1. Go to: https://myaccount.google.com/security
-2. Enable "Less secure app access" OR use "App Password"
-3. Create App Password (recommended for security)
+2. Enable "Less secure app access" OR use "App Password" (2FA NEED TO BE ENABLE)
+3. Create App Password
 4. Copy password to `.env` as `SENDER_PASSWORD`
 5. Set `SENDER_EMAIL` to your Gmail address
 
