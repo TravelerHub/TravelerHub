@@ -1,7 +1,69 @@
+const BASE_URL = "http://127.0.0.1:8000";
 
-const BASE_URL = "http://127.0.0.1:800:";
+// Create an axios-like API object
+export const api = {
+  get: async (path, config = {}) => {
+    const token = localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
+    const response = await fetch(`${BASE_URL}${path}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...config.headers,
+      },
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw { response: { data, status: response.status } };
+    return { data, status: response.status };
+  },
 
+  post: async (path, body, config = {}) => {
+    const token = localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
+    const response = await fetch(`${BASE_URL}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...config.headers,
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw { response: { data, status: response.status } };
+    return { data, status: response.status };
+  },
 
+  put: async (path, body, config = {}) => {
+    const token = localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
+    const response = await fetch(`${BASE_URL}${path}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...config.headers,
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw { response: { data, status: response.status } };
+    return { data, status: response.status };
+  },
+
+  delete: async (path, config = {}) => {
+    const token = localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
+    const response = await fetch(`${BASE_URL}${path}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...config.headers,
+      },
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw { response: { data, status: response.status } };
+    return { data, status: response.status };
+  },
+};
 
 // ======== HELPER FUNCTION ===============
 
@@ -14,7 +76,6 @@ function getToken() {
 function setToken(token) {
   localStorage.setItem("accessToken", token);
 }
-
 
 async function request(path, { method = "GET", body, auth = true, headers = {} } = {}) {
   const token = auth ? getToken() : null;
@@ -42,8 +103,7 @@ async function request(path, { method = "GET", body, auth = true, headers = {} }
 
 // ========= auth =========
 export async function login(email, password) {
-
-    // POST /login - authenticate user
+  // POST /login - authenticate user
   // matches OAuth2 Password flow at /login if you expose it
   const data = await request("/login", {
     method: "POST",
@@ -55,8 +115,8 @@ export async function login(email, password) {
   return data;
 }
 
-// === regiser as user ===
-//POST /users - create a new user
+// === register as user ===
+// POST /users - create a new user
 export async function regiserUser({ email, username, password }) {
   return request("/users", { method: "POST", body: { email, username, password } });
 }

@@ -229,3 +229,46 @@ def verify_otp_code(data: OtpVerifyRequest):
             detail="Error verifying OTP. Please try again."
         )
 
+
+
+@router.post("/updatepassword")
+def update_password(payload: dict):
+    """Update user password after OTP verification.
+
+    Expected payload: { "email": str, "new_password": str }
+    """
+    try:
+        email = payload.get("email")
+        new_password = payload.get("new_password")
+
+        if not email or not new_password:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email and new_password are required")
+
+        # Hash the new password
+        hashed = hasing.hash_password(new_password)
+
+        # Update the password in Supabase
+        res = (
+            supabase
+            .table("users")
+            .update({"password": hashed})
+            .eq("email", email)
+            .execute()
+        )
+
+        # Supabase returns data on success
+        if getattr(res, "error", None):
+            print(f"Supabase update error: {res.error}")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update password")
+
+        if not res.data:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No user updated. Check the email provided.")
+
+        return {"success": True, "message": "Password updated successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error updating password: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while updating password")
+

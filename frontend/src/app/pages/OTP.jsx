@@ -63,9 +63,11 @@ function OTP() {
       
       if (response.ok && data.success) {
         setSuccess("OTP verified successfully! Redirecting...");
+        // Store email in localStorage for persistence
+        localStorage.setItem("resetEmail", email);
         setTimeout(() => {
-          // Redirect to password reset page or new password page
-          navigate("/newpassword");
+          // Redirect to password reset page and pass email in state
+          navigate("/newpassword", { state: { email: email } });
         }, 1500);
       } else {
         setError(data.message || "Invalid OTP. Please try again.");
