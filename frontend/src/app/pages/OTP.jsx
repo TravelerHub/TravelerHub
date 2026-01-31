@@ -65,7 +65,7 @@ function OTP() {
         setSuccess("OTP verified successfully! Redirecting...");
         setTimeout(() => {
           // Redirect to password reset page or new password page
-          navigate("/resetpassword");
+          navigate("/newpassword");
         }, 1500);
       } else {
         setError(data.message || "Invalid OTP. Please try again.");
