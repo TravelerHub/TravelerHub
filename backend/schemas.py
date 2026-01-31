@@ -35,6 +35,12 @@ class UserLogin(BaseModel):
 class OtpRequest(BaseModel):
     email: EmailStr
 
+
+# OTP verification request schema
+class OtpVerifyRequest(BaseModel):
+    email: EmailStr
+    otp: str
+
 # ---- OUTPUT SCHEMAS (what API returns) ----
 class UserOut(BaseModel):
     id: str
