@@ -40,24 +40,39 @@ function OTP() {
     setError("");
     setSuccess("");
 
-    if (!otp || otp.length < 4) {
-      setError("Please enter a valid OTP");
+    if (!otp || otp.length < 6) {
+      setError("Please enter a valid 6-digit OTP");
       return;
     }
 
     setLoading(true);
 
     try {
-      // TODO: Add actual OTP verification endpoint to backend
-      // For now, show success message
-      setSuccess("OTP verified successfully!");
-      setTimeout(() => {
-        // Redirect to password reset or new password page
-        navigate("/resetpassword");
-      }, 1500);
+      const response = await fetch("http://localhost:8000/verify-otp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email,
+          otp: otp,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        setSuccess("OTP verified successfully! Redirecting...");
+        setTimeout(() => {
+          // Redirect to password reset page or new password page
+          navigate("/resetpassword");
+        }, 1500);
+      } else {
+        setError(data.message || "Invalid OTP. Please try again.");
+      }
     } catch (err) {
       console.error("Error verifying OTP:", err);
-      setError("Invalid OTP. Please try again!");
+      setError("Network error. Please try again!");
     } finally {
       setLoading(false);
     }

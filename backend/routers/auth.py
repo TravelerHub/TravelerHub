@@ -1,10 +1,10 @@
 from fastapi import APIRouter, HTTPException, status
 from supabase_client import supabase
 
-from schemas import SignupRequest, LoginRequest, OtpRequest  
+from schemas import SignupRequest, LoginRequest, OtpRequest, OtpVerifyRequest  
 
 # hasing: hash_password, verify_password; oauth2: create_access_token
-from utils import hasing, oauth2  
+from utils import hasing, oauth2, otp
 
 router = APIRouter(
     tags=["auth"]
@@ -127,9 +127,13 @@ def login(data: LoginRequest):
 
 @router.post("/resetpassword")
 def check_email_for_otp(data: OtpRequest):
-    """Check whether the provided email exists in the users table.
-
-    Returns JSON: {"exists": bool}
+    """Check email existence and generate/send OTP.
+    
+    After verifying the email exists:
+    1. Generate a random 6-digit OTP
+    2. Store OTP with expiry timestamp (10 mins default)
+    3. Send OTP to user's email
+    4. Return success message
     """
     try:
         res = (
@@ -157,5 +161,71 @@ def check_email_for_otp(data: OtpRequest):
     if not res.data:
         return {"exists": False, "message": "Email not found"}
 
-    return {"exists": True}
+    # Email exists! Now generate and send OTP
+    try:
+        # Generate and store OTP
+        otp_code = otp.store_otp(data.email)
+        
+        # Send OTP via email
+        email_sent = otp.send_otp_email(data.email, otp_code)
+        
+        if not email_sent:
+            # Log the error but don't fail the request completely
+            print(f"Warning: OTP email failed to send to {data.email}, but OTP was generated")
+            return {
+                "exists": True,
+                "message": "Email verified, but OTP delivery failed. Please check your connection.",
+                "warning": "email_not_sent"
+            }
+        
+        return {
+            "exists": True,
+            "message": "OTP sent to your email. Please check your inbox.",
+            "email": data.email
+        }
+        
+    except Exception as e:
+        print(f"Error generating/sending OTP: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error sending OTP. Please try again."
+        )
+
+
+@router.post("/verify-otp")
+def verify_otp_code(data: OtpVerifyRequest):
+    """Verify OTP code submitted by user.
+    
+    Requires:
+    - email: User's email
+    - otp: 6-digit OTP code
+    
+    Returns:
+    - success with message if OTP is valid
+    - error if OTP is invalid, expired, or max attempts exceeded
+    """
+    try:
+        # Verify OTP using the otp utility function
+        is_valid, message = otp.verify_otp(data.email, data.otp)
+        
+        if not is_valid:
+            # OTP is invalid, expired, or max attempts exceeded
+            return {
+                "success": False,
+                "message": message
+            }
+        
+        # OTP is valid! Return success
+        return {
+            "success": True,
+            "message": "OTP verified successfully. You can now reset your password.",
+            "email": data.email
+        }
+        
+    except Exception as e:
+        print(f"Error verifying OTP: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error verifying OTP. Please try again."
+        )
 
