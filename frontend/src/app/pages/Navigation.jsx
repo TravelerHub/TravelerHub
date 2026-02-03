@@ -1,8 +1,28 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Map from '../../components/Map';
 import { searchPlaces, getPlaceName } from '../../services/geocodingService';
 import { getOptimizedRoute } from '../../services/routeService';
+
+import { 
+  searchNearbyPlaces, 
+  searchPlacesByText, 
+  getPlaceDetails,
+  getPhotoUrl,
+  getPriceLevelSymbol 
+} from '../../services/googlePlacesService';
+
+// Add these new icons
+import {
+  // ... existing imports
+  PhotoIcon,
+  StarIcon,
+  PhoneIcon,
+  GlobeAltIcon,
+  ClockIcon as ClockIconOutline,
+  CurrencyDollarIcon
+} from '@heroicons/react/24/outline';
+import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 
 // Import Heroicons
 import {
@@ -27,7 +47,8 @@ import {
   FunnelIcon,
   CheckIcon,
   FireIcon,
-  ArrowsRightLeftIcon
+  ArrowsRightLeftIcon,
+  ChevronRightIcon  
 } from '@heroicons/react/24/outline';
 
 // Import places service
@@ -35,6 +56,8 @@ import { searchByCategory } from '../../services/placesService';
 
 function Navigation() {
   const navigate = useNavigate();
+
+  const mapRef = useRef(null);
   
   // Markers state
   const [markers, setMarkers] = useState([
@@ -80,9 +103,25 @@ function Navigation() {
     { id: 'parking', label: 'Parking', Icon: Square3Stack3DIcon }
   ];
 
+
+  const [enhancedPlaces, setEnhancedPlaces] = useState([]);
+  const [selectedPlace, setSelectedPlace] = useState(null);
+  const [showPlaceDetails, setShowPlaceDetails] = useState(false);
+  const [loadingPlaceDetails, setLoadingPlaceDetails] = useState(false);
+
   // Load saved routes on mount
   useEffect(() => {
     loadSavedRoutes();
+  }, []);
+
+  // Add this useEffect near your other useEffects
+  useEffect(() => {
+    // Make function available to map markers
+    window.handleViewPlaceDetails = handleViewPlaceDetails;
+    
+    return () => {
+      delete window.handleViewPlaceDetails;
+    };
   }, []);
 
   const loadSavedRoutes = async () => {
@@ -285,6 +324,65 @@ function Navigation() {
       console.error('Places search error:', error);
     } finally {
       setSearchingPlaces(false);
+    }
+  };
+
+  const handleSearchGooglePlaces = async () => {
+    if (!placesQuery.trim() && selectedCategory === 'all') {
+    return;
+  }
+
+  setSearchingPlaces(true);
+
+  try {
+    const center = markers.length > 0 ? markers[0].coordinates : [-118.2437, 34.0522];
+    const latitude = center[1];
+    const longitude = center[0];
+
+    let results;
+    
+    if (placesQuery.trim()) {
+      // Text search
+      results = await searchPlacesByText(placesQuery, latitude, longitude);
+    } else {
+      // Category search
+      const categoryTypeMap = {
+        restaurants: 'restaurant',
+        cafes: 'cafe',
+        hotels: 'lodging',
+        attractions: 'tourist_attraction',
+        gas_stations: 'gas_station',
+        parking: 'parking'
+      };
+      
+      const type = categoryTypeMap[selectedCategory] || 'restaurant';
+      results = await searchNearbyPlaces(latitude, longitude, type);
+    }
+
+    setEnhancedPlaces(results);
+    setPlacesResults([]); // Clear Mapbox results
+  } catch (error) {
+    console.error('Google Places search error:', error);
+  } finally {
+    setSearchingPlaces(false);
+  }
+  };
+
+  // Function to view place details
+  const handleViewPlaceDetails = async (place) => {
+    setSelectedPlace(place);
+    setShowPlaceDetails(true);
+    setLoadingPlaceDetails(true);
+
+    try {
+      const details = await getPlaceDetails(place.id);
+      if (details) {
+        setSelectedPlace(details);
+      }
+    } catch (error) {
+      console.error('Error loading place details:', error);
+    } finally {
+      setLoadingPlaceDetails(false);
     }
   };
 
@@ -674,7 +772,7 @@ function Navigation() {
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                     />
                     <button
-                      onClick={handleSearchPlaces}
+                      onClick={handleSearchGooglePlaces}
                       disabled={searchingPlaces}
                       className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
                     >
@@ -730,6 +828,83 @@ function Navigation() {
                           </div>
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {/* Google API places */}
+                  {enhancedPlaces.length > 0 && (
+                    <div className="mb-4">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                        Places Found ({enhancedPlaces.length})
+                      </h3>
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {enhancedPlaces.map((place, index) => (
+                          <div
+                            key={place.id}
+                            className="p-3 bg-white border border-gray-200 rounded-lg hover:border-purple-400 cursor-pointer transition-colors"
+                            onClick={() => handleViewPlaceDetails(place)}
+                          >
+                            <div className="flex items-start gap-3">
+                              {/* Photo Thumbnail */}
+                              {place.photos && place.photos.length > 0 ? (
+                                <img
+                                  src={getPhotoUrl(place.photos[0].name, 100)}
+                                  alt={place.name}
+                                  className="w-16 h-16 object-cover rounded-lg flex-shrink-0"
+                                />
+                              ) : (
+                                <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                                  <PhotoIcon className="w-8 h-8 text-gray-400" />
+                                </div>
+                              )}
+
+                              {/* Place Info */}
+                              <div className="flex-1 min-w-0">
+                                <h4 className="text-sm font-semibold text-gray-900 truncate">
+                                  {place.name}
+                                </h4>
+                                <p className="text-xs text-gray-500 truncate">
+                                  {place.address}
+                                </p>
+                                
+                                {/* Rating */}
+                                {place.rating && (
+                                  <div className="flex items-center gap-1 mt-1">
+                                    <div className="flex">
+                                      {[1, 2, 3, 4, 5].map((star) => (
+                                        <StarIconSolid
+                                          key={star}
+                                          className={`w-3 h-3 ${
+                                            star <= Math.round(place.rating)
+                                              ? 'text-yellow-400'
+                                              : 'text-gray-300'
+                                          }`}
+                                        />
+                                      ))}
+                                    </div>
+                                    <span className="text-xs text-gray-600">
+                                      {place.rating} ({place.ratingCount})
+                                    </span>
+                                  </div>
+                                )}
+
+                                {/* Price Level */}
+                                {place.priceLevel && (
+                                  <div className="flex items-center gap-1 mt-1">
+                                    <CurrencyDollarIcon className="w-3 h-3 text-gray-500" />
+                                    <span className="text-xs text-gray-600">
+                                      {getPriceLevelSymbol(place.priceLevel)}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Arrow */}
+                              <ChevronRightIcon className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -830,11 +1005,13 @@ function Navigation() {
           <div className="lg:col-span-2">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 h-[700px]">
               <Map 
+                ref={mapRef}
                 markers={markers} 
                 center={markers.length > 0 ? markers[0].coordinates : [-118.2437, 34.0522]} 
                 zoom={12}
                 route={currentRoute}
                 onMarkerDragEnd={handleMarkerDrag}
+                enhancedPlaces={enhancedPlaces}
               />
             </div>
           </div>
@@ -1040,6 +1217,204 @@ function Navigation() {
               >
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Place Details Modal */}
+      {showPlaceDetails && selectedPlace && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900">Place Details</h2>
+              <button
+                onClick={() => setShowPlaceDetails(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <XMarkIcon className="w-6 h-6 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              {loadingPlaceDetails ? (
+                <div className="flex items-center justify-center py-12">
+                  <ArrowPathIcon className="w-8 h-8 text-purple-600 animate-spin" />
+                </div>
+              ) : (
+                <>
+                  {/* Photos Gallery */}
+                  {selectedPlace.photos && selectedPlace.photos.length > 0 && (
+                    <div className="mb-6">
+                      <div className="grid grid-cols-3 gap-2">
+                        {selectedPlace.photos.map((photo, index) => (
+                          <img
+                            key={index}
+                            src={getPhotoUrl(photo.name, 400)}
+                            alt={`${selectedPlace.name} photo ${index + 1}`}
+                            className="w-full h-32 object-cover rounded-lg"
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Place Name */}
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                    {selectedPlace.name}
+                  </h3>
+
+                  {/* Rating & Price */}
+                  <div className="flex items-center gap-4 mb-4">
+                    {selectedPlace.rating && (
+                      <div className="flex items-center gap-2">
+                        <div className="flex">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <StarIconSolid
+                              key={star}
+                              className={`w-5 h-5 ${
+                                star <= Math.round(selectedPlace.rating)
+                                  ? 'text-yellow-400'
+                                  : 'text-gray-300'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-sm font-medium text-gray-700">
+                          {selectedPlace.rating} ({selectedPlace.ratingCount} reviews)
+                        </span>
+                      </div>
+                    )}
+                    
+                    {selectedPlace.priceLevel && (
+                      <span className="text-sm font-medium text-gray-700">
+                        {getPriceLevelSymbol(selectedPlace.priceLevel)}
+                      </span>
+                    )}
+
+                    {selectedPlace.isOpen !== null && (
+                      <span className={`text-sm font-medium ${selectedPlace.isOpen ? 'text-green-600' : 'text-red-600'}`}>
+                        {selectedPlace.isOpen ? 'Open Now' : 'Closed'}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Address */}
+                  <div className="flex items-start gap-3 mb-4">
+                    <MapPinIcon className="w-5 h-5 text-gray-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-gray-700">{selectedPlace.address}</p>
+                  </div>
+
+                  {/* Phone */}
+                  {selectedPlace.phone && (
+                    <div className="flex items-center gap-3 mb-4">
+                      <PhoneIcon className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                      <a 
+                        href={`tel:${selectedPlace.phone}`}
+                        className="text-purple-600 hover:underline"
+                      >
+                        {selectedPlace.phone}
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Website */}
+                  {selectedPlace.website && (
+                    <div className="flex items-center gap-3 mb-4">
+                      <GlobeAltIcon className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                      <a 
+                        href={selectedPlace.website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-purple-600 hover:underline truncate"
+                      >
+                        Visit Website
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Opening Hours */}
+                  {selectedPlace.openingHours && selectedPlace.openingHours.length > 0 && (
+                    <div className="mb-6">
+                      <div className="flex items-center gap-2 mb-2">
+                        <ClockIconOutline className="w-5 h-5 text-gray-400" />
+                        <h4 className="font-semibold text-gray-900">Hours</h4>
+                      </div>
+                      <div className="ml-7 space-y-1">
+                        {selectedPlace.openingHours.map((hours, index) => (
+                          <p key={index} className="text-sm text-gray-600">
+                            {hours}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Reviews */}
+                  {selectedPlace.reviews && selectedPlace.reviews.length > 0 && (
+                    <div className="mb-6">
+                      <h4 className="font-semibold text-gray-900 mb-3">Recent Reviews</h4>
+                      <div className="space-y-4">
+                        {selectedPlace.reviews.map((review, index) => (
+                          <div key={index} className="border-l-4 border-purple-200 pl-4">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-medium text-gray-900">
+                                {review.author}
+                              </span>
+                              <div className="flex">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <StarIconSolid
+                                    key={star}
+                                    className={`w-4 h-4 ${
+                                      star <= review.rating
+                                        ? 'text-yellow-400'
+                                        : 'text-gray-300'
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                            <p className="text-sm text-gray-600 line-clamp-3">
+                              {review.text}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex gap-3 mt-6">
+                    <button
+                      onClick={() => {
+                        // Add to route/itinerary functionality (we'll implement this next)
+                        console.log('Add to route:', selectedPlace);
+                      }}
+                      className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium"
+                    >
+                      Add to Route
+                    </button>
+                    <button
+                      onClick={() => {
+                        // Navigate to this place
+                        const [lng, lat] = selectedPlace.coordinates;
+                        if (mapRef.current) {
+                          mapRef.current.flyTo({
+                            center: [lng, lat],
+                            zoom: 16,
+                            duration: 2000
+                          });
+                        }
+                        setShowPlaceDetails(false);
+                      }}
+                      className="flex-1 px-4 py-3 bg-white border-2 border-purple-600 text-purple-600 rounded-lg hover:bg-purple-50 font-medium"
+                    >
+                      View on Map
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
