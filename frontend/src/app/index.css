@@ -106,3 +106,22 @@ button:focus-visible {
 .footer-btn:active {
   transform: translateY(0);
 }
+
+
+
+@layer components {
+  .quickAction_btn {
+    @apply flex flex-col items-center gap-2 p-4
+      rounded-lg border border-gray-200
+      transition
+      hover:bg-gray-50 hover:border-gray-300;
+  }
+
+  .quickAction_icon {
+    @apply w-10 h-10 rounded-full flex items-center justify-center transition;
+  }
+
+  .quickAction_text {
+    @apply text-gray-700 font-medium;
+  }
+}

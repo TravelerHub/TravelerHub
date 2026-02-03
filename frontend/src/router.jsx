@@ -10,9 +10,7 @@ import SignUp from "./app/pages/SignUp.jsx";
 import Dashboard from "./app/pages/Dashboard.jsx";
 import Settings from "./app/pages/Settings.jsx";
 import Profile  from "./app/pages/Profile.jsx"; 
-// import Navigation from "./app/pages/Navigation.jsx";
 import Navigation from "./app/pages/Navigation.jsx";
-// import Profile  from "./app/pages/Profile.jsx";
 import ResetPassword from "./app/pages/ResetPassword.jsx"; 
 import OTP from "./app/pages/OTP.jsx";
 
