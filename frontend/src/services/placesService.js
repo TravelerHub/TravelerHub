@@ -114,3 +114,46 @@ export const getPlaceName = async (coordinates) => {
     return null;
   }
 };
+
+
+export const getPlaceDetails = async (placeId) => {
+  try {
+    // Mapbox provides details through the retrieve endpoint
+    const url = `https://api.mapbox.com/search/searchbox/v1/retrieve/${placeId}?` +
+      `session_token=${generateSessionToken()}&` +
+      `access_token=${MAPBOX_TOKEN}`;
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.features && data.features.length > 0) {
+      const feature = data.features[0];
+      
+      return {
+        id: feature.id,
+        name: feature.properties.name,
+        address: feature.properties.full_address || feature.properties.place_formatted,
+        coordinates: feature.geometry.coordinates,
+        category: feature.properties.poi_category || feature.properties.category,
+        phone: feature.properties.tel,
+        website: feature.properties.url,
+        // Mapbox doesn't provide photos/ratings directly
+        // We'll add those separately
+      };
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error getting place details:', error);
+    return null;
+  }
+};
+
+// Helper to generate session token for search
+let sessionToken = null;
+const generateSessionToken = () => {
+  if (!sessionToken) {
+    sessionToken = Math.random().toString(36).substring(7);
+  }
+  return sessionToken;
+};
