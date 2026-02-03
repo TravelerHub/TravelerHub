@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import Navbar from "../../components/navbar/Navbar_landing";
+import Navbar_Landing from "../../components/navbar/Navbar_landing";
 import Footer from "../../components/Footer";
 
 // import the image for the hero section
@@ -12,7 +12,7 @@ function Landing() {
   return (
     <div className="flex flex-col min-h-screen">
       {/* Navbar */}
-      <Navbar />
+      <Navbar_Landing />
 
       {/* Main Content */}
       <main className="flex-1 flex">
