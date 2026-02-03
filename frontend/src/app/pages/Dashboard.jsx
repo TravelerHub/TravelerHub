@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import ImageUpload from "../../components/ImageUpload.jsx";
 
 
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
@@ -88,6 +89,15 @@ function Dashboard() {
               </div>
               <span className="quickAction_text">Group Voting</span>
             </button>
+
+            <div className="mb-6">
+              <div className="flex justify-center">
+                <ImageUpload 
+                onUploadSuccess={() => console.log("Image uploaded successfully!")} />
+              </div>
+            </div>
+
+
 
 
             <button
