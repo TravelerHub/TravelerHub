@@ -1,108 +1,200 @@
-import { useRef, useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import { MapPinIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/outline';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
-function Map({ center = [-118.2437, 34.0522], zoom = 12, markers = [], route = null }) {
+function Map({ markers = [], center = [-118.2437, 34.0522], zoom = 12, route = null, onMarkerDragEnd }) {
   const mapContainer = useRef(null);
-  const map = useRef(null);
-  const [lng, setLng] = useState(center[0]);
-  const [lat, setLat] = useState(center[1]);
-  const [mapZoom, setMapZoom] = useState(zoom);
+  const mapRef = useRef(null);
+  const markersRef = useRef([]);
 
-  // 1. INITIALIZE MAP (this was missing!)
+  // Initialize map
   useEffect(() => {
-    if (map.current) return; // If map already exists, don't create another
-    
-    map.current = new mapboxgl.Map({
+    if (!mapContainer.current) return;
+
+    mapRef.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v12',
-      center: [lng, lat],
-      zoom: mapZoom
+      center: center,
+      zoom: zoom
     });
 
-    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    // Add navigation controls
+    mapRef.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
-    map.current.on('move', () => {
-      setLng(map.current.getCenter().lng.toFixed(4));
-      setLat(map.current.getCenter().lat.toFixed(4));
-      setMapZoom(map.current.getZoom().toFixed(2));
-    });
-  }, []); // Empty array = run once on mount
-
-  // 2. HANDLE MARKERS
-  useEffect(() => {
-    if (!map.current) return;
-
-    const existingMarkers = document.querySelectorAll('.mapboxgl-marker');
-    existingMarkers.forEach(marker => marker.remove());
-
-    markers.forEach(({ coordinates, title, description }) => {
-      const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(
-        `<h3 class="font-semibold">${title}</h3>
-         <p class="text-sm text-gray-600">${description || ''}</p>`
-      );
-
-      new mapboxgl.Marker()
-        .setLngLat(coordinates)
-        .setPopup(popup)
-        .addTo(map.current);
-    });
-  }, [markers]);
-
-  // 3. HANDLE ROUTE (keep only ONE route useEffect)
-  useEffect(() => {
-    if (!map.current) return;
-    if (!route) return;
-
-    if (map.current.getLayer('route')) {
-      map.current.removeLayer('route');
-    }
-    if (map.current.getSource('route')) {
-      map.current.removeSource('route');
-    }
-
-    map.current.addSource('route', {
-      type: 'geojson',
-      data: {
-        type: 'Feature',
-        properties: {},
-        geometry: route.geometry
-      }
-    });
-
-    map.current.addLayer({
-      id: 'route',
-      type: 'line',
-      source: 'route',
-      layout: {
-        'line-join': 'round',
-        'line-cap': 'round'
+    // Add geolocate control (locate me button)
+    const geolocate = new mapboxgl.GeolocateControl({
+      positionOptions: {
+        enableHighAccuracy: true
       },
-      paint: {
-        'line-color': '#3b82f6',
-        'line-width': 5,
-        'line-opacity': 0.75
+      trackUserLocation: true,
+      showUserHeading: true
+    });
+    
+    mapRef.current.addControl(geolocate, 'top-right');
+
+    // Add scale control
+    mapRef.current.addControl(new mapboxgl.ScaleControl(), 'bottom-left');
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
       }
+    };
+  }, []);
+
+  // Update markers
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    // Clear existing markers
+    markersRef.current.forEach(marker => marker.remove());
+    markersRef.current = [];
+
+    // Add new markers
+    markers.forEach((marker, index) => {
+      // Create custom marker element
+      const el = document.createElement('div');
+      el.className = 'custom-marker';
+      el.style.cursor = 'grab';
+      
+      // Different colors for start, end, and waypoints
+      let bgColor;
+      let label;
+      
+      if (index === 0) {
+        bgColor = 'bg-green-500';
+        label = 'A';
+      } else if (index === markers.length - 1 && markers.length > 1) {
+        bgColor = 'bg-red-500';
+        label = 'B';
+      } else {
+        bgColor = 'bg-blue-500';
+        label = index + 1;
+      }
+      
+      el.innerHTML = `
+        <div class="flex items-center justify-center w-10 h-10 ${bgColor} rounded-full text-white font-bold shadow-lg border-2 border-white">
+          ${label}
+        </div>
+      `;
+
+      // Create draggable marker
+      const mapboxMarker = new mapboxgl.Marker({
+        element: el,
+        draggable: true
+      })
+        .setLngLat(marker.coordinates)
+        .setPopup(
+          new mapboxgl.Popup({ offset: 25 })
+            .setHTML(`
+              <div class="p-2">
+                <div class="font-bold text-sm">${marker.title}</div>
+                <div class="text-xs text-gray-600 mt-1">${marker.description}</div>
+              </div>
+            `)
+        )
+        .addTo(mapRef.current);
+
+      // Handle drag end
+      mapboxMarker.on('dragend', () => {
+        const lngLat = mapboxMarker.getLngLat();
+        if (onMarkerDragEnd) {
+          onMarkerDragEnd(index, [lngLat.lng, lngLat.lat]);
+        }
+      });
+
+      markersRef.current.push(mapboxMarker);
     });
 
-    const coordinates = route.geometry.coordinates;
-    const bounds = coordinates.reduce(
-      (bounds, coord) => bounds.extend(coord),
-      new mapboxgl.LngLatBounds(coordinates[0], coordinates[0])
-    );
-    map.current.fitBounds(bounds, { padding: 50 });
+    // Fit bounds to show all markers
+    if (markers.length > 0) {
+      const bounds = new mapboxgl.LngLatBounds();
+      markers.forEach(marker => bounds.extend(marker.coordinates));
+      
+      mapRef.current.fitBounds(bounds, {
+        padding: 100,
+        maxZoom: 15,
+        duration: 1000
+      });
+    }
+  }, [markers, onMarkerDragEnd]);
+
+  // Draw route
+  useEffect(() => {
+    if (!mapRef.current || !route) return;
+
+    mapRef.current.on('load', () => {
+      // Remove existing route layer if exists
+      if (mapRef.current.getSource('route')) {
+        mapRef.current.removeLayer('route');
+        mapRef.current.removeSource('route');
+      }
+
+      // Add route source and layer
+      mapRef.current.addSource('route', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: route.geometry
+        }
+      });
+
+      mapRef.current.addLayer({
+        id: 'route',
+        type: 'line',
+        source: 'route',
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round'
+        },
+        paint: {
+          'line-color': '#3B82F6',
+          'line-width': 5,
+          'line-opacity': 0.75
+        }
+      });
+    });
+
+    // If map already loaded
+    if (mapRef.current.isStyleLoaded()) {
+      if (mapRef.current.getSource('route')) {
+        mapRef.current.removeLayer('route');
+        mapRef.current.removeSource('route');
+      }
+
+      mapRef.current.addSource('route', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: route.geometry
+        }
+      });
+
+      mapRef.current.addLayer({
+        id: 'route',
+        type: 'line',
+        source: 'route',
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round'
+        },
+        paint: {
+          'line-color': '#3B82F6',
+          'line-width': 5,
+          'line-opacity': 0.75
+        }
+      });
+    }
   }, [route]);
 
   return (
-    <div className="relative w-full h-full">
-      <div className="absolute top-4 left-4 bg-white px-4 py-2 rounded-lg shadow-md z-10 text-sm">
-        <div className="text-gray-600">
-          Longitude: {lng} | Latitude: {lat} | Zoom: {mapZoom}
-        </div>
-      </div>
-      <div ref={mapContainer} className="w-full h-full rounded-lg" />
+    <div className="relative w-full h-full rounded-lg overflow-hidden">
+      <div ref={mapContainer} className="w-full h-full" />
     </div>
   );
 }
