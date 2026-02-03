@@ -1,6 +1,8 @@
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 
+import LogoImg from "../../assets/images/logo_img.png";
+
 function Navbar() {
   const navigate = useNavigate();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -23,7 +25,11 @@ function Navbar() {
           className="flex items-center gap-2 focus:outline-none"
           type="button"
         >
-          <span className="text-2xl font-bold text-gray-900">TravelHub</span>
+          <img
+            src={LogoImg}
+            alt="TravelHub Logo"
+            className="h-10 w-auto object-contain"
+          />
         </button>
 
 
