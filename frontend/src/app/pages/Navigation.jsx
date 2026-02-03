@@ -4,6 +4,26 @@ import Map from '../../components/Map';
 import { searchPlaces, getPlaceName } from '../../services/geocodingService';
 import { getOptimizedRoute } from '../../services/routeService';
 
+import { 
+  searchNearbyPlaces, 
+  searchPlacesByText, 
+  getPlaceDetails,
+  getPhotoUrl,
+  getPriceLevelSymbol 
+} from '../../services/googlePlacesService';
+
+// Add these new icons
+import {
+  // ... existing imports
+  PhotoIcon,
+  StarIcon,
+  PhoneIcon,
+  GlobeAltIcon,
+  ClockIcon as ClockIconOutline,
+  CurrencyDollarIcon
+} from '@heroicons/react/24/outline';
+import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
+
 // Import Heroicons
 import {
   MagnifyingGlassIcon,
@@ -79,6 +99,12 @@ function Navigation() {
     { id: 'gas_stations', label: 'Gas', Icon: BoltIcon },
     { id: 'parking', label: 'Parking', Icon: Square3Stack3DIcon }
   ];
+
+
+  const [enhancedPlaces, setEnhancedPlaces] = useState([]);
+  const [selectedPlace, setSelectedPlace] = useState(null);
+  const [showPlaceDetails, setShowPlaceDetails] = useState(false);
+  const [loadingPlaceDetails, setLoadingPlaceDetails] = useState(false);
 
   // Load saved routes on mount
   useEffect(() => {
@@ -285,6 +311,66 @@ function Navigation() {
       console.error('Places search error:', error);
     } finally {
       setSearchingPlaces(false);
+    }
+  };
+
+  // Add this new function after handleSearchPlaces
+  const handleSearchGooglePlaces = async () => {
+    if (!placesQuery.trim() && selectedCategory === 'all') {
+    return;
+  }
+
+  setSearchingPlaces(true);
+
+  try {
+    const center = markers.length > 0 ? markers[0].coordinates : [-118.2437, 34.0522];
+    const latitude = center[1];
+    const longitude = center[0];
+
+    let results;
+    
+    if (placesQuery.trim()) {
+      // Text search
+      results = await searchPlacesByText(placesQuery, latitude, longitude);
+    } else {
+      // Category search
+      const categoryTypeMap = {
+        restaurants: 'restaurant',
+        cafes: 'cafe',
+        hotels: 'lodging',
+        attractions: 'tourist_attraction',
+        gas_stations: 'gas_station',
+        parking: 'parking'
+      };
+      
+      const type = categoryTypeMap[selectedCategory] || 'restaurant';
+      results = await searchNearbyPlaces(latitude, longitude, type);
+    }
+
+    setEnhancedPlaces(results);
+    setPlacesResults([]); // Clear Mapbox results
+  } catch (error) {
+    console.error('Google Places search error:', error);
+  } finally {
+    setSearchingPlaces(false);
+  }
+  };
+
+  // Function to view place details
+  const handleViewPlaceDetails = async (place) => {
+    setSelectedPlace(place);
+    setShowPlaceDetails(true);
+    setLoadingPlaceDetails(true);
+
+    try {
+      const details = await getPlaceDetails(place.id);
+      if (details) {
+        setSelectedPlace(details);
+      }
+    } catch (error) {
+      console.error('Error loading place details:', error);
+    } finally {
+      setLoadingPlaceDetails(false);
     }
   };
 
@@ -674,7 +760,7 @@ function Navigation() {
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                     />
                     <button
-                      onClick={handleSearchPlaces}
+                      onClick={handleSeaerchGooglePlaces}
                       disabled={searchingPlaces}
                       className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
                     >
