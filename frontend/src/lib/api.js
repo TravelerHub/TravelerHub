@@ -79,10 +79,18 @@ function setToken(token) {
 
 async function request(path, { method = "GET", body, auth = true, headers = {} } = {}) {
   const token = auth ? getToken() : null;
+  const isFormData = body instanceof FormData;
+  const defaultHeaders =  {  
+    ...(auth && token ? { Authorization: `Bearer ${token}` } : {}),
+    ...headers,
+   };
+   if (!isFormData && body) {
+     defaultHeaders["Content-Type"] = "application/json";
+   }
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
     headers: {
-      ...(body ? { "Content-Type": "application/json" } : {}),
+      ...defaultHeaders,
       ...(auth && token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers,
     },
@@ -119,4 +127,15 @@ export async function login(email, password) {
 // POST /users - create a new user
 export async function regiserUser({ email, username, password }) {
   return request("/users", { method: "POST", body: { email, username, password } });
+
+}
+
+export async function uploadImage(file) {
+  const formData = new FormData();
+  formData.append("file", file); 
+
+  return request("/images/upload", {
+    method: "POST",
+    body: formData, 
+  });
 }
