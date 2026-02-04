@@ -87,11 +87,11 @@ function Settings() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-8">
-      <div className="max-w-lg mx-auto">
+    <div className="min-h-screen w-screen flex flex-col bg-gradient-to-br from-gray-50 to-gray-100 p-8">
+      <div className=" w-full max-w-lg mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+        <div className="flex items-center justify-between ">
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">Settings</h1>
           <button
             onClick={() => navigate("/dashboard")}
             className="text-gray-500 hover:text-gray-700 text-sm flex items-center gap-1"
@@ -103,8 +103,8 @@ function Settings() {
         <div className="space-y-6">
           {/* Notifications Section */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-800 mb-1">Notifications</h2>
-            <p className="text-gray-500 text-sm mb-5">Manage how you receive updates</p>
+            <h2 className="text-lg font-semibold text-gray-800">Notifications</h2>
+            <p className="text-gray-500 text-sm">Manage how you receive updates</p>
 
             <div className="space-y-4">
               <label className="flex items-center justify-between cursor-pointer group">

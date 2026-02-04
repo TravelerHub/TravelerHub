@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import LogoImg from "../../assets/images/logo_img.png";
 
-function Navbar() {
+function Navbar_Landing() {
   const navigate = useNavigate();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
@@ -47,4 +47,4 @@ function Navbar() {
   );
 }
 
-export default Navbar;
+export default Navbar_Landing;
