@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import Navbar from "../../components/navbar/Navbar_empty";
+import Navbar_empty from "../../components/navbar/Navbar_empty";
 
 function ResetPassword() {
   const navigate = useNavigate();
@@ -44,7 +44,7 @@ function ResetPassword() {
   return (
     <>
       {/* Navbar */}
-      <Navbar />
+      <Navbar_empty />
 
       <div className="w-screen min-h-screen bg-gradient-to-br from-white-50 to-indigo-100 flex items-center justify-center px-4 py-8">
         <div className="w-full max-w-md">
