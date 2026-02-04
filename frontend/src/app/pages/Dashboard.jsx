@@ -106,13 +106,14 @@ function Dashboard() {
             </button>
 
             </div>
-          </div>
-          <div className="mb-6">
+            <div className="mb-6">
               <div className="flex justify-center">
                 <ImageUpload 
                 onUploadSuccess={() => console.log("Image uploaded successfully!")} />
               </div>
             </div>
+          </div>
+          
 
 
 
