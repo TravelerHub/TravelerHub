@@ -95,7 +95,7 @@ function Login() {
               {/* Login Button */}
               <button
                 type="submit"
-                className="w-full bg-black-600 bg-black hover:bg-gray-700 text-black font-semibold py-2.5 px-4 rounded-lg transition duration-200 mt-6"
+                className="w-full bg-black-600 bg-black hover:bg-gray-700 text-white font-semibold py-2.5 px-4 rounded-lg transition duration-200 mt-6"
               >
                 Log In
               </button>
