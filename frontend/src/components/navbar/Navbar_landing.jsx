@@ -36,7 +36,7 @@ function Navbar_Landing() {
         {/* Login button on the Right */}
         <button
           onClick={() => navigate("/login")}
-          className="border-2 border-white font-bold py-3 px-8 rounded-lg hover:bg-white text-black hover:text-indigo-600 transition"
+          className="border-2 border-white font-bold py-3 px-8 rounded-xl hover:bg-white bg-black text-white hover:text-indigo-600 transition"
         >
           Log In
         </button>
