@@ -90,12 +90,7 @@ function Dashboard() {
               <span className="quickAction_text">Group Voting</span>
             </button>
 
-            <div className="mb-6">
-              <div className="flex justify-center">
-                <ImageUpload 
-                onUploadSuccess={() => console.log("Image uploaded successfully!")} />
-              </div>
-            </div>
+            
 
 
 
@@ -112,6 +107,12 @@ function Dashboard() {
 
             </div>
           </div>
+          <div className="mb-6">
+              <div className="flex justify-center">
+                <ImageUpload 
+                onUploadSuccess={() => console.log("Image uploaded successfully!")} />
+              </div>
+            </div>
 
 
 
