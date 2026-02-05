@@ -26,7 +26,7 @@ function Navbar_Dashboard() {
         {/* Quick Action Icons */}
         <div className="flex items-center gap-3">   
 
-          {/* Navigation */}
+          {/* Notification */}
           <div className="relative group">
             <button
               onClick={() => navigate("/")}
@@ -77,7 +77,7 @@ function Navbar_Dashboard() {
           {/* Messenger */}
           <div className="relative group">
             <button
-              onClick={() => navigate("/messenger")}
+              onClick={() => navigate("/")}
               className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 transition"
             >
               <span className="text-lg">💬</span>

@@ -3,7 +3,7 @@ const BASE_URL = "http://127.0.0.1:8000";
 // Create an axios-like API object
 export const api = {
   get: async (path, config = {}) => {
-    const token = localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
     const response = await fetch(`${BASE_URL}${path}`, {
       method: "GET",
       headers: {
@@ -18,7 +18,7 @@ export const api = {
   },
 
   post: async (path, body, config = {}) => {
-    const token = localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
     const response = await fetch(`${BASE_URL}${path}`, {
       method: "POST",
       headers: {
@@ -34,7 +34,7 @@ export const api = {
   },
 
   put: async (path, body, config = {}) => {
-    const token = localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
     const response = await fetch(`${BASE_URL}${path}`, {
       method: "PUT",
       headers: {
@@ -50,7 +50,7 @@ export const api = {
   },
 
   delete: async (path, config = {}) => {
-    const token = localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
     const response = await fetch(`${BASE_URL}${path}`, {
       method: "DELETE",
       headers: {
@@ -70,11 +70,11 @@ export const api = {
 // GET and SET token for the JWT token access
 // Helper to get the token from localStorage or session storage
 function getToken() {
-  return localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
+  return localStorage.getItem("token") || sessionStorage.getItem("token");
 }
   
 function setToken(token) {
-  localStorage.setItem("accessToken", token);
+  localStorage.setItem("token", token);
 }
 
 async function request(path, { method = "GET", body, auth = true, headers = {} } = {}) {
@@ -94,7 +94,7 @@ async function request(path, { method = "GET", body, auth = true, headers = {} }
       ...(auth && token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers,
     },
-    body: body ? JSON.stringify(body) : undefined,
+    body: isFormData ? body : (body ? JSON.stringify(body) : undefined),
   });
   if (res.status === 204) return true;
 
