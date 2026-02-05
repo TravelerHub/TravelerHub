@@ -14,7 +14,7 @@ import Navigation from "./app/pages/Navigation.jsx";
 import ResetPassword from "./app/pages/ResetPassword.jsx"; 
 import OTP from "./app/pages/OTP.jsx";
 import NewPassword from "./app/pages/NewPassword.jsx";
-
+import Booking from "./app/pages/Booking.jsx";
 const router = createBrowserRouter([
     { path: "/", element: <Landing /> },
     { path: "/about", element: <About /> },
@@ -29,7 +29,8 @@ const router = createBrowserRouter([
     { path: "/navigation", element: <Navigation /> },
     { path: "/resetpassword", element: <ResetPassword /> },
     { path: "/otp", element: <OTP /> },
-    { path: "/newpassword", element: <NewPassword /> }
+    { path: "/newpassword", element: <NewPassword /> },
+    { path: "/bookings", element: <Booking /> }
 ]);
 
 export default router;
