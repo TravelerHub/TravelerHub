@@ -1,10 +1,10 @@
 from fastapi import APIRouter, HTTPException, status
 from supabase_client import supabase
 
-from schemas import SignupRequest, LoginRequest  
+from schemas import SignupRequest, LoginRequest, OtpRequest, OtpVerifyRequest  
 
 # hasing: hash_password, verify_password; oauth2: create_access_token
-from utils import hasing, oauth2  
+from utils import hasing, oauth2, otp
 
 router = APIRouter(
     tags=["auth"]
@@ -122,3 +122,153 @@ def login(data: LoginRequest):
         # keep this if your frontend is using it:
         "redirect": "/dashboard",
     }
+
+
+
+@router.post("/resetpassword")
+def check_email_for_otp(data: OtpRequest):
+    """Check email existence and generate/send OTP.
+    
+    After verifying the email exists:
+    1. Generate a random 6-digit OTP
+    2. Store OTP with expiry timestamp (10 mins default)
+    3. Send OTP to user's email
+    4. Return success message
+    """
+    try:
+        res = (
+            supabase
+            .table("users")
+            .select("id")
+            .eq("email", data.email)
+            .single()
+            .execute()
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error accessing database"
+        )
+
+    # If Supabase returned an error payload, treat as server error
+    if getattr(res, "error", None):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error checking email"
+        )
+
+    # If no user found, return a friendly, non-error response so frontend can show a message
+    if not res.data:
+        return {"exists": False, "message": "Email not found"}
+
+    # Email exists! Now generate and send OTP
+    try:
+        # Generate and store OTP
+        otp_code = otp.store_otp(data.email)
+        
+        # Send OTP via email
+        email_sent = otp.send_otp_email(data.email, otp_code)
+        
+        if not email_sent:
+            # Log the error but don't fail the request completely
+            print(f"Warning: OTP email failed to send to {data.email}, but OTP was generated")
+            return {
+                "exists": True,
+                "message": "Email verified, but OTP delivery failed. Please check your connection.",
+                "warning": "email_not_sent"
+            }
+        
+        return {
+            "exists": True,
+            "message": "OTP sent to your email. Please check your inbox.",
+            "email": data.email
+        }
+        
+    except Exception as e:
+        print(f"Error generating/sending OTP: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error sending OTP. Please try again."
+        )
+
+
+@router.post("/verify-otp")
+def verify_otp_code(data: OtpVerifyRequest):
+    """Verify OTP code submitted by user.
+    
+    Requires:
+    - email: User's email
+    - otp: 6-digit OTP code
+    
+    Returns:
+    - success with message if OTP is valid
+    - error if OTP is invalid, expired, or max attempts exceeded
+    """
+    try:
+        # Verify OTP using the otp utility function
+        is_valid, message = otp.verify_otp(data.email, data.otp)
+        
+        if not is_valid:
+            # OTP is invalid, expired, or max attempts exceeded
+            return {
+                "success": False,
+                "message": message
+            }
+        
+        # OTP is valid! Return success
+        return {
+            "success": True,
+            "message": "OTP verified successfully. You can now reset your password.",
+            "email": data.email
+        }
+        
+    except Exception as e:
+        print(f"Error verifying OTP: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error verifying OTP. Please try again."
+        )
+
+
+
+@router.post("/updatepassword")
+def update_password(payload: dict):
+    """Update user password after OTP verification.
+
+    Expected payload: { "email": str, "new_password": str }
+    """
+    try:
+        email = payload.get("email")
+        new_password = payload.get("new_password")
+
+        if not email or not new_password:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email and new_password are required")
+
+        # Hash the new password
+        hashed = hasing.hash_password(new_password)
+
+        # Update the password in Supabase
+        res = (
+            supabase
+            .table("users")
+            .update({"password": hashed})
+            .eq("email", email)
+            .execute()
+        )
+
+        # Supabase returns data on success
+        if getattr(res, "error", None):
+            print(f"Supabase update error: {res.error}")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update password")
+
+        if not res.data:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No user updated. Check the email provided.")
+
+        return {"success": True, "message": "Password updated successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error updating password: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while updating password")
+
