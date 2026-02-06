@@ -1,23 +1,23 @@
 import { useNavigate } from "react-router-dom";
 
-// Load user from localStorage
-const getStoredUser = () => {
-  const stored = localStorage.getItem("user");
-  if (stored) {
-    return JSON.parse(stored);
-  }
-  return null;
-};
-
-const user = getStoredUser();
-
-const getInitials = (name) => {
-  if (!name) return "?";
-  return name.slice(0, 2).toUpperCase();
-};
-
 function Navbar_Dashboard() {
   const navigate = useNavigate();
+
+  // Load user from localStorage
+  const getStoredUser = () => {
+  const stored = localStorage.getItem("user");
+      if (stored) {
+        return JSON.parse(stored);
+      }
+      return null;
+  };
+
+  const user = getStoredUser();
+
+  const getInitials = (name) => {
+    if (!name) return "?";
+    return name.slice(0, 2).toUpperCase();
+  };
 
   return (
     <nav className="w-full bg-gray-50 border-b border-gray-200">
