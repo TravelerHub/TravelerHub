@@ -34,8 +34,12 @@ function Login() {
     if (response.ok) {
       // Store the token for authenticated requests
       localStorage.setItem("token", data.access_token);
-      localStorage.setItem("user", JSON.stringify(data.user));
+      //localStorage.setItem("user", JSON.stringify(data.user));
       navigate("/dashboard");
+    }
+    else {
+      setError(data.detail || "Error logging in. Please try again!");
+      return;
     }
   }
 
