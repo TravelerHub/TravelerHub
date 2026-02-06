@@ -11,6 +11,7 @@ export const searchNearbyPlaces = async (latitude, longitude, type = 'restaurant
     const requestBody = {
       includedTypes: [type],
       maxResultCount: 10,
+      rankPreference: 'DISTANCE',
       locationRestriction: {
         circle: {
           center: {
