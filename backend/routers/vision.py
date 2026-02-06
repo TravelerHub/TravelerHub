@@ -35,7 +35,7 @@ async def analyze_receipt(
     file_content = await file.read()
     
     # 3. Set up Gemini model
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash")
 
     # 4. Create the prompt
     prompt = """Analyze this receipt image and extract the following information. 
@@ -120,7 +120,7 @@ async def analyze_document(
 
     file_content = await file.read()
 
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash")
 
     prompt = """Analyze this travel document image and extract key information.
     Return ONLY valid JSON with no extra text, no markdown backticks, no explanation.
