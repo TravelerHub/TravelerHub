@@ -164,12 +164,12 @@ def check_email_for_otp(data: OtpRequest):
     # Email exists! Now generate and send OTP
     try:
         # Generate and store OTP
-        otp_code = otp.store_otp(data.email)
+        success, otp_code = otp.store_otp(data.email)
         
         # Send OTP via email
-        email_sent = otp.send_otp_email(data.email, otp_code)
+        # email_sent = otp.send_otp_email(data.email, otp_code)
         
-        if not email_sent:
+        if not success:
             # Log the error but don't fail the request completely
             print(f"Warning: OTP email failed to send to {data.email}, but OTP was generated")
             return {
