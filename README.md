@@ -74,3 +74,13 @@ SENDER_PASSWORD=app_password_16_chars
 OTP_EXPIRY_MINUTES=10
 MAX_OTP_ATTEMPTS=5
 ```
+
+# Important 
+## Google API key and Google API key places need to be added while using the navigation 
+
+The name of the varibales are 
+```
+GOOGLE_PLACES_API_KEY=
+
+GOOGLE_API_KEY=
+```
