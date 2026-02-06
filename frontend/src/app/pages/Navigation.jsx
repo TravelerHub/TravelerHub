@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Map from '../../components/Map';
 import { searchPlaces, getPlaceName } from '../../services/geocodingService';
 import { getOptimizedRoute } from '../../services/routeService';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 import { 
   searchNearbyPlaces, 
@@ -155,12 +156,28 @@ function Navigation() {
     setSearchError('');
     
     try {
-      const results = await searchPlaces(searchQuery, { limit: 5 });
+      // Get center coordinates for location-biased search
+      const center = markers.length > 0 ? markers[0].coordinates : [-118.2437, 34.0522];
+      const latitude = center[1];
+      const longitude = center[0];
+
+      // Search using Google Places
+      const results = await searchPlacesByText(searchQuery, latitude, longitude);
       
-      if (results.length === 0) {
+      // Format results to match what the search results list expects
+      const formattedResults = results.map(place => ({
+        id: place.id,
+        shortName: place.name,
+        name: place.address,
+        coordinates: place.coordinates,
+        category: place.types?.[0] || 'Place',
+        address: place.address
+      }));
+
+      if (formattedResults.length === 0) {
         setSearchError('No results found. Try a different search term.');
       } else {
-        setSearchResults(results);
+        setSearchResults(formattedResults);
       }
     } catch (error) {
       console.error('Search error:', error);
@@ -196,16 +213,49 @@ function Navigation() {
   };
 
   // Handle marker drag
-  const handleMarkerDrag = (index, newCoordinates) => {
+  const handleMarkerDrag = async (index, newCoordinates) => {
     const updatedMarkers = [...markers];
     updatedMarkers[index] = {
       ...updatedMarkers[index],
-      coordinates: newCoordinates
+      coordinates: newCoordinates,
+      description: 'Loading address...'
     };
     setMarkers(updatedMarkers);
     
     // Clear route when markers are dragged
     setCurrentRoute(null);
+
+    // Reverse geocode to get new location name
+    try {
+      const place = await getPlaceName(newCoordinates);
+      if (place) {
+        const refreshedMarkers = [...updatedMarkers];
+        refreshedMarkers[index] = {
+          ...refreshedMarkers[index],
+          title: place.name.split(',')[0],
+          description: place.name
+        };
+        setMarkers(refreshedMarkers);
+      }
+    } catch (error) {
+      console.error('Error getting new location name:', error);
+    }
+  };
+
+  const handleDragEnd = (result) => {
+    // If dropped outside the list, do nothing
+    if (!result.destination) return;
+
+    // If dropped in same position, do nothing
+    if (result.source.index === result.destination.index) return;
+
+    // Reorder markers array
+    const reordered = [...markers];
+    const [moved] = reordered.splice(result.source.index, 1);
+    reordered.splice(result.destination.index, 0, moved);
+
+    setMarkers(reordered);
+    setCurrentRoute(null); // Clear route since order changed
   };
 
   // Clear all markers and route
@@ -668,49 +718,77 @@ function Navigation() {
                   )}
                 </div>
                 
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="max-h-64 overflow-y-auto">
                   {markers.length === 0 ? (
                     <div className="text-center py-8 text-gray-400">
                       <MapPinIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
                       <p className="text-sm">No locations added yet</p>
                     </div>
                   ) : (
-                    markers.map((marker, index) => (
-                      <div
-                        key={index}
-                        className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition group"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex gap-2 flex-1">
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
-                              index === 0 ? 'bg-green-500' : 
-                              index === markers.length - 1 && markers.length > 1 ? 'bg-red-500' : 
-                              'bg-blue-500'
-                            }`}>
-                              {index === 0 ? 'A' : index === markers.length - 1 && markers.length > 1 ? 'B' : index + 1}
-                            </div>
-                            <div className="flex-1">
-                              <div className="font-medium text-gray-900 text-sm">
-                                {marker.title}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {marker.description}
-                              </div>
-                              <div className="text-xs text-gray-400 mt-1">
-                                {marker.coordinates[1].toFixed(4)}, {marker.coordinates[0].toFixed(4)}
-                              </div>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => handleRemoveMarker(index)}
-                            className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded transition"
-                            title="Remove location"
+                    <DragDropContext onDragEnd={handleDragEnd}>
+                      <Droppable droppableId="waypoints">
+                        {(provided) => (
+                          <div
+                            ref={provided.innerRef}
+                            {...provided.droppableProps}
+                            className="space-y-2"
                           >
-                            <TrashIcon className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))
+                            {markers.map((marker, index) => (
+                              <Draggable key={`marker-${index}`} draggableId={`marker-${index}`} index={index}>
+                                {(provided, snapshot) => (
+                                  <div
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    className={`p-3 rounded-lg transition group ${
+                                      snapshot.isDragging ? 'bg-blue-50 shadow-lg' : 'bg-gray-50 hover:bg-gray-100'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between">
+                                      <div className="flex gap-2 flex-1">
+                                        {/* Drag Handle */}
+                                        <div
+                                          {...provided.dragHandleProps}
+                                          className="flex items-center cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600"
+                                          title="Drag to reorder"
+                                        >
+                                          ⠿
+                                        </div>
+                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
+                                          index === 0 ? 'bg-green-500' : 
+                                          index === markers.length - 1 && markers.length > 1 ? 'bg-red-500' : 
+                                          'bg-blue-500'
+                                        }`}>
+                                          {index === 0 ? 'A' : index === markers.length - 1 && markers.length > 1 ? 'B' : index + 1}
+                                        </div>
+                                        <div className="flex-1">
+                                          <div className="font-medium text-gray-900 text-sm">
+                                            {marker.title}
+                                          </div>
+                                          <div className="text-xs text-gray-500">
+                                            {marker.description}
+                                          </div>
+                                          <div className="text-xs text-gray-400 mt-1">
+                                            {marker.coordinates[1].toFixed(4)}, {marker.coordinates[0].toFixed(4)}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <button
+                                        onClick={() => handleRemoveMarker(index)}
+                                        className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded transition"
+                                        title="Remove location"
+                                      >
+                                        <TrashIcon className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </Draggable>
+                            ))}
+                            {provided.placeholder}
+                          </div>
+                        )}
+                      </Droppable>
+                    </DragDropContext>
                   )}
                 </div>
               </div>
@@ -1388,8 +1466,8 @@ function Navigation() {
                   <div className="flex gap-3 mt-6">
                     <button
                       onClick={() => {
-                        // Add to route/itinerary functionality (we'll implement this next)
-                        console.log('Add to route:', selectedPlace);
+                        handleAddPlaceToRoute(selectedPlace);
+                        setShowPlaceDetails(false);
                       }}
                       className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium"
                     >
