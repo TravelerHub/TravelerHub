@@ -5,7 +5,7 @@ import { MapPinIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/outline';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
-function Map({ markers = [], center = [-118.2437, 34.0522], zoom = 12, route = null, onMarkerDragEnd }) {
+function Map({ markers = [], center = [-118.2437, 34.0522], zoom = 12, route = null, onMarkerDragEnd , enhancedPlaces = [] }) {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
