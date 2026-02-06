@@ -5,10 +5,11 @@ import { MapPinIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/outline';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
-function Map({ markers = [], center = [-118.2437, 34.0522], zoom = 12, route = null, onMarkerDragEnd }) {
+function Map({ markers = [], center = [-118.2437, 34.0522], zoom = 12, route = null, onMarkerDragEnd , enhancedPlaces = [] }) {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
+  const placesMarkersRef = useRef([]);
 
   // Initialize map
   useEffect(() => {
@@ -39,6 +40,8 @@ function Map({ markers = [], center = [-118.2437, 34.0522], zoom = 12, route = n
     mapRef.current.addControl(new mapboxgl.ScaleControl(), 'bottom-left');
 
     return () => {
+      placesMarkersRef.current.forEach(marker => marker.remove());
+      placesMarkersRef.current = [];
       if (mapRef.current) {
         mapRef.current.remove();
       }
@@ -121,6 +124,52 @@ function Map({ markers = [], center = [-118.2437, 34.0522], zoom = 12, route = n
       });
     }
   }, [markers, onMarkerDragEnd]);
+
+  // Display Google Places markers
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    // Clear old place markers
+    placesMarkersRef.current.forEach(marker => marker.remove());
+    placesMarkersRef.current = [];
+
+    // Check if we have places to show
+    if (!enhancedPlaces || enhancedPlaces.length === 0) return;
+
+    // Add a marker for each place
+    enhancedPlaces.forEach((place) => {
+      // Create purple dot element
+      const el = document.createElement('div');
+      el.style.width = '20px';
+      el.style.height = '20px';
+      el.style.backgroundColor = '#9333ea';
+      el.style.borderRadius = '50%';
+      el.style.border = '2px solid white';
+      el.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+      el.style.cursor = 'pointer';
+
+      // Build popup HTML
+      const popupHTML = `
+        <div style="padding: 8px; max-width: 200px;">
+          <div style="font-weight: bold; font-size: 14px;">${place.name}</div>
+          ${place.rating ? `<div style="font-size: 12px; color: #666;">⭐ ${place.rating} (${place.ratingCount || 0} reviews)</div>` : ''}
+          <div style="font-size: 12px; color: #666; margin-top: 4px;">${place.address}</div>
+        </div>
+      `;
+
+      // Create marker
+      const marker = new mapboxgl.Marker({
+        element: el,
+        draggable: false
+      })
+        .setLngLat(place.coordinates)
+        .setPopup(new mapboxgl.Popup({ offset: 15 }).setHTML(popupHTML))
+        .addTo(mapRef.current);
+
+      placesMarkersRef.current.push(marker);
+    });
+  }, [enhancedPlaces]);
+
 
   // Draw route
   useEffect(() => {
