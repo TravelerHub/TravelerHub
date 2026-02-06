@@ -23,7 +23,7 @@ function Dashboard() {
     return name.slice(0, 2).toUpperCase();
   };
 
-  const handleLogout = () => {
+/*   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
 
@@ -31,7 +31,7 @@ function Dashboard() {
     // sessionStorage.removeItem('token');
     // sessionStorage.removeItem('user');
     navigate("/");
-  };
+  }; */
 
   // If no user, redirect to login
   if (!user) {
