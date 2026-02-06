@@ -27,8 +27,7 @@ function SignUp() {
       return;
     }
 
-    try {
-      const res = await fetch("http://localhost:8000/signup", {
+    const response = await fetch("http://localhost:8000/signup", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -44,23 +43,20 @@ function SignUp() {
         }),
       });
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
+      const data = await response.json();
+      if (response.ok) {
+      // Store the token for authenticated requests
+        localStorage.setItem("token", data.access_token);
+        //localStorage.setItem("user", JSON.stringify(data.user));
+      // Redirect to Dashboard
+        navigate("/dashboard");
+      }
+      else {
         setError(data.detail || "Error creating account. Please try again!");
         return;
       }
 
-      //const data = await res.json();
 
-      // Optionally store token for authenticated requests later
-      // localStorage.setItem("token", data.access_token);
-
-      // Redirect to Dashboard
-      navigate("/dashboard");
-    } catch (err) {
-      console.error(err);
-      setError("Network error. Please try again!");
-    }
   }
 
   return (

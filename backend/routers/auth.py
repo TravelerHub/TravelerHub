@@ -118,9 +118,7 @@ def login(data: LoginRequest):
         "message": "Login successful",
         "access_token": access_token,
         "token_type": "bearer",
-        "user": user,
-        # keep this if your frontend is using it:
-        "redirect": "/dashboard",
+        "user": user
     }
 
 
