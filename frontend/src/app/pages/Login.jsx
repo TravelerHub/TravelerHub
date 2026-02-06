@@ -37,6 +37,10 @@ function Login() {
       localStorage.setItem("user", JSON.stringify(data.user));
       navigate("/dashboard");
     }
+    else {
+      setError(data.detail || "Error logging in. Please try again!");
+      return;
+    }
   }
 
   return (

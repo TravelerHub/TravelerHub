@@ -1,23 +1,23 @@
 import { useNavigate } from "react-router-dom";
 
-// Load user from localStorage
-const getStoredUser = () => {
-  const stored = localStorage.getItem("user");
-  if (stored) {
-    return JSON.parse(stored);
-  }
-  return null;
-};
-
-const user = getStoredUser();
-
-const getInitials = (name) => {
-  if (!name) return "?";
-  return name.slice(0, 2).toUpperCase();
-};
-
 function Navbar_Dashboard() {
   const navigate = useNavigate();
+
+  // Load user from localStorage
+  const getStoredUser = () => {
+  const stored = localStorage.getItem("user");
+      if (stored) {
+        return JSON.parse(stored);
+      }
+      return null;
+  };
+
+  const user = getStoredUser();
+
+  const getInitials = (name) => {
+    if (!name) return "?";
+    return name.slice(0, 2).toUpperCase();
+  };
 
   return (
     <nav className="w-full bg-gray-50 border-b border-gray-200">
@@ -118,6 +118,15 @@ function Navbar_Dashboard() {
               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
             >
               ⚙️ Settings
+            </button>
+            <button
+              onClick={() => {
+                localStorage.clear();
+                navigate("/login");
+              }}
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            >
+              🚪 Logout
             </button>
           </div>
         </div>
