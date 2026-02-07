@@ -15,6 +15,7 @@ import ResetPassword from "./app/pages/ResetPassword.jsx";
 import OTP from "./app/pages/OTP.jsx";
 import NewPassword from "./app/pages/NewPassword.jsx";
 import Expenses from "./app/pages/Expenses.jsx";
+import Message from "./app/pages/Message.jsx";
 
 const router = createBrowserRouter([
     { path: "/", element: <Landing /> },
@@ -32,6 +33,7 @@ const router = createBrowserRouter([
     { path: "/otp", element: <OTP /> },
     { path: "/newpassword", element: <NewPassword /> }, 
     { path: "/expenses", element: <Expenses /> },
+    { path: "/message", element: <Message /> },
 ]);
 
 export default router;
