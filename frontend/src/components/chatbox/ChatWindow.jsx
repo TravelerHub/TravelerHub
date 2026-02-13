@@ -13,6 +13,7 @@ export default function ChatWindow({
 }) {
   const listRef = useRef(null);
   const [text, setText] = useState("");
+  const [localMessages, setLocalMessages] = useState(messages || []);
 
   const sendMessage = async () => {
     if (!text.trim()) return;
@@ -35,6 +36,35 @@ export default function ChatWindow({
       alert(err.message);
     }
   };
+
+  useEffect(() => {
+  setLocalMessages(messages || []);
+}, [messages, conversationID]);
+
+// WebSocket for real-time updates
+useEffect(() => {
+  if (!conversationID) return;
+
+  const ws = new WebSocket(`ws://localhost:8000/api/ws/conversations/${conversationID}`);
+
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    setLocalMessages((prev) => {
+      if (prev.some((m) => m.message_id === msg.message_id)) return prev;
+      return [...prev, msg];
+    });
+  };
+
+  // optional keepalive (your backend waits for receive_text)
+  const ping = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) ws.send("ping");
+  }, 25000);
+
+  return () => {
+    clearInterval(ping);
+    ws.close();
+  };
+}, [conversationID]);
 
   // scroll to bottom on new messages
   useEffect(() => {
@@ -70,7 +100,7 @@ export default function ChatWindow({
         ) : error ? (
           <EmptyState title="Could not load messages" subtitle={error} />
         ) : (
-          <MessageList messages={messages} currentUserId={currentUserId} />
+          <MessageList messages={localMessages} currentUserId={currentUserId} />
         )}
       </div>
 
