@@ -18,14 +18,14 @@ def get_conversations(userId: str = Query(..., description="Current user's UUID"
             .select("""
                 conversation_id,
                 join_datetime,
-                
+                left_datetime,
                 conversation:conversation_id (
                   conversation_id,
                   conversation_name
                 )
             """)
             .eq("user_id", userId)
-            .is_("left_datetime", "null")  # active memberships only
+            .is_("left_datetime", None)  # active memberships only
             .execute()
         )
 
@@ -66,7 +66,7 @@ def get_members(conversation_id: str):
                 )
             """)
             .eq("conversation_id", conversation_id)
-            .is_("left_datetime", "null")
+            .is_("left_datetime", None)
             .execute()
         )
 

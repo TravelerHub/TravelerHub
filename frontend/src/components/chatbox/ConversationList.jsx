@@ -29,7 +29,7 @@ export default function ConversationList({
   return (
     <div className="p-2 space-y-1">
       {conversations.map((c) => {
-        const id = c.conversation_id;
+        const id = c.conversation_id ?? c.id ?? c.conversationId;
         const members = membersByConversation?.[id] || [];
         const others = members.filter((u) => u.id !== currentUserId);
 

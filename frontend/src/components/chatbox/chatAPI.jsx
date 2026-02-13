@@ -1,4 +1,4 @@
-// chatApi.js - centralized API calls
+// chatApi.jsx - centralized API calls
 
 async function request(url, options) {
   const res = await fetch(url, options);
