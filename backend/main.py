@@ -9,6 +9,8 @@ from routers import vision
 from routers import preferences
 from routers import favorites
 
+from routers import chatbox
+
 app = FastAPI()
 
 app.add_middleware(
@@ -28,6 +30,7 @@ app.include_router(images.router)         # /images
 app.include_router(vision.router)         # /vision
 app.include_router(preferences.router)    # /preferences
 app.include_router(favorites.router)      # /favorites
+app.include_router(chatbox.router)        # /api (chatbox routes)
 
 
 
