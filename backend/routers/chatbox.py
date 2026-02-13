@@ -1,12 +1,37 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from typing import Dict, Set
+import asyncio
 from supabase_client import supabase
 import schemas
 
+# conversation_id -> set of connected websockets
+rooms: Dict[str, Set[WebSocket]] = {}
+rooms_lock = asyncio.Lock()
+
+async def broadcast_to_conversation(conversation_id: str, message: dict):
+    async with rooms_lock:
+        sockets = list(rooms.get(conversation_id, set()))
+
+    dead = []
+    for ws in sockets:
+        try:
+            await ws.send_json(message)
+        except Exception:
+            dead.append(ws)
+
+    if dead:
+        async with rooms_lock:
+            for ws in dead:
+                rooms.get(conversation_id, set()).discard(ws)
+            if conversation_id in rooms and not rooms[conversation_id]:
+                rooms.pop(conversation_id, None)
+
+
+
+
 router = APIRouter(prefix="/api", tags=["chat"])
 
-
-
-
+# Retrieve
 @router.get("/conversations")
 def get_conversations(userId: str = Query(..., description="Current user's UUID")):
     """
@@ -46,7 +71,6 @@ def get_conversations(userId: str = Query(..., description="Current user's UUID"
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.get("/conversations/{conversation_id}/members")
 def get_members(conversation_id: str):
@@ -88,7 +112,6 @@ def get_members(conversation_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.get("/conversations/{conversation_id}/messages")
 def get_messages(conversation_id: str):
     """
@@ -110,8 +133,28 @@ def get_messages(conversation_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# Create
+@router.websocket("/ws/conversations/{conversation_id}")
+async def ws_conversation(websocket: WebSocket, conversation_id: str):
+    await websocket.accept()
+
+    async with rooms_lock:
+        rooms.setdefault(conversation_id, set()).add(websocket)
+
+    try:
+        while True:
+            # keep alive / optionally handle typing events
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        async with rooms_lock:
+            rooms.get(conversation_id, set()).discard(websocket)
+            if conversation_id in rooms and not rooms[conversation_id]:
+                rooms.pop(conversation_id, None)
+
 @router.post("/conversations/{conversation_id}/messages")
-def post_message(conversation_id: str, payload: schemas.MessageCreate):
+async def post_message(conversation_id: str, payload: schemas.MessageCreate):
     """
     POST /api/conversations/:conversationId/messages
     Create a new message in the conversation.
@@ -129,9 +172,12 @@ def post_message(conversation_id: str, payload: schemas.MessageCreate):
         }
 
         resp = supabase.from_("message").insert(new_message).execute()
+        created = resp.data[0]
 
-        return resp.data[0]  # return the created message
+        # broadcast to everyone currently viewing this conversation
+        await broadcast_to_conversation(conversation_id, created)
 
+        return created
     except HTTPException as he:
         raise he
     except Exception as e:
