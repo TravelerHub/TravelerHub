@@ -1,7 +1,10 @@
 from fastapi import APIRouter, HTTPException, Query
 from supabase_client import supabase
+import schemas
 
 router = APIRouter(prefix="/api", tags=["chat"])
+
+
 
 
 @router.get("/conversations")
@@ -104,5 +107,32 @@ def get_messages(conversation_id: str):
 
         return resp.data or []
 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/conversations/{conversation_id}/messages")
+def post_message(conversation_id: str, payload: schemas.MessageCreate):
+    """
+    POST /api/conversations/:conversationId/messages
+    Create a new message in the conversation.
+    """
+    try:
+        # Basic validation (in real app, add more robust checks)
+        if not payload.from_user or not payload.content:
+            raise HTTPException(status_code=400, detail="Missing required fields")
+
+        new_message = {
+            "from_user": payload.from_user,
+            "content": payload.content,
+            "sent_datetime": payload.sent_datetime.isoformat(),
+            "conversation_id": conversation_id
+        }
+
+        resp = supabase.from_("message").insert(new_message).execute()
+
+        return resp.data[0]  # return the created message
+
+    except HTTPException as he:
+        raise he
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

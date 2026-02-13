@@ -137,6 +137,7 @@ export default function ChatLayout({ currentUser }) {
             members={selectedMembers}
             messages={selectedMessages}
             error={error}
+            conversationID={selectedId}
           />
         )}
       </Panel>
