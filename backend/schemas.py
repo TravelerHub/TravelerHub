@@ -67,9 +67,9 @@ class PasswordChange(BaseModel):
 # ---- Chat Schemas ----
 class MessageCreate(BaseModel):
     from_user: str
-    to_user: Optional[str] = None
     content: str
     conversation_id: str
+    sent_datetime: datetime
 
 class MessageOut(BaseModel):
     message_id: str

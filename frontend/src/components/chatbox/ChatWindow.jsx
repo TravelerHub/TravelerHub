@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Avatar, EmptyState } from "./ui";
 import MessageList from "./MessagerList";
 
@@ -9,8 +9,32 @@ export default function ChatWindow({
   members,
   messages,
   error,
+  conversationID
 }) {
   const listRef = useRef(null);
+  const [text, setText] = useState("");
+
+  const sendMessage = async () => {
+    if (!text.trim()) return;
+    const newMsg = {
+      from_user: currentUserId,
+      content: text,
+      sent_datetime: new Date().toISOString(),
+      conversation_id: conversationID
+    };
+    
+    try {
+      const res = await fetch("http://localhost:8000/api/conversations/" + conversationID + "/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newMsg)
+      });
+      if (!res.ok) throw new Error("Failed to send message");
+      setText("");
+    } catch (err) {
+      alert(err.message);
+    }
+  };
 
   // scroll to bottom on new messages
   useEffect(() => {
@@ -50,10 +74,22 @@ export default function ChatWindow({
         )}
       </div>
 
-      {/* Footer (optional for now) */}
-      <div className="p-3 border-t border-gray-200 text-xs text-gray-500">
-        (Hook up your send-message input here)
+      {/* Footer */}
+      <div>
+        <footer style={{ padding: 12, borderTop: "1px solid #e6edf3", display: "flex", gap: 8 }}>
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") sendMessage(); }}
+            placeholder="Type a message..."
+            style={{ flex: 1, padding: 10, borderRadius: 8, border: "1px solid #d1d5db" }}
+          />
+          <button onClick={sendMessage} style={{ padding: "8px 12px", borderRadius: 8, background: "#2563eb", color: "white", border: "none" }}>
+            Send
+          </button>
+        </footer>
       </div>
+
     </>
   );
 }
