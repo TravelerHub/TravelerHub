@@ -1,4 +1,6 @@
 from pydantic import BaseModel, EmailStr, BaseModel
+from datetime import datetime
+from typing import List, Optional
 
 class SignupRequest(BaseModel):
     email: str
@@ -61,3 +63,38 @@ class TokenData(BaseModel):
 class PasswordChange(BaseModel):
     current_password: str
     new_password: str
+
+# ---- Chat Schemas ----
+class MessageCreate(BaseModel):
+    from_user: str
+    content: str
+    conversation_id: str
+    sent_datetime: datetime
+
+class MessageOut(BaseModel):
+    message_id: str
+    from_user: str
+    to_user: Optional[str] = None
+    content: str
+    sent_datetime: datetime
+    conversation_id: str
+
+class ConversationCreate(BaseModel):
+    conversation_name: Optional[str] = None
+    members: Optional[List[str]] = None
+
+class ConversationOut(BaseModel):
+    conversation_id: str
+    conversation_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    members: Optional[List[str]] = None
+
+class GroupMemberCreate(BaseModel):
+    conversation_id: str
+    user_id: str
+
+class GroupMemberOut(BaseModel):
+    conversation_id: str
+    user_id: str
+    joined_datetime: Optional[datetime] = None
+    left_datetime: Optional[datetime] = None
