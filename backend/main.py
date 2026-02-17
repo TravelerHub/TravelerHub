@@ -8,6 +8,7 @@ from routers import images
 from routers import vision
 from routers import preferences
 from routers import favorites
+from routers import booking
 
 from routers import chatbox
 
@@ -31,6 +32,7 @@ app.include_router(vision.router)         # /vision
 app.include_router(preferences.router)    # /preferences
 app.include_router(favorites.router)      # /favorites
 app.include_router(chatbox.router)        # /api (chatbox routes)
+app.include_router(booking.router)        # /bookings
 
 
 
