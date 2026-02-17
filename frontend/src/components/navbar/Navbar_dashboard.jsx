@@ -74,6 +74,22 @@ function Navbar_Dashboard() {
             </div>
           </div>
 
+          {/* Booking */}
+          <div className="relative group">
+            <button
+              onClick={() => navigate("/booking")}
+              className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 transition"
+            >
+              <span className="text-lg">🏨</span>
+            </button>
+            <div className="absolute top-full mt-2 right-1/2 translate-x-1/2
+              bg-gray-900 text-white text-xs rounded px-2 py-1
+              opacity-0 invisible group-hover:opacity-100 group-hover:visible transition
+              whitespace-nowrap z-50">
+              Booking
+            </div>
+          </div>
+
           {/* Messenger */}
           <div className="relative group">
             <button
