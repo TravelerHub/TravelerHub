@@ -54,41 +54,86 @@ function Dashboard() {
     <div className="min-h-screen w-screen flex flex-col bg-gradient-to-br from-gray-50 to-gray-100">
 
       <Navbar_Dashboard />
-      <div className="w-full max-w-7xl mx-auto px-6 py-8">
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* LEFT: Quick Actions Widget */}
-          <div className="mb-6">
-              <div className="flex justify-center">
-                <ImageUpload 
-                onUploadSuccess={() => console.log("Image uploaded successfully!")} />
-              </div>
-            </div>
+      
+        <div className="w-full max-w-7xl mx-auto px-6 py-8">
+  {/* TOP ROW: Profile Photo + Your Trips */}
+  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    {/* LEFT: Profile / Image Upload Card */}
+    <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
 
 
-
-
-          {/* RIGHT: Coming Soon Section */}
-        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Your Trips</h2>
-
-          <div className="py-6">
-            <div className="text-4xl mb-3">🌴</div>
-            <p className="text-gray-600">No trips yet</p>
-            <p className="text-gray-400 text-sm mt-1">Start planning your first adventure!</p>
-
-            <button className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium transition">
-              Create Trip
-            </button>
-          </div>
-        </div>
-
-        </div>
+      <div className="flex justify-center">
+        <ImageUpload onUploadSuccess={() => console.log("Image uploaded successfully!")} />
       </div>
 
-        
+      <p className="text-sm text-gray-500 mt-4 text-center">
+        Upload a photo to personalize your account.
+      </p>
+    </div>
 
-    </div>    
+    {/* RIGHT: Your Trips Card */}
+    <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 className="text-lg font-semibold text-gray-800 mb-4">Your Trips</h2>
+
+      <div className="py-6">
+        <div className="text-4xl mb-3">🌴</div>
+        <p className="text-gray-600">No trips yet</p>
+        <p className="text-gray-400 text-sm mt-1">
+          Start planning your first adventure!
+        </p>
+
+        <button className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium transition">
+          Create Trip
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {/* SECOND ROW: Bookings (full width) */}
+  <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <div className="flex items-start justify-between mb-3">
+      <div>
+        <h3 className="text-lg font-semibold text-gray-800">Bookings</h3>
+        <p className="text-sm text-gray-500 mt-1">
+          Flights, hotels, and transportation in one place.
+        </p>
+      </div>
+      <span className="text-2xl">✈️</span>
+    </div>
+
+    <div className="mt-5 grid grid-cols-3 gap-3">
+      <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-center">
+        <p className="text-xs text-gray-500">Flights</p>
+        <p className="text-sm font-semibold text-gray-800">0</p>
+      </div>
+      <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-center">
+        <p className="text-xs text-gray-500">Hotels</p>
+        <p className="text-sm font-semibold text-gray-800">0</p>
+      </div>
+      <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-center">
+        <p className="text-xs text-gray-500">Rides</p>
+        <p className="text-sm font-semibold text-gray-800">0</p>
+      </div>
+    </div>
+
+    <button
+      onClick={() => navigate("/bookings")}
+      className="mt-6 w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition"
+    >
+      Go to Bookings
+    </button>
+
+    <button
+      onClick={() => navigate("/bookings/new")}
+      className="mt-3 w-full py-2.5 rounded-lg font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+    >
+      Add Booking
+    </button>
+  </div>
+</div>
+
+    </div>
+
   );
 }
 
