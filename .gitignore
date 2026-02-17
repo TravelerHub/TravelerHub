@@ -31,3 +31,9 @@ venv/
 .env
 env/
 .env/
+
+
+# Python cache / bytecode
+__pycache__/
+*.py[cod]
+*$py.class
