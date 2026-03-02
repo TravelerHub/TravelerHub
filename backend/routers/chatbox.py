@@ -35,7 +35,8 @@ def ensure_conversation_member(conversation_id: str, user_id: str):
     membership = (
         supabase
         .from_("group_member")
-        .select("id")
+        # table uses composite key (conversation_id, user_id) instead of a single id
+        .select("conversation_id")
         .eq("conversation_id", conversation_id)
         .eq("user_id", user_id)
         .is_("left_datetime", None)
@@ -143,7 +144,8 @@ def add_member(
         # Check if already a member
         existing = (
             supabase.from_("group_member")
-            .select("id")
+            # query on composite key fields since no 'id' column exists
+            .select("conversation_id")
             .eq("conversation_id", conversation_id)
             .eq("user_id", user_id)
             .is_("left_datetime", None)
