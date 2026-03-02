@@ -1,7 +1,8 @@
 from typing import Optional, Any, Dict, List
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel, Field
 from supabase_client import supabase
+from utils import oauth2
 
 router = APIRouter(prefix="/api/bookings", tags=["bookings"])
 
@@ -69,9 +70,9 @@ def ensure_trip_member(trip_id: str, user_id: str) -> None:
 @router.get("")
 def list_bookings(
     tripId: str = Query(...),
-    userId: str = Query(...),
+    current_user: dict = Depends(oauth2.get_current_user)
 ) -> List[Dict[str, Any]]:
-    ensure_trip_member(tripId, userId)
+    ensure_trip_member(tripId, current_user["id"])
 
     res = (
         supabase.table("booking")
@@ -84,22 +85,28 @@ def list_bookings(
 
 
 @router.get("/{booking_id}")
-def get_booking(booking_id: str, userId: str = Query(...)) -> Dict[str, Any]:
+def get_booking(
+    booking_id: str,
+    current_user: dict = Depends(oauth2.get_current_user)
+) -> Dict[str, Any]:
     b = supabase.table("booking").select("*").eq("id", booking_id).maybe_single().execute()
     if not b.data:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    ensure_trip_member(b.data["trip_id"], userId)
+    ensure_trip_member(b.data["trip_id"], current_user["id"])
     return b.data
 
 
 @router.post("")
-def create_booking(body: BookingCreate, userId: str = Query(...)) -> Dict[str, Any]:
-    ensure_trip_member(body.trip_id, userId)
+def create_booking(
+    body: BookingCreate,
+    current_user: dict = Depends(oauth2.get_current_user)
+) -> Dict[str, Any]:
+    ensure_trip_member(body.trip_id, current_user["id"])
 
     payload = body.model_dump()
     # If you want to enforce created_by from userId:
-    payload["created_by"] = userId
+    payload["created_by"] = current_user["id"]
     payload.setdefault("status", "active")
 
     res = supabase.table("booking").insert(payload).execute()
@@ -112,7 +119,7 @@ def create_booking(body: BookingCreate, userId: str = Query(...)) -> Dict[str, A
 def update_booking(
     booking_id: str,
     body: BookingPatch,
-    userId: str = Query(...),
+    current_user: dict = Depends(oauth2.get_current_user)
 ) -> Dict[str, Any]:
     current = (
         supabase.table("booking")
@@ -124,7 +131,7 @@ def update_booking(
     if not current.data:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    ensure_trip_member(current.data["trip_id"], userId)
+    ensure_trip_member(current.data["trip_id"], current_user["id"])
 
     # FIX: remove the stray "_" and filter out None values
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
