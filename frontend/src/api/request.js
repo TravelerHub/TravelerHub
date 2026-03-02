@@ -5,10 +5,17 @@ const API_BASE = "http://127.0.0.1:8000"; // change if needed
 export async function request(url, options = {}) {
   const { method = "GET", body, headers = {} } = options;
 
+  const authHeaders = {};
+  const token = localStorage.getItem("token"); // Assumes token is stored here
+  if (token) {
+    authHeaders["Authorization"] = `Bearer ${token}`;
+  }
+
   const config = {
     method,
     headers: {
       "Content-Type": "application/json",
+      ...authHeaders,
       ...headers,
     },
   };
@@ -30,7 +37,7 @@ export async function request(url, options = {}) {
     throw new Error(errorMessage);
   }
 
-  // If DELETE returns no body
+  // If DELETE or some POST returns no body
   if (response.status === 204) return null;
 
   return response.json();
