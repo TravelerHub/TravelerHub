@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
-from typing import Dict, Set
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, Depends
+from typing import Dict, Set, List, Optional
 import asyncio
 from supabase_client import supabase
 import schemas
+from utils import oauth2
 
 # conversation_id -> set of connected websockets
 rooms: Dict[str, Set[WebSocket]] = {}
@@ -27,15 +28,27 @@ async def broadcast_to_conversation(conversation_id: str, message: dict):
                 rooms.pop(conversation_id, None)
 
 
-
-
 router = APIRouter(prefix="/api", tags=["chat"])
+
+# Helper to check membership
+def ensure_conversation_member(conversation_id: str, user_id: str):
+    membership = (
+        supabase
+        .from_("group_member")
+        .select("id")
+        .eq("conversation_id", conversation_id)
+        .eq("user_id", user_id)
+        .is_("left_datetime", None)
+        .execute()
+    )
+    if not membership.data:
+        raise HTTPException(status_code=403, detail="Not a member of this conversation")
 
 # Retrieve
 @router.get("/conversations")
-def get_conversations(userId: str = Query(..., description="Current user's UUID")):
+def get_conversations(current_user: dict = Depends(oauth2.get_current_user)):
     """
-    GET /api/conversations?userId=...
+    GET /api/conversations
     Return conversations that the user is a member of (via group_member).
     """
     try:
@@ -52,7 +65,7 @@ def get_conversations(userId: str = Query(..., description="Current user's UUID"
                   conversation_name
                 )
             """)
-            .eq("user_id", userId)
+            .eq("user_id", current_user["id"])
             .is_("left_datetime", None)  # active memberships only
             .execute()
         )
@@ -72,12 +85,97 @@ def get_conversations(userId: str = Query(..., description="Current user's UUID"
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/conversations")
+def create_conversation(
+    payload: schemas.ConversationCreate,
+    current_user: dict = Depends(oauth2.get_current_user)
+):
+    """
+    POST /api/conversations
+    Create a new conversation (group or 1-on-1).
+    """
+    try:
+        # 1. Create the conversation record
+        convo_data = {
+            "conversation_name": payload.conversation_name or "New Conversation"
+        }
+        res = supabase.from_("conversation").insert(convo_data).execute()
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Failed to create conversation")
+        
+        conversation = res.data[0]
+        conversation_id = conversation["conversation_id"]
+
+        # 2. Add members
+        member_ids = set(payload.members or [])
+        member_ids.add(current_user["id"])  # Always include creator
+
+        members_to_insert = [
+            {"conversation_id": conversation_id, "user_id": uid}
+            for uid in member_ids
+        ]
+
+        m_res = supabase.from_("group_member").insert(members_to_insert).execute()
+        if not m_res.data:
+            # Cleanup conversation if member insertion fails
+            supabase.from_("conversation").delete().eq("conversation_id", conversation_id).execute()
+            raise HTTPException(status_code=500, detail="Failed to add members")
+
+        return conversation
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/conversations/{conversation_id}/members")
+def add_member(
+    conversation_id: str,
+    user_id: str = Query(..., description="User ID to add"),
+    current_user: dict = Depends(oauth2.get_current_user)
+):
+    """
+    POST /api/conversations/{conversation_id}/members?user_id=...
+    Add a member to an existing conversation.
+    """
+    # Verify current user is in the conversation before they can add others
+    ensure_conversation_member(conversation_id, current_user["id"])
+
+    try:
+        # Check if already a member
+        existing = (
+            supabase.from_("group_member")
+            .select("id")
+            .eq("conversation_id", conversation_id)
+            .eq("user_id", user_id)
+            .is_("left_datetime", None)
+            .execute()
+        )
+        if existing.data:
+            return {"message": "User is already a member"}
+
+        # Add member
+        res = supabase.from_("group_member").insert({
+            "conversation_id": conversation_id,
+            "user_id": user_id
+        }).execute()
+
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Failed to add member")
+        
+        return {"message": "Member added successfully"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/conversations/{conversation_id}/members")
-def get_members(conversation_id: str):
+def get_members(
+    conversation_id: str,
+    current_user: dict = Depends(oauth2.get_current_user)
+):
     """
     GET /api/conversations/:conversationId/members
     Return all active users in a conversation (via group_member -> users).
     """
+    ensure_conversation_member(conversation_id, current_user["id"])
     try:
         resp = (
             supabase
@@ -113,11 +211,15 @@ def get_members(conversation_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/conversations/{conversation_id}/messages")
-def get_messages(conversation_id: str):
+def get_messages(
+    conversation_id: str,
+    current_user: dict = Depends(oauth2.get_current_user)
+):
     """
     GET /api/conversations/:conversationId/messages
     Return messages in a conversation ordered by sent_datetime.
     """
+    ensure_conversation_member(conversation_id, current_user["id"])
     try:
         resp = (
             supabase
@@ -136,6 +238,7 @@ def get_messages(conversation_id: str):
 # Create
 @router.websocket("/ws/conversations/{conversation_id}")
 async def ws_conversation(websocket: WebSocket, conversation_id: str):
+    # NOTE: In production, you should authenticate here using a token in query params
     await websocket.accept()
 
     async with rooms_lock:
@@ -154,18 +257,23 @@ async def ws_conversation(websocket: WebSocket, conversation_id: str):
                 rooms.pop(conversation_id, None)
 
 @router.post("/conversations/{conversation_id}/messages")
-async def post_message(conversation_id: str, payload: schemas.MessageCreate):
+async def post_message(
+    conversation_id: str, 
+    payload: schemas.MessageCreate,
+    current_user: dict = Depends(oauth2.get_current_user)
+):
     """
     POST /api/conversations/:conversationId/messages
     Create a new message in the conversation.
     """
+    ensure_conversation_member(conversation_id, current_user["id"])
     try:
         # Basic validation (in real app, add more robust checks)
-        if not payload.from_user or not payload.content:
+        if not payload.content:
             raise HTTPException(status_code=400, detail="Missing required fields")
 
         new_message = {
-            "from_user": payload.from_user,
+            "from_user": current_user["id"], # Force sender to be the current user
             "content": payload.content,
             "sent_datetime": payload.sent_datetime.isoformat(),
             "conversation_id": conversation_id
