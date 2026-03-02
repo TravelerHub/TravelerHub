@@ -27,15 +27,20 @@ export default function Message() {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const response = await fetch("http://127.0.0.1:8000/api/users/", {
+        const response = await fetch("http://127.0.0.1:8000/users/", {
           headers: {
             "Authorization": `Bearer ${localStorage.getItem("token") || sessionStorage.getItem("token")}`,
           }
         });
         if (response.ok) {
           const users = await response.json();
+          console.log("Users fetched:", users);
           // Filter out current user from available users
           setAvailableUsers(users.filter(u => u.id !== user.id));
+        } else {
+          console.error("Failed to fetch users, status:", response.status);
+          const errorText = await response.text();
+          console.error("Error response:", errorText);
         }
       } catch (err) {
         console.error("Failed to fetch users:", err);
@@ -59,28 +64,34 @@ export default function Message() {
         members: selectedMembers
       };
 
+      console.log("Creating conversation with payload:", payload);
+
       const newConversation = await chatApi.createConversation(payload);
-      
+      console.log("Conversation created successfully:", newConversation);
+
       // Reset form
       setConversationName("");
       setSelectedMembers([]);
       setShowCreateModal(false);
-      
+
       // Trigger refresh in ChatLayout by changing the key
       setRefreshTrigger(prev => prev + 1);
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || "Failed to create conversation");
+      console.error("Error creating conversation:", err);
+      setError(err.message || "Failed to create conversation");
     } finally {
       setLoading(false);
     }
   };
 
   const toggleMemberSelection = (userId) => {
-    setSelectedMembers(prev =>
-      prev.includes(userId)
+    setSelectedMembers(prev => {
+      const updated = prev.includes(userId)
         ? prev.filter(id => id !== userId)
-        : [...prev, userId]
-    );
+        : [...prev, userId];
+      console.log("Selected members updated:", updated);
+      return updated;
+    });
   };
 
   return (
