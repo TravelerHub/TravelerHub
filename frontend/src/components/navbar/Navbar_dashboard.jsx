@@ -94,7 +94,7 @@ function Navbar_Dashboard() {
           <div className="relative group">
             <button
               // onClick={() => navigate("/message")}
-              onClick={() => navigate("/messagetesting")}
+              onClick={() => navigate("/message")}
               className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 transition"
             >
               <span className="text-lg">💬</span>

@@ -31,5 +31,5 @@ export const chatApi = {
 
   // Fetch all users to start new chats
   getUsers: () =>
-    request(`/users/`)
+    request(`/api/users/`)
 };

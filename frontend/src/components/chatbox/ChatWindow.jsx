@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { Avatar, EmptyState } from "./ui";
 import MessageList from "./MessagerList";
+import { chatApi } from "./chatAPI";
 
 export default function ChatWindow({
   loading,
@@ -17,20 +18,9 @@ export default function ChatWindow({
 
   const sendMessage = async () => {
     if (!text.trim()) return;
-    const newMsg = {
-      from_user: currentUserId,
-      content: text,
-      sent_datetime: new Date().toISOString(),
-      conversation_id: conversationID
-    };
-    
+
     try {
-      const res = await fetch("http://localhost:8000/api/conversations/" + conversationID + "/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newMsg)
-      });
-      if (!res.ok) throw new Error("Failed to send message");
+      await chatApi.sendMessage(conversationID, text);
       setText("");
     } catch (err) {
       alert(err.message);
@@ -38,39 +28,47 @@ export default function ChatWindow({
   };
 
   useEffect(() => {
-  setLocalMessages(messages || []);
-}, [messages, conversationID]);
+    setLocalMessages(messages || []);
+  }, [messages, conversationID]);
 
-// WebSocket for real-time updates
-useEffect(() => {
-  if (!conversationID) return;
+  // WebSocket for real-time updates
+  useEffect(() => {
+    if (!conversationID) return;
 
-  const ws = new WebSocket(`ws://localhost:8000/api/ws/conversations/${conversationID}`);
+    const ws = new WebSocket(`ws://127.0.0.1:8000/api/ws/conversations/${conversationID}`);
 
-  ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    setLocalMessages((prev) => {
-      if (prev.some((m) => m.message_id === msg.message_id)) return prev;
-      return [...prev, msg];
-    });
-  };
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      setLocalMessages((prev) => {
+        if (prev.some((m) => m.message_id === msg.message_id)) return prev;
+        return [...prev, msg];
+      });
+    };
 
-  // optional keepalive (your backend waits for receive_text)
-  const ping = setInterval(() => {
-    if (ws.readyState === WebSocket.OPEN) ws.send("ping");
-  }, 25000);
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
 
-  return () => {
-    clearInterval(ping);
-    ws.close();
-  };
-}, [conversationID]);
+    ws.onclose = () => {
+      console.log("WebSocket closed");
+    };
+
+    // optional keepalive (your backend waits for receive_text)
+    const ping = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) ws.send("ping");
+    }, 25000);
+
+    return () => {
+      clearInterval(ping);
+      ws.close();
+    };
+  }, [conversationID]);
 
   // scroll to bottom on new messages
   useEffect(() => {
     if (!listRef.current) return;
     listRef.current.scrollTop = listRef.current.scrollHeight;
-  }, [messages?.length]);
+  }, [localMessages?.length]);
 
   const subtitle = useMemo(() => {
     const others = (members || []).filter((u) => u.id !== currentUserId);
