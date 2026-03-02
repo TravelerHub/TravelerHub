@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, Depends
 from typing import Dict, Set, List, Optional
 import asyncio
+from datetime import datetime
 from supabase_client import supabase
 import schemas
 from utils import oauth2
@@ -111,8 +112,9 @@ def create_conversation(
         member_ids = set(payload.members or [])
         member_ids.add(current_user["id"])  # Always include creator
 
+        now = datetime.utcnow().isoformat()
         members_to_insert = [
-            {"conversation_id": conversation_id, "user_id": uid}
+            {"conversation_id": conversation_id, "user_id": uid, "join_datetime": now}
             for uid in member_ids
         ]
 
@@ -155,9 +157,11 @@ def add_member(
             return {"message": "User is already a member"}
 
         # Add member
+        now = datetime.utcnow().isoformat()
         res = supabase.from_("group_member").insert({
             "conversation_id": conversation_id,
-            "user_id": user_id
+            "user_id": user_id,
+            "join_datetime": now
         }).execute()
 
         if not res.data:
