@@ -56,18 +56,64 @@ export const encryptionUtils = {
    * @returns {string} base64-encoded encrypted message
    */
   encryptMessage: (message, sessionKey) => {
-    const keyBytes = nacl.util.decodeBase64(sessionKey);
-    const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
-    const messageBytes = nacl.util.encodeUTF8(message);
+    try {
+      // Ensure key is properly decoded to Uint8Array
+      let keyBytes = nacl.util.decodeBase64(sessionKey);
+      if (!(keyBytes instanceof Uint8Array)) {
+        keyBytes = new Uint8Array(keyBytes);
+      }
+      
+      // CRITICAL: Validate key size is exactly 32 bytes
+      if (keyBytes.length !== 32) {
+        console.error(`Key size error: expected 32 bytes, got ${keyBytes.length}`);
+        throw new Error(`bad key size: expected 32, got ${keyBytes.length}`);
+      }
+      
+      const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+      
+      // Encode message to UTF-8 bytes and ensure it's a Uint8Array
+      let messageBytes = nacl.util.encodeUTF8(message);
+      if (!(messageBytes instanceof Uint8Array)) {
+        // If it's not a Uint8Array, convert it
+        messageBytes = new Uint8Array(messageBytes);
+      }
 
-    const encrypted = nacl.secretbox(messageBytes, nonce, keyBytes);
+      // Validate all inputs are Uint8Array
+      if (!(messageBytes instanceof Uint8Array)) {
+        throw new Error("Message bytes not Uint8Array after conversion");
+      }
+      if (!(nonce instanceof Uint8Array)) {
+        throw new Error("Nonce not Uint8Array");
+      }
+      if (!(keyBytes instanceof Uint8Array)) {
+        throw new Error("Key bytes not Uint8Array after conversion");
+      }
 
-    // Return nonce + ciphertext
-    const result = new Uint8Array(nonce.length + encrypted.length);
-    result.set(nonce);
-    result.set(encrypted, nonce.length);
+      const encrypted = nacl.secretbox(messageBytes, nonce, keyBytes);
+      
+      if (!encrypted) {
+        throw new Error("Encryption failed - returned null");
+      }
+      if (!(encrypted instanceof Uint8Array)) {
+        throw new Error("Encrypted result not Uint8Array");
+      }
 
-    return nacl.util.encodeBase64(result);
+      // Return nonce + ciphertext
+      const result = new Uint8Array(nonce.length + encrypted.length);
+      result.set(new Uint8Array(nonce));
+      result.set(new Uint8Array(encrypted), nonce.length);
+
+      return nacl.util.encodeBase64(result);
+    } catch (err) {
+      console.error("Encryption error details:", {
+        error: err.message,
+        sessionKeyType: typeof sessionKey,
+        sessionKeyLength: sessionKey?.length,
+        messageType: typeof message,
+        messageLength: message?.length
+      });
+      throw new Error(`Message encryption failed: ${err.message}`);
+    }
   },
 
   /**
@@ -77,18 +123,80 @@ export const encryptionUtils = {
    * @returns {string} plaintext message
    */
   decryptMessage: (encryptedMessage, sessionKey) => {
-    const encryptedBytes = nacl.util.decodeBase64(encryptedMessage);
-    const keyBytes = nacl.util.decodeBase64(sessionKey);
+    try {
+      let encryptedBytes = nacl.util.decodeBase64(encryptedMessage);
+      if (!(encryptedBytes instanceof Uint8Array)) {
+        encryptedBytes = new Uint8Array(encryptedBytes);
+      }
+      
+      let keyBytes = nacl.util.decodeBase64(sessionKey);
+      
+      // Ensure keyBytes is Uint8Array
+      if (!(keyBytes instanceof Uint8Array)) {
+        keyBytes = new Uint8Array(keyBytes);
+      }
 
-    const nonce = encryptedBytes.slice(0, nacl.secretbox.nonceLength);
-    const ciphertext = encryptedBytes.slice(nacl.secretbox.nonceLength);
+      // CRITICAL: Validate key size is exactly 32 bytes
+      if (keyBytes.length !== 32) {
+        console.error(`Key size error in decrypt: expected 32 bytes, got ${keyBytes.length}`);
+        throw new Error(`bad key size: expected 32, got ${keyBytes.length}`);
+      }
 
-    const decrypted = nacl.secretbox.open(ciphertext, nonce, keyBytes);
-    if (!decrypted) {
-      throw new Error("Decryption failed: message corrupted or wrong key");
+      const nonce = new Uint8Array(encryptedBytes.slice(0, nacl.secretbox.nonceLength));
+      const ciphertext = new Uint8Array(encryptedBytes.slice(nacl.secretbox.nonceLength));
+
+      const decrypted = nacl.secretbox.open(ciphertext, nonce, keyBytes);
+      if (!decrypted) {
+        throw new Error("Decryption failed: message corrupted or wrong key");
+      }
+
+      // Decode the decrypted bytes to UTF-8 string
+      const decoded = nacl.util.encodeUTF8(decrypted);
+      return decoded;
+    } catch (err) {
+      console.error("Decryption error:", err);
+      throw new Error(`Message decryption failed: ${err.message}`);
     }
+  },
 
-    return nacl.util.encodeUTF8(decrypted);
+  /**
+   * Normalize a session key to ensure it's exactly 32 bytes when decoded
+   * @param {string} base64Key - base64-encoded key
+   * @returns {string} normalized base64-encoded 32-byte key
+   */
+  normalizeKey: (base64Key) => {
+    try {
+      let keyBytes = nacl.util.decodeBase64(base64Key);
+      if (!(keyBytes instanceof Uint8Array)) {
+        keyBytes = new Uint8Array(keyBytes);
+      }
+      
+      // If key is wrong size, we need to fix it
+      if (keyBytes.length === 32) {
+        return base64Key; // Already correct
+      }
+      
+      console.warn(`Normalizing key from ${keyBytes.length} bytes to 32 bytes`);
+      
+      const normalized = new Uint8Array(32);
+      
+      if (keyBytes.length < 32) {
+        // Pad with repeated bytes
+        for (let i = 0; i < 32; i++) {
+          normalized[i] = keyBytes[i % keyBytes.length];
+        }
+      } else {
+        // Truncate
+        for (let i = 0; i < 32; i++) {
+          normalized[i] = keyBytes[i];
+        }
+      }
+      
+      return nacl.util.encodeBase64(normalized);
+    } catch (err) {
+      console.error("Error normalizing key:", err);
+      throw err;
+    }
   },
 
   /**
@@ -121,5 +229,45 @@ export const encryptionUtils = {
   getConversationKey: (conversationId) => {
     const keys = JSON.parse(localStorage.getItem("conversation_keys") || "{}");
     return keys[conversationId] || null;
+  },
+
+  /**
+   * Generate a deterministic fallback key based on conversation ID
+   * Used when proper encryption keys aren't available
+   */
+  generateFallbackKey: (conversationId) => {
+    try {
+      // Create a deterministic 32-byte key
+      const hash = new Uint8Array(32);
+      
+      // Use conversation ID bytes to seed the hash
+      const encoder = new TextEncoder();
+      const idBytes = encoder.encode(conversationId + "_key");
+      
+      for (let i = 0; i < 32; i++) {
+        // Mix in bytes from the ID multiple times
+        const idByte = idBytes[i % idBytes.length];
+        hash[i] = ((idByte * 7 + i * 13) ^ (i * 23)) & 0xFF;
+      }
+      
+      // Convert to base64 string
+      const base64Key = nacl.util.encodeBase64(hash);
+      
+      // Verify it can be decoded back
+      const verify = nacl.util.decodeBase64(base64Key);
+      if (!(verify instanceof Uint8Array) || verify.length !== 32) {
+        throw new Error("Fallback key generation failed verification");
+      }
+      
+      return base64Key;
+    } catch (err) {
+      console.error("Error generating fallback key:", err);
+      // Emergency fallback - create a simple but valid base64 key
+      const emergencyKey = new Uint8Array(32);
+      for (let i = 0; i < 32; i++) {
+        emergencyKey[i] = (conversationId.charCodeAt(i % conversationId.length) + i) & 0xFF;
+      }
+      return nacl.util.encodeBase64(emergencyKey);
+    }
   },
 };
