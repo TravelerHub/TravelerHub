@@ -25,24 +25,44 @@ export const chatApi = {
 
   // Send a message (encrypted)
   sendMessage: (conversationId, content) => {
-    // Get the session key for this conversation
-    const sessionKey = encryptionUtils.getConversationKey(conversationId);
-    
-    if (!sessionKey) {
-      throw new Error("No encryption key available for this conversation");
-    }
-
-    // Encrypt the message content
-    const encryptedContent = encryptionUtils.encryptMessage(content, sessionKey);
-
-    return request(`/api/conversations/${encodeURIComponent(conversationId)}/messages`, {
-      method: "POST",
-      body: { 
-        content: encryptedContent, 
-        sent_datetime: new Date().toISOString(),
-        is_encrypted: true
+    try {
+      // Get the session key for this conversation
+      let sessionKey = encryptionUtils.getConversationKey(conversationId);
+      
+      if (!sessionKey) {
+        // Generate fallback key as last resort
+        sessionKey = encryptionUtils.generateFallbackKey(conversationId);
+        encryptionUtils.storeConversationKey(conversationId, sessionKey);
       }
-    });
+
+      // Normalize key to ensure it's exactly 32 bytes
+      sessionKey = encryptionUtils.normalizeKey(sessionKey);
+
+      // Validate session key before use
+      if (typeof sessionKey !== "string") {
+        throw new Error(`Session key is not a string: ${typeof sessionKey}`);
+      }
+      if (sessionKey.length === 0) {
+        throw new Error("Session key is empty");
+      }
+
+      console.log("Encrypting message with key length:", sessionKey.length, "content length:", content.length);
+
+      // Encrypt the message content
+      const encryptedContent = encryptionUtils.encryptMessage(content, sessionKey);
+
+      return request(`/api/conversations/${encodeURIComponent(conversationId)}/messages`, {
+        method: "POST",
+        body: { 
+          content: encryptedContent, 
+          sent_datetime: new Date().toISOString(),
+          is_encrypted: true
+        }
+      });
+    } catch (err) {
+      console.error("Message encryption error:", err);
+      throw err;
+    }
   },
 
   // Get conversation session key (encrypted for user)

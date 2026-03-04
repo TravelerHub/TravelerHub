@@ -27,9 +27,22 @@ export default function ChatWindow({
       // Get or create session key
       let sessionKey = encryptionUtils.getConversationKey(conversationID);
       if (!sessionKey) {
-        // Generate temporary fallback key
-        sessionKey = btoa(conversationID).substring(0, 32);
+        // Generate proper fallback key
+        sessionKey = encryptionUtils.generateFallbackKey(conversationID);
         encryptionUtils.storeConversationKey(conversationID, sessionKey);
+      }
+      
+      // Normalize key to ensure it's exactly 32 bytes
+      try {
+        sessionKey = encryptionUtils.normalizeKey(sessionKey);
+      } catch (normErr) {
+        console.error("Key normalization failed:", normErr);
+        throw new Error(`Cannot use encryption key: ${normErr.message}`);
+      }
+      
+      // Final validation
+      if (typeof sessionKey !== "string" || sessionKey.length < 10) {
+        throw new Error(`Invalid session key: ${typeof sessionKey}, length: ${sessionKey?.length || 0}`);
       }
       
       await chatApi.sendMessage(conversationID, text);
@@ -61,6 +74,12 @@ export default function ChatWindow({
             const keyData = await chatApi.getConversationKey(conversationID);
             if (keyData && keyData.session_key) {
               sessionKey = keyData.session_key;
+              // Normalize the key to ensure it's 32 bytes
+              try {
+                sessionKey = encryptionUtils.normalizeKey(sessionKey);
+              } catch (normErr) {
+                console.warn("Could not normalize retrieved key, using as-is");
+              }
               encryptionUtils.storeConversationKey(conversationID, sessionKey);
               
               // Show warning if using fallback encryption
@@ -71,15 +90,14 @@ export default function ChatWindow({
             }
           } catch (fetchErr) {
             console.warn("Could not fetch session key:", fetchErr);
-            // Silently fail - use basic encryption
+            // Silently fail - will use fallback
           }
         }
         
-        // If still no key, generate a temporary one based on conversation ID
+        // If still no key, generate a proper fallback key
         if (!sessionKey) {
-          console.warn("Generating temporary encryption key for this conversation");
-          // Use a simple hash-based fallback
-          sessionKey = btoa(conversationID).substring(0, 32);
+          console.warn("Generating deterministic encryption key for this conversation");
+          sessionKey = encryptionUtils.generateFallbackKey(conversationID);
           encryptionUtils.storeConversationKey(conversationID, sessionKey);
         }
       } catch (err) {

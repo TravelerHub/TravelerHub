@@ -15,20 +15,47 @@ export default function MessageBubble({ msg, isMine, conversationId }) {
   useEffect(() => {
     const decryptMessage = async () => {
       try {
-        if (msg.is_encrypted) {
-          const sessionKey = encryptionUtils.getConversationKey(conversationId);
+        let content = msg.content;
+        
+        // Check if message needs decryption
+        if (msg.is_encrypted || msg.is_encrypted === undefined) {
+          // Try to decrypt
+          let sessionKey = encryptionUtils.getConversationKey(conversationId);
+          
           if (!sessionKey) {
+            // Try to generate fallback key
+            console.warn("No session key found, checking if fallback is needed");
+            sessionKey = encryptionUtils.generateFallbackKey(conversationId);
+            encryptionUtils.storeConversationKey(conversationId, sessionKey);
+          }
+          
+          if (!sessionKey) {
+            console.error("Cannot decrypt: no session key available");
             setDecryptError(true);
+            setDecryptedContent(msg.content);
             return;
           }
-          const plaintext = encryptionUtils.decryptMessage(msg.content, sessionKey);
-          setDecryptedContent(plaintext);
+          
+          try {
+            // Normalize the key before decryption
+            const normalizedKey = encryptionUtils.normalizeKey(sessionKey);
+            content = encryptionUtils.decryptMessage(msg.content, normalizedKey);
+            setDecryptedContent(content);
+            setDecryptError(false);
+          } catch (decryptErr) {
+            // If decryption fails, might be unencrypted message
+            console.warn("Decryption failed, treating as plaintext:", decryptErr.message);
+            setDecryptedContent(msg.content);
+            setDecryptError(false);
+          }
         } else {
           setDecryptedContent(msg.content);
+          setDecryptError(false);
         }
       } catch (err) {
-        console.error("Decryption failed:", err);
+        console.error("Message processing error:", err);
         setDecryptError(true);
+        setDecryptedContent(msg.content || "[Error processing message]");
       }
     };
 
@@ -50,7 +77,7 @@ export default function MessageBubble({ msg, isMine, conversationId }) {
           {decryptError ? (
             <span className="text-red-500 italic">Failed to decrypt message</span>
           ) : (
-            decryptedContent
+            decryptedContent || "[Empty message]"
           )}
         </div>
         <div className="mt-1 text-[11px] text-gray-500">
