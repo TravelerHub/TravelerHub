@@ -66,10 +66,10 @@ class PasswordChange(BaseModel):
 
 # ---- Chat Schemas ----
 class MessageCreate(BaseModel):
-    from_user: str
     content: str
-    conversation_id: str
     sent_datetime: datetime
+    from_user: Optional[str] = None
+    conversation_id: Optional[str] = None
 
 class MessageOut(BaseModel):
     message_id: str
