@@ -98,3 +98,24 @@ class GroupMemberOut(BaseModel):
     user_id: str
     joined_datetime: Optional[datetime] = None
     left_datetime: Optional[datetime] = None
+
+# ---- Encryption Schemas ----
+class UserKeypair(BaseModel):
+    """Store user's public/private keypair"""
+    user_id: str
+    public_key: str  # base64-encoded
+    private_key: str  # base64-encoded (should be stored securely)
+
+class ConversationSessionKey(BaseModel):
+    """Store encrypted session keys for each user in a conversation"""
+    conversation_id: str
+    user_id: str
+    encrypted_key: str  # base64-encoded session key encrypted with user's public key
+
+class MessageCreate(BaseModel):
+    """Create encrypted message"""
+    content: str  # base64-encoded encrypted content
+    sent_datetime: datetime
+    from_user: Optional[str] = None
+    conversation_id: Optional[str] = None
+    is_encrypted: bool = True
