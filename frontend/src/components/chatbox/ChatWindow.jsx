@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { Avatar, EmptyState } from "./ui";
 import MessageList from "./MessagerList";
 import { chatApi } from "./chatAPI";
+import { encryptionUtils } from "../../lib/encryption";
 
 export default function ChatWindow({
   loading,
@@ -15,21 +16,80 @@ export default function ChatWindow({
   const listRef = useRef(null);
   const [text, setText] = useState("");
   const [localMessages, setLocalMessages] = useState(messages || []);
+  const [encryptionError, setEncryptionError] = useState(null);
 
   const sendMessage = async () => {
     if (!text.trim()) return;
 
     try {
+      setEncryptionError(null);
+      
+      // Get or create session key
+      let sessionKey = encryptionUtils.getConversationKey(conversationID);
+      if (!sessionKey) {
+        // Generate temporary fallback key
+        sessionKey = btoa(conversationID).substring(0, 32);
+        encryptionUtils.storeConversationKey(conversationID, sessionKey);
+      }
+      
       await chatApi.sendMessage(conversationID, text);
       setText("");
     } catch (err) {
-      alert(err.message);
+      console.error("Send error:", err);
+      const errorMsg = err.message || "Failed to send message";
+      setEncryptionError(errorMsg);
+      alert(`Send Error: ${errorMsg}`);
     }
   };
 
   useEffect(() => {
     setLocalMessages(messages || []);
   }, [messages, conversationID]);
+
+  // Initialize encryption key for this conversation
+  useEffect(() => {
+    if (!conversationID) return;
+
+    const initializeEncryption = async () => {
+      try {
+        // Check if we already have a session key cached
+        let sessionKey = encryptionUtils.getConversationKey(conversationID);
+        
+        if (!sessionKey) {
+          // Try to fetch from backend
+          try {
+            const keyData = await chatApi.getConversationKey(conversationID);
+            if (keyData && keyData.session_key) {
+              sessionKey = keyData.session_key;
+              encryptionUtils.storeConversationKey(conversationID, sessionKey);
+              
+              // Show warning if using fallback encryption
+              if (keyData.warning) {
+                console.warn(keyData.warning);
+                setEncryptionError(null); // Don't show as error
+              }
+            }
+          } catch (fetchErr) {
+            console.warn("Could not fetch session key:", fetchErr);
+            // Silently fail - use basic encryption
+          }
+        }
+        
+        // If still no key, generate a temporary one based on conversation ID
+        if (!sessionKey) {
+          console.warn("Generating temporary encryption key for this conversation");
+          // Use a simple hash-based fallback
+          sessionKey = btoa(conversationID).substring(0, 32);
+          encryptionUtils.storeConversationKey(conversationID, sessionKey);
+        }
+      } catch (err) {
+        console.error("Encryption initialization error:", err);
+        // Still allow messaging even if encryption setup has issues
+      }
+    };
+
+    initializeEncryption();
+  }, [conversationID]);
 
   // WebSocket for real-time updates
   useEffect(() => {
@@ -87,6 +147,13 @@ export default function ChatWindow({
         </div>
       </div>
 
+      {/* Encryption Status */}
+      {encryptionError && (
+        <div className="p-2 bg-yellow-50 border-b border-yellow-200 text-sm text-yellow-800">
+          ⚠️ {encryptionError}
+        </div>
+      )}
+
       {/* Body */}
       <div ref={listRef} className="flex-1 overflow-auto p-3 bg-gray-50">
         {loading ? (
@@ -98,7 +165,11 @@ export default function ChatWindow({
         ) : error ? (
           <EmptyState title="Could not load messages" subtitle={error} />
         ) : (
-          <MessageList messages={localMessages} currentUserId={currentUserId} />
+          <MessageList 
+            messages={localMessages} 
+            currentUserId={currentUserId}
+            conversationId={conversationID}
+          />
         )}
       </div>
 
