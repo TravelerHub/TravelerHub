@@ -281,7 +281,7 @@ async def post_message(
         new_message = {
             "from_user": current_user["id"], # Force sender to be the current user
             "content": payload.content,
-            "sent_datetime": payload.sent_datetime.isoformat(),
+            "sent_datetime": payload.sent_datetime.replace(tzinfo=None).isoformat(),
             "conversation_id": conversation_id
         }
 
