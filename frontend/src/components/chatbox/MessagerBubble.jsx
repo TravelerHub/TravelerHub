@@ -9,7 +9,7 @@ function formatTime(ts) {
 }
 
 export default function MessageBubble({ msg, isMine, conversationId }) {
-  const [decryptedContent, setDecryptedContent] = useState("");
+  const [decryptedContent, setDecryptedContent] = useState(msg.content || "");
   const [decryptError, setDecryptError] = useState(false);
 
   useEffect(() => {
