@@ -1,4 +1,6 @@
+from tokenize import String
 from pydantic import BaseModel, EmailStr, BaseModel
+from typing import List, Optional
 
 class SignupRequest(BaseModel):
     email: str
@@ -61,3 +63,36 @@ class TokenData(BaseModel):
 class PasswordChange(BaseModel):
     current_password: str
     new_password: str
+
+# --- INPUT SCHEMAS ---
+class PollOptionCreate(BaseModel):
+    text: str
+    description: Optional[str] = None
+
+class PollCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    options: List[PollOptionCreate]
+
+class VoteCreate(BaseModel):
+    poll_id: int
+    option_id: int
+
+# --- OUTPUT SCHEMAS ---
+class PollOptionResponse(BaseModel):
+    id: int
+    text: str
+    vote_count: int  # Computed field
+    
+    class Config:
+        from_attributes = True
+
+class PollResponse(BaseModel):
+    id: int
+    title: str
+    is_active: bool
+    options: List[PollOptionResponse]
+    user_vote_id: Optional[int] = None # ID of the option the current user voted for
+    
+    class Config:
+        from_attributes = True

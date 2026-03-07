@@ -9,11 +9,12 @@ import Login from "./app/pages/Login.jsx";
 import SignUp from "./app/pages/SignUp.jsx";
 import Dashboard from "./app/pages/Dashboard.jsx";
 import Settings from "./app/pages/Settings.jsx";
-import Profile  from "./app/pages/Profile.jsx"; 
+import Profile from "./app/pages/Profile.jsx"; 
 import Navigation from "./app/pages/Navigation.jsx";
 import ResetPassword from "./app/pages/ResetPassword.jsx"; 
 import OTP from "./app/pages/OTP.jsx";
 import NewPassword from "./app/pages/NewPassword.jsx";
+import PollDetail from "./app/pages/pollDetails.jsx";
 
 const router = createBrowserRouter([
     { path: "/", element: <Landing /> },
@@ -29,7 +30,9 @@ const router = createBrowserRouter([
     { path: "/navigation", element: <Navigation /> },
     { path: "/resetpassword", element: <ResetPassword /> },
     { path: "/otp", element: <OTP /> },
-    { path: "/newpassword", element: <NewPassword /> }
+    { path: "/newpassword", element: <NewPassword /> },
+    { path: "/polls", element: <Dashboard /> },
+    { path: "/polls/:pollId", element: <PollDetail /> }
 ]);
 
 export default router;
