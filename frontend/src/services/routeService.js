@@ -23,7 +23,7 @@ export async function getOptimizedRoute(waypoints) {
     geometry: route.geometry,           // Route line coordinates
     duration: route.duration,           // Seconds
     distance: route.distance,           // Meters
-    steps: route.legs[0].steps,        // Turn-by-turn directions
+    steps: route.legs.flatMap(leg => leg.steps),     // Turn-by-turn directions
     summary: {
       totalDistance: (route.distance / 1000).toFixed(2) + ' km',
       totalDuration: formatDuration(route.duration),

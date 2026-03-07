@@ -1,23 +1,23 @@
 import { useNavigate } from "react-router-dom";
 
-// Load user from localStorage
-const getStoredUser = () => {
-  const stored = localStorage.getItem("user");
-  if (stored) {
-    return JSON.parse(stored);
-  }
-  return null;
-};
-
-const user = getStoredUser();
-
-const getInitials = (name) => {
-  if (!name) return "?";
-  return name.slice(0, 2).toUpperCase();
-};
-
 function Navbar_Dashboard() {
   const navigate = useNavigate();
+
+  // Load user from localStorage
+  const getStoredUser = () => {
+  const stored = localStorage.getItem("user");
+      if (stored) {
+        return JSON.parse(stored);
+      }
+      return null;
+  };
+
+  const user = getStoredUser();
+
+  const getInitials = (name) => {
+    if (!name) return "?";
+    return name.slice(0, 2).toUpperCase();
+  };
 
   return (
     <nav className="w-full bg-gray-50 border-b border-gray-200">
@@ -26,7 +26,7 @@ function Navbar_Dashboard() {
         {/* Quick Action Icons */}
         <div className="flex items-center gap-3">   
 
-          {/* Navigation */}
+          {/* Notification */}
           <div className="relative group">
             <button
               onClick={() => navigate("/")}
@@ -59,10 +59,27 @@ function Navbar_Dashboard() {
           </div>
 
 
+          {/* Booking */}
+          <div className="relative group">
+            <button
+              onClick={() => navigate("/booking")}
+              className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 transition"
+            >
+              <span className="text-lg">🏨</span>
+            </button>
+            <div className="absolute top-full mt-2 right-1/2 translate-x-1/2
+              bg-gray-900 text-white text-xs rounded px-2 py-1
+              opacity-0 invisible group-hover:opacity-100 group-hover:visible transition
+              whitespace-nowrap z-50">
+              Booking
+            </div>
+          </div>
+
           {/* Messenger */}
           <div className="relative group">
             <button
-              onClick={() => navigate("/messenger")}
+              // onClick={() => navigate("/message")}
+              onClick={() => navigate("/messagetesting")}
               className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 transition"
             >
               <span className="text-lg">💬</span>
@@ -72,6 +89,22 @@ function Navbar_Dashboard() {
               opacity-0 invisible group-hover:opacity-100 group-hover:visible transition
               whitespace-nowrap z-50">
               Messenger
+            </div>
+          </div>
+
+          {/* Expenses */}
+          <div className="relative group">
+            <button
+              onClick={() => navigate("/expenses")}
+              className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 transition"
+            >
+              <span className="text-lg">🧾</span>
+            </button>
+            <div className="absolute top-full mt-2 right-1/2 translate-x-1/2
+              bg-gray-900 text-white text-xs rounded px-2 py-1
+              opacity-0 invisible group-hover:opacity-100 group-hover:visible transition
+              whitespace-nowrap z-50">
+              Smart Scanner
             </div>
           </div>
 
@@ -103,6 +136,15 @@ function Navbar_Dashboard() {
               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
             >
               ⚙️ Settings
+            </button>
+            <button
+              onClick={() => {
+                localStorage.clear();
+                navigate("/login");
+              }}
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            >
+              🚪 Logout
             </button>
           </div>
         </div>

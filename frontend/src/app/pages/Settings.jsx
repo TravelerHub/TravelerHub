@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import TravelPreferences from "../../components/TravelPreferences";
 
 function Settings() {
   const navigate = useNavigate();
@@ -31,7 +32,6 @@ function Settings() {
     setPasswordError("");
     setPasswordSuccess("");
 
-    // Validate
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       setPasswordError("New passwords do not match");
       return;
@@ -101,6 +101,10 @@ function Settings() {
         </div>
 
         <div className="space-y-6">
+
+          {/* ✅ Travel Preferences Section */}
+          <TravelPreferences />
+
           {/* Notifications Section */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h2 className="text-lg font-semibold text-gray-800">Notifications</h2>
