@@ -117,14 +117,14 @@ function Dashboard() {
     </div>
 
     <button
-      onClick={() => navigate("/bookings")}
+      onClick={() => navigate("/booking")}
       className="mt-6 w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition"
     >
       Go to Bookings
     </button>
 
     <button
-      onClick={() => navigate("/bookings/new")}
+      onClick={() => navigate("/booking/new")}
       className="mt-3 w-full py-2.5 rounded-lg font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
     >
       Add Booking
