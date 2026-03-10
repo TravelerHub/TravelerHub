@@ -28,7 +28,7 @@ export default function ChatLayout({ currentUser }) {
       try {
         setLoadingLeft(true);
         setError("");
-        const data = await chatApi.getConversations({ userId: currentUser.id });
+        const data = await chatApi.getConversations();
         if (!alive) return;
         setConversations(Array.isArray(data) ? data : data.conversations || []);
         // auto-select first conversation if none selected

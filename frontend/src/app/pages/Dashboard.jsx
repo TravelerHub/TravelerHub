@@ -249,21 +249,21 @@ function Dashboard() {
             </div>
           </div>
 
-          <button
-            onClick={() => navigate("/bookings")}
-            className="mt-6 w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition"
-          >
-            Go to Bookings
-          </button>
+    <button
+      onClick={() => navigate("/bookings")}
+      className="mt-6 w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition"
+    >
+      Go to Bookings
+    </button>
 
-          <button
-            onClick={() => navigate("/bookings/new")}
-            className="mt-3 w-full py-2.5 rounded-lg font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-          >
-            Add Booking
-          </button>
-        </div>
-      </div>
+    <button
+      onClick={() => navigate("/bookings/new")}
+      className="mt-3 w-full py-2.5 rounded-lg font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+    >
+      Add Booking
+    </button>
+  </div>
+</div>
 
       {/* Create Trip Modal */}
       {showCreateModal && (
