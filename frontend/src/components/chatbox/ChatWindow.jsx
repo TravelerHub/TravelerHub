@@ -23,22 +23,7 @@ export default function ChatWindow({
 
     try {
       setEncryptionError(null);
-      
-      // Get or create session key
-      let sessionKey = encryptionUtils.getConversationKey(conversationID);
-      if (!sessionKey) {
-        // Generate proper fallback key
-        sessionKey = encryptionUtils.generateFallbackKey(conversationID);
-        encryptionUtils.storeConversationKey(conversationID, sessionKey);
-      }
-      
-      // Normalize key to ensure it's exactly 32 bytes
-      try {
-        sessionKey = encryptionUtils.normalizeKey(sessionKey);
-      } catch (normErr) {
-        console.error("Key normalization failed:", normErr);
-        throw new Error(`Cannot use encryption key: ${normErr.message}`);
-      }
+      const sessionKey = encryptionUtils.getStableConversationKey(conversationID);
       
       // Final validation
       if (typeof sessionKey !== "string" || sessionKey.length < 10) {
@@ -63,50 +48,12 @@ export default function ChatWindow({
   useEffect(() => {
     if (!conversationID) return;
 
-    const initializeEncryption = async () => {
-      try {
-        // Check if we already have a session key cached
-        let sessionKey = encryptionUtils.getConversationKey(conversationID);
-        
-        if (!sessionKey) {
-          // Try to fetch from backend
-          try {
-            const keyData = await chatApi.getConversationKey(conversationID);
-            if (keyData && keyData.session_key) {
-              sessionKey = keyData.session_key;
-              // Normalize the key to ensure it's 32 bytes
-              try {
-                sessionKey = encryptionUtils.normalizeKey(sessionKey);
-              } catch (normErr) {
-                console.warn("Could not normalize retrieved key, using as-is");
-              }
-              encryptionUtils.storeConversationKey(conversationID, sessionKey);
-              
-              // Show warning if using fallback encryption
-              if (keyData.warning) {
-                console.warn(keyData.warning);
-                setEncryptionError(null); // Don't show as error
-              }
-            }
-          } catch (fetchErr) {
-            console.warn("Could not fetch session key:", fetchErr);
-            // Silently fail - will use fallback
-          }
-        }
-        
-        // If still no key, generate a proper fallback key
-        if (!sessionKey) {
-          console.warn("Generating deterministic encryption key for this conversation");
-          sessionKey = encryptionUtils.generateFallbackKey(conversationID);
-          encryptionUtils.storeConversationKey(conversationID, sessionKey);
-        }
-      } catch (err) {
-        console.error("Encryption initialization error:", err);
-        // Still allow messaging even if encryption setup has issues
-      }
-    };
-
-    initializeEncryption();
+    try {
+      encryptionUtils.getStableConversationKey(conversationID);
+      setEncryptionError(null);
+    } catch (err) {
+      console.error("Encryption initialization error:", err);
+    }
   }, [conversationID]);
 
   // WebSocket for real-time updates

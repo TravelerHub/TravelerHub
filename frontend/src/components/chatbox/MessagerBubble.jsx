@@ -15,43 +15,49 @@ export default function MessageBubble({ msg, isMine, conversationId }) {
   useEffect(() => {
     const decryptMessage = async () => {
       try {
-        let content = msg.content;
-        
-        // Check if message needs decryption
-        if (msg.is_encrypted || msg.is_encrypted === undefined) {
-          // Try to decrypt
-          let sessionKey = encryptionUtils.getConversationKey(conversationId);
-          
-          if (!sessionKey) {
-            // Try to generate fallback key
-            console.warn("No session key found, checking if fallback is needed");
-            sessionKey = encryptionUtils.generateFallbackKey(conversationId);
-            encryptionUtils.storeConversationKey(conversationId, sessionKey);
-          }
-          
-          if (!sessionKey) {
-            console.error("Cannot decrypt: no session key available");
-            setDecryptError(true);
-            setDecryptedContent(msg.content);
-            return;
-          }
-          
-          try {
-            // Normalize the key before decryption
-            const normalizedKey = encryptionUtils.normalizeKey(sessionKey);
-            content = encryptionUtils.decryptMessage(msg.content, normalizedKey);
-            setDecryptedContent(content);
-            setDecryptError(false);
-          } catch (decryptErr) {
-            // If decryption fails, might be unencrypted message
-            console.warn("Decryption failed, treating as plaintext:", decryptErr.message);
-            setDecryptedContent(msg.content);
-            setDecryptError(false);
-          }
-        } else {
+        const shouldAttemptDecrypt =
+          msg.is_encrypted === true ||
+          (msg.is_encrypted === undefined && encryptionUtils.isLikelyEncryptedMessage(msg.content));
+
+        if (!shouldAttemptDecrypt) {
           setDecryptedContent(msg.content);
           setDecryptError(false);
+          return;
         }
+
+        let backendKey = null;
+
+        try {
+          const response = await fetch(`http://127.0.0.1:8000/api/conversations/${encodeURIComponent(conversationId)}/session-key`, {
+            headers: {
+              "Authorization": `Bearer ${localStorage.getItem("token") || sessionStorage.getItem("token")}`,
+            }
+          });
+
+          if (response.ok) {
+            const keyData = await response.json();
+            backendKey = keyData?.session_key || null;
+          }
+        } catch (fetchErr) {
+          console.warn("Failed to fetch backend session key during decrypt:", fetchErr.message);
+        }
+
+        const candidateKeys = encryptionUtils.getDecryptionKeys(conversationId, [backendKey]);
+
+        for (const candidateKey of candidateKeys) {
+          try {
+            const content = encryptionUtils.decryptMessage(msg.content, candidateKey);
+            encryptionUtils.storeConversationKey(conversationId, candidateKey);
+            setDecryptedContent(content);
+            setDecryptError(false);
+            return;
+          } catch (decryptErr) {
+            console.warn("Decryption attempt failed:", decryptErr.message);
+          }
+        }
+
+        setDecryptError(true);
+        setDecryptedContent(msg.content || "[Encrypted message]");
       } catch (err) {
         console.error("Message processing error:", err);
         setDecryptError(true);
