@@ -296,6 +296,21 @@ function Dashboard() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
                 />
               </div>
+    <button
+      onClick={() => navigate("/booking")}
+      className="mt-6 w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition"
+    >
+      Go to Bookings
+    </button>
+
+    <button
+      onClick={() => navigate("/booking/new")}
+      className="mt-3 w-full py-2.5 rounded-lg font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+    >
+      Add Booking
+    </button>
+  </div>
+</div>
 
               {createError && (
                 <p className="text-sm text-red-600">{createError}</p>
