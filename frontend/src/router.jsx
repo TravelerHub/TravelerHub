@@ -41,8 +41,7 @@ const router = createBrowserRouter([
     { path: "/message", element: <Message /> },
     {path: "/messagetesting", element: <MessageTesting /> },
     {path: "/booking", element: <Booking /> },
-    {path: "/calendar", element: <Calendar /> }
-    {path: "/booking", element: <Booking /> },
+    {path: "/calendar", element: <Calendar /> },
     { path: "/finance", element: <Finance /> },
     {path: "/welcome", element: <WelcomeAfterLogin /> }
 ]);
