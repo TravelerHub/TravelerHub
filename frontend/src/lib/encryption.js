@@ -72,7 +72,7 @@ export const encryptionUtils = {
       const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
       
       // Encode message to UTF-8 bytes and ensure it's a Uint8Array
-      let messageBytes = nacl.util.encodeUTF8(message);
+      let messageBytes = nacl.util.decodeUTF8(message);
       if (!(messageBytes instanceof Uint8Array)) {
         // If it's not a Uint8Array, convert it
         messageBytes = new Uint8Array(messageBytes);
@@ -151,7 +151,7 @@ export const encryptionUtils = {
       }
 
       // Decode the decrypted bytes to UTF-8 string
-      const decoded = nacl.util.decodeUTF8(decrypted);
+      const decoded = nacl.util.encodeUTF8(decrypted);
       return decoded;
     } catch (err) {
       console.error("Decryption error:", err);
@@ -219,7 +219,10 @@ export const encryptionUtils = {
    */
   storeConversationKey: (conversationId, sessionKey) => {
     const keys = JSON.parse(localStorage.getItem("conversation_keys") || "{}");
-    keys[conversationId] = sessionKey;
+    keys[conversationId] = {
+      value: sessionKey,
+      version: 2,
+    };
     localStorage.setItem("conversation_keys", JSON.stringify(keys));
   },
 
@@ -228,7 +231,25 @@ export const encryptionUtils = {
    */
   getConversationKey: (conversationId) => {
     const keys = JSON.parse(localStorage.getItem("conversation_keys") || "{}");
-    return keys[conversationId] || null;
+    const entry = keys[conversationId];
+
+    if (!entry) {
+      return null;
+    }
+
+    if (typeof entry === "string") {
+      delete keys[conversationId];
+      localStorage.setItem("conversation_keys", JSON.stringify(keys));
+      return null;
+    }
+
+    if (entry.version !== 2 || typeof entry.value !== "string") {
+      delete keys[conversationId];
+      localStorage.setItem("conversation_keys", JSON.stringify(keys));
+      return null;
+    }
+
+    return entry.value;
   },
 
   /**
