@@ -38,8 +38,7 @@ const router = createBrowserRouter([
     { path: "/expenses", element: <Expenses /> },
     { path: "/message", element: <Message /> },
     {path: "/booking", element: <Booking /> },
-    { path: "/finance", element: <Finance /> }
-    {path: "/messagetesting", element: <MessageTesting /> },
+    { path: "/finance", element: <Finance /> },
     {path: "/welcome", element: <WelcomeAfterLogin /> }
 ]);
 
