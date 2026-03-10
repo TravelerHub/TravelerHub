@@ -18,6 +18,7 @@ import Expenses from "./app/pages/Expenses.jsx";
 import Message from "./app/pages/Message.jsx";
 import MessageTesting from "./app/pages/Messager_Testing.jsx";
 import Booking from "./app/pages/Booking.jsx";
+import Calendar from "./app/pages/Calendar.jsx";
 
 
 const router = createBrowserRouter([
@@ -38,7 +39,8 @@ const router = createBrowserRouter([
     { path: "/expenses", element: <Expenses /> },
     { path: "/message", element: <Message /> },
     {path: "/messagetesting", element: <MessageTesting /> },
-    {path: "/booking", element: <Booking /> }
+    {path: "/booking", element: <Booking /> },
+    {path: "/calendar", element: <Calendar /> }
 ]);
 
 export default router;

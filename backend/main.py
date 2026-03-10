@@ -11,6 +11,10 @@ from routers import favorites
 from routers import booking
 
 from routers import chatbox
+from routers import groups
+from routers import navigation
+from routers import checklists
+from routers import calendar
 
 app = FastAPI()
 
@@ -33,6 +37,10 @@ app.include_router(preferences.router)    # /preferences
 app.include_router(favorites.router)      # /favorites
 app.include_router(chatbox.router)        # /api (chatbox routes)
 app.include_router(booking.router)        # /bookings
+app.include_router(groups.router)         # /groups
+app.include_router(navigation.router)     # /navigation
+app.include_router(checklists.router)    # /checklists
+app.include_router(calendar.router)      # /calendar
 
 
 
