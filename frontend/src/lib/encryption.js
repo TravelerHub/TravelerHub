@@ -232,6 +232,67 @@ export const encryptionUtils = {
   },
 
   /**
+   * Return a stable key for frontend message encryption/decryption.
+   * Prefers a cached key and otherwise falls back to a deterministic key.
+   */
+  getStableConversationKey: (conversationId) => {
+    const cachedKey = encryptionUtils.getConversationKey(conversationId);
+
+    if (cachedKey) {
+      const normalizedCachedKey = encryptionUtils.normalizeKey(cachedKey);
+      encryptionUtils.storeConversationKey(conversationId, normalizedCachedKey);
+      return normalizedCachedKey;
+    }
+
+    const fallbackKey = encryptionUtils.normalizeKey(
+      encryptionUtils.generateFallbackKey(conversationId)
+    );
+    encryptionUtils.storeConversationKey(conversationId, fallbackKey);
+    return fallbackKey;
+  },
+
+  /**
+   * Build a de-duplicated set of candidate keys for decryption.
+   */
+  getDecryptionKeys: (conversationId, extraKeys = []) => {
+    const seen = new Set();
+    const candidates = [];
+
+    const addKey = (candidateKey) => {
+      if (!candidateKey || typeof candidateKey !== "string") {
+        return;
+      }
+
+      try {
+        const normalizedKey = encryptionUtils.normalizeKey(candidateKey);
+        if (!seen.has(normalizedKey)) {
+          seen.add(normalizedKey);
+          candidates.push(normalizedKey);
+        }
+      } catch (err) {
+        console.warn("Skipping invalid decryption key", err);
+      }
+    };
+
+    addKey(encryptionUtils.getConversationKey(conversationId));
+    addKey(encryptionUtils.generateFallbackKey(conversationId));
+    extraKeys.forEach(addKey);
+
+    return candidates;
+  },
+
+  /**
+   * Heuristic used to avoid showing ciphertext for plaintext legacy messages.
+   */
+  isLikelyEncryptedMessage: (content) => {
+    if (typeof content !== "string" || content.length < 40) {
+      return false;
+    }
+
+    return /^[A-Za-z0-9+/=]+$/.test(content);
+  },
+
+  /**
    * Generate a deterministic fallback key based on conversation ID
    * Used when proper encryption keys aren't available
    */
