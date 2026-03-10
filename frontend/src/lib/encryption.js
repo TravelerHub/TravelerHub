@@ -151,7 +151,7 @@ export const encryptionUtils = {
       }
 
       // Decode the decrypted bytes to UTF-8 string
-      const decoded = nacl.util.encodeUTF8(decrypted);
+      const decoded = nacl.util.decodeUTF8(decrypted);
       return decoded;
     } catch (err) {
       console.error("Decryption error:", err);
