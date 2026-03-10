@@ -1,3 +1,5 @@
+import base64
+
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, Depends
 from typing import Dict, Set, List, Optional
 import asyncio
@@ -133,7 +135,12 @@ def get_session_key(
             # Fallback: return a deterministic key based on conversation_id
             # This is NOT secure but allows testing without database tables
             import hashlib
-            fallback_key = hashlib.sha256(conversation_id.encode()).hexdigest()[:32]
+            key_bytes = bytearray(32)
+            id_bytes = (conversation_id + "_key").encode("utf-8")
+            for j in range(32):
+                id_byte = id_bytes[j % len(id_bytes)]
+                key_bytes[j] = ((id_byte * 7 + j * 13) ^ (j * 23)) & 0xFF
+            fallback_key = base64.b64encode(bytes(key_bytes)).decode("utf-8")
             return {"session_key": fallback_key, "warning": "Using fallback encryption key - enable database tables for full security"}
         
         encrypted_key = existing.data[0]["encrypted_key"]
@@ -155,7 +162,12 @@ def get_session_key(
     except Exception as e:
         # Fallback: return a deterministic key based on conversation_id
         import hashlib
-        fallback_key = hashlib.sha256(conversation_id.encode()).hexdigest()[:32]
+        key_bytes = bytearray(32)
+        id_bytes = (conversation_id + "_key").encode("utf-8")
+        for j in range(32):
+            id_byte = id_bytes[j % len(id_bytes)]
+            key_bytes[j] = ((id_byte * 7 + j * 13) ^ (j * 23)) & 0xFF
+        fallback_key = base64.b64encode(bytes(key_bytes)).decode("utf-8")
         return {"session_key": fallback_key, "warning": "Using fallback encryption key - enable database tables for full security"}
 
 
