@@ -81,7 +81,7 @@ export default function MessageBubble({ msg, isMine, conversationId }) {
       >
         <div className="text-gray-800 whitespace-pre-wrap break-words">
           {decryptError ? (
-            <span className="text-red-500 italic">Failed to decrypt message</span>
+            <span className="text-red-500 italic">Legacy encrypted message cannot be decrypted</span>
           ) : (
             decryptedContent || "[Empty message]"
           )}

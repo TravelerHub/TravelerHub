@@ -39,6 +39,63 @@ async def broadcast_to_conversation(conversation_id: str, message: dict):
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
+
+def build_fallback_session_key(conversation_id: str) -> str:
+    key_bytes = bytearray(32)
+    id_bytes = (conversation_id + "_key").encode("utf-8")
+    for j in range(32):
+        id_byte = id_bytes[j % len(id_bytes)]
+        key_bytes[j] = ((id_byte * 7 + j * 13) ^ (j * 23)) & 0xFF
+    return base64.b64encode(bytes(key_bytes)).decode("utf-8")
+
+
+def ensure_user_keypair_record(user_id: str) -> dict:
+    keypair = supabase.from_("user_keypair").select("public_key, private_key").eq("user_id", user_id).execute()
+
+    if keypair.data:
+        return keypair.data[0]
+
+    public_key, private_key = generate_keypair()
+    supabase.from_("user_keypair").insert({
+        "user_id": user_id,
+        "public_key": public_key,
+        "private_key": private_key
+    }).execute()
+
+    return {
+        "public_key": public_key,
+        "private_key": private_key,
+    }
+
+
+def create_and_store_conversation_session_key(conversation_id: str) -> str:
+    session_key = generate_conversation_key()
+
+    members = (
+        supabase
+        .from_("group_member")
+        .select("user_id")
+        .eq("conversation_id", conversation_id)
+        .is_("left_datetime", None)
+        .execute()
+    )
+
+    if not members.data:
+        raise HTTPException(status_code=500, detail="No members found in conversation")
+
+    for member in members.data:
+        member_id = member["user_id"]
+        member_keypair = ensure_user_keypair_record(member_id)
+        encrypted_key = encrypt_key_for_user(session_key, member_keypair["public_key"])
+
+        supabase.from_("conversation_session_key").insert({
+            "conversation_id": conversation_id,
+            "user_id": member_id,
+            "encrypted_key": encrypted_key
+        }).execute()
+
+    return session_key
+
 # Helper to check membership
 def ensure_conversation_member(conversation_id: str, user_id: str):
     membership = (
@@ -102,7 +159,9 @@ def get_session_key(
     ensure_conversation_member(conversation_id, current_user["id"])
     
     try:
-        # Check if session key exists
+        ensure_user_keypair_record(current_user["id"])
+
+        # Check if session key exists for current user
         existing = (
             supabase
             .from_("conversation_session_key")
@@ -111,47 +170,36 @@ def get_session_key(
             .eq("user_id", current_user["id"])
             .execute()
         )
-        
+
         if not existing.data:
-            # Try to create one
-            try:
-                session_key = generate_conversation_key()
-                
-                # Get member's public key
-                member_keypair = (
+            conversation_keys = (
+                supabase
+                .from_("conversation_session_key")
+                .select("user_id")
+                .eq("conversation_id", conversation_id)
+                .execute()
+            )
+
+            if not conversation_keys.data:
+                create_and_store_conversation_session_key(conversation_id)
+                existing = (
                     supabase
-                    .from_("user_keypair")
-                    .select("private_key")
+                    .from_("conversation_session_key")
+                    .select("*")
+                    .eq("conversation_id", conversation_id)
                     .eq("user_id", current_user["id"])
                     .execute()
                 )
-                
-                if member_keypair.data:
-                    private_key = member_keypair.data[0]["private_key"]
-                    return {"session_key": session_key}
-            except:
-                pass
-            
-            # Fallback: return a deterministic key based on conversation_id
-            # This is NOT secure but allows testing without database tables
-            import hashlib
-            key_bytes = bytearray(32)
-            id_bytes = (conversation_id + "_key").encode("utf-8")
-            for j in range(32):
-                id_byte = id_bytes[j % len(id_bytes)]
-                key_bytes[j] = ((id_byte * 7 + j * 13) ^ (j * 23)) & 0xFF
-            fallback_key = base64.b64encode(bytes(key_bytes)).decode("utf-8")
-            return {"session_key": fallback_key, "warning": "Using fallback encryption key - enable database tables for full security"}
+
+            if not existing.data:
+                fallback_key = build_fallback_session_key(conversation_id)
+                return {"session_key": fallback_key, "warning": "Using fallback encryption key - user session key unavailable"}
         
         encrypted_key = existing.data[0]["encrypted_key"]
         
         # Get user's private key to decrypt
-        user_keypair = supabase.from_("user_keypair").select("private_key").eq("user_id", current_user["id"]).execute()
-        
-        if not user_keypair.data:
-            raise HTTPException(status_code=500, detail="User keypair not found")
-        
-        private_key = user_keypair.data[0]["private_key"]
+        user_keypair = ensure_user_keypair_record(current_user["id"])
+        private_key = user_keypair["private_key"]
         
         # Decrypt the session key
         session_key = decrypt_key_for_user(encrypted_key, private_key)
@@ -160,14 +208,7 @@ def get_session_key(
     except HTTPException:
         raise
     except Exception as e:
-        # Fallback: return a deterministic key based on conversation_id
-        import hashlib
-        key_bytes = bytearray(32)
-        id_bytes = (conversation_id + "_key").encode("utf-8")
-        for j in range(32):
-            id_byte = id_bytes[j % len(id_bytes)]
-            key_bytes[j] = ((id_byte * 7 + j * 13) ^ (j * 23)) & 0xFF
-        fallback_key = base64.b64encode(bytes(key_bytes)).decode("utf-8")
+        fallback_key = build_fallback_session_key(conversation_id)
         return {"session_key": fallback_key, "warning": "Using fallback encryption key - enable database tables for full security"}
 
 
@@ -195,57 +236,7 @@ async def create_session_key(
         
         if existing.data:
             return {"message": "Session key already exists for this conversation"}
-        
-        # Generate new session key
-        session_key = generate_conversation_key()
-        
-        # Get all members of the conversation
-        members = (
-            supabase
-            .from_("group_member")
-            .select("user_id")
-            .eq("conversation_id", conversation_id)
-            .is_("left_datetime", None)
-            .execute()
-        )
-        
-        if not members.data:
-            raise HTTPException(status_code=500, detail="No members found in conversation")
-        
-        # For each member, encrypt the session key with their public key and store
-        for member in members.data:
-            member_id = member["user_id"]
-            
-            # Get member's public key
-            member_keypair = (
-                supabase
-                .from_("user_keypair")
-                .select("public_key")
-                .eq("user_id", member_id)
-                .execute()
-            )
-            
-            if not member_keypair.data:
-                # Create keypair for member if it doesn't exist
-                pub_key, priv_key = generate_keypair()
-                supabase.from_("user_keypair").insert({
-                    "user_id": member_id,
-                    "public_key": pub_key,
-                    "private_key": priv_key
-                }).execute()
-                member_public_key = pub_key
-            else:
-                member_public_key = member_keypair.data[0]["public_key"]
-            
-            # Encrypt session key for this member
-            encrypted_key = encrypt_key_for_user(session_key, member_public_key)
-            
-            # Store encrypted key
-            supabase.from_("conversation_session_key").insert({
-                "conversation_id": conversation_id,
-                "user_id": member_id,
-                "encrypted_key": encrypted_key
-            }).execute()
+        create_and_store_conversation_session_key(conversation_id)
         
         return {"message": "Session key created and distributed to all members"}
     except HTTPException:

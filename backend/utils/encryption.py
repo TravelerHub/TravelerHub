@@ -6,13 +6,10 @@ Uses NaCl (libsodium) for hybrid encryption:
 """
 
 import base64
-import os
 from typing import Tuple
-from nacl.public import PrivateKey, PublicKey, Box
+from nacl.public import PrivateKey, PublicKey, SealedBox
 from nacl.secret import SecretBox
 from nacl.utils import random
-from nacl.pwhash import argon2i
-import nacl.bindings
 
 
 def generate_keypair() -> Tuple[str, str]:
@@ -51,7 +48,8 @@ def encrypt_key_for_user(session_key: str, user_public_key: str) -> str:
     public_key_bytes = base64.b64decode(user_public_key)
     
     public_key = PublicKey(public_key_bytes)
-    encrypted = public_key.encrypt(key_bytes)
+    sealed_box = SealedBox(public_key)
+    encrypted = sealed_box.encrypt(key_bytes)
     
     return base64.b64encode(bytes(encrypted)).decode('utf-8')
 
@@ -68,7 +66,8 @@ def decrypt_key_for_user(encrypted_key: str, user_private_key: str) -> str:
     private_key_bytes = base64.b64decode(user_private_key)
     
     private_key = PrivateKey(private_key_bytes)
-    decrypted = private_key.decrypt(encrypted_bytes)
+    sealed_box = SealedBox(private_key)
+    decrypted = sealed_box.decrypt(encrypted_bytes)
     
     return base64.b64encode(decrypted).decode('utf-8')
 
