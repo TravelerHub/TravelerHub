@@ -35,7 +35,7 @@ function Login() {
       // Store the token for authenticated requests
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("user", JSON.stringify(data.user));
-      navigate("/dashboard");
+      navigate("/welcome");
     }
     else {
       setError(data.detail || "Error logging in. Please try again!");
