@@ -123,6 +123,13 @@ function Navbar_Dashboard() {
             </div>
           </div>
 
+          {/* Calendar */}
+          <div className="relative group">
+            <button
+              onClick={() => navigate("/calendar")}
+              className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 transition"
+            >
+              <span className="text-lg">📅</span>
           
 
           {/* Finance */}
@@ -137,6 +144,11 @@ function Navbar_Dashboard() {
               bg-gray-900 text-white text-xs rounded px-2 py-1
               opacity-0 invisible group-hover:opacity-100 group-hover:visible transition
               whitespace-nowrap z-50">
+              Calendar
+            </div>
+          </div>
+
+
               Finance
             </div>
           </div>
