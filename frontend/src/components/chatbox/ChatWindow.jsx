@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { Avatar, EmptyState } from "./ui";
 import MessageList from "./MessagerList";
+import { chatApi } from "./chatAPI";
+import { encryptionUtils } from "../../lib/encryption";
 
 export default function ChatWindow({
   loading,
@@ -14,63 +16,84 @@ export default function ChatWindow({
   const listRef = useRef(null);
   const [text, setText] = useState("");
   const [localMessages, setLocalMessages] = useState(messages || []);
+  const [encryptionError, setEncryptionError] = useState(null);
 
   const sendMessage = async () => {
     if (!text.trim()) return;
-    const newMsg = {
-      from_user: currentUserId,
-      content: text,
-      sent_datetime: new Date().toISOString(),
-      conversation_id: conversationID
-    };
-    
+
     try {
-      const res = await fetch("http://localhost:8000/api/conversations/" + conversationID + "/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newMsg)
-      });
-      if (!res.ok) throw new Error("Failed to send message");
+      setEncryptionError(null);
+      const sessionKey = encryptionUtils.getStableConversationKey(conversationID);
+      
+      // Final validation
+      if (typeof sessionKey !== "string" || sessionKey.length < 10) {
+        throw new Error(`Invalid session key: ${typeof sessionKey}, length: ${sessionKey?.length || 0}`);
+      }
+      
+      await chatApi.sendMessage(conversationID, text);
       setText("");
     } catch (err) {
-      alert(err.message);
+      console.error("Send error:", err);
+      const errorMsg = err.message || "Failed to send message";
+      setEncryptionError(errorMsg);
+      alert(`Send Error: ${errorMsg}`);
     }
   };
 
   useEffect(() => {
-  setLocalMessages(messages || []);
-}, [messages, conversationID]);
+    setLocalMessages(messages || []);
+  }, [messages, conversationID]);
 
-// WebSocket for real-time updates
-useEffect(() => {
-  if (!conversationID) return;
+  // Initialize encryption key for this conversation
+  useEffect(() => {
+    if (!conversationID) return;
 
-  const ws = new WebSocket(`ws://localhost:8000/api/ws/conversations/${conversationID}`);
+    try {
+      encryptionUtils.getStableConversationKey(conversationID);
+      setEncryptionError(null);
+    } catch (err) {
+      console.error("Encryption initialization error:", err);
+    }
+  }, [conversationID]);
 
-  ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    setLocalMessages((prev) => {
-      if (prev.some((m) => m.message_id === msg.message_id)) return prev;
-      return [...prev, msg];
-    });
-  };
+  // WebSocket for real-time updates
+  useEffect(() => {
+    if (!conversationID) return;
 
-  // optional keepalive (your backend waits for receive_text)
-  const ping = setInterval(() => {
-    if (ws.readyState === WebSocket.OPEN) ws.send("ping");
-  }, 25000);
+    const ws = new WebSocket(`ws://127.0.0.1:8000/api/ws/conversations/${conversationID}`);
 
-  return () => {
-    clearInterval(ping);
-    ws.close();
-  };
-}, [conversationID]);
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      setLocalMessages((prev) => {
+        if (prev.some((m) => m.message_id === msg.message_id)) return prev;
+        return [...prev, msg];
+      });
+    };
+
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
+
+    ws.onclose = () => {
+      console.log("WebSocket closed");
+    };
+
+    // optional keepalive (your backend waits for receive_text)
+    const ping = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) ws.send("ping");
+    }, 25000);
+
+    return () => {
+      clearInterval(ping);
+      ws.close();
+    };
+  }, [conversationID]);
 
   // scroll to bottom on new messages
   useEffect(() => {
     if (!listRef.current) return;
     listRef.current.scrollTop = listRef.current.scrollHeight;
-  }, [messages?.length]);
+  }, [localMessages?.length]);
 
   const subtitle = useMemo(() => {
     const others = (members || []).filter((u) => u.id !== currentUserId);
@@ -89,6 +112,13 @@ useEffect(() => {
         </div>
       </div>
 
+      {/* Encryption Status */}
+      {encryptionError && (
+        <div className="p-2 bg-yellow-50 border-b border-yellow-200 text-sm text-yellow-800">
+          ⚠️ {encryptionError}
+        </div>
+      )}
+
       {/* Body */}
       <div ref={listRef} className="flex-1 overflow-auto p-3 bg-gray-50">
         {loading ? (
@@ -100,7 +130,11 @@ useEffect(() => {
         ) : error ? (
           <EmptyState title="Could not load messages" subtitle={error} />
         ) : (
-          <MessageList messages={localMessages} currentUserId={currentUserId} />
+          <MessageList 
+            messages={localMessages} 
+            currentUserId={currentUserId}
+            conversationId={conversationID}
+          />
         )}
       </div>
 
