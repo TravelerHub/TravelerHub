@@ -480,7 +480,7 @@ def get_messages(
         resp = (
             supabase
             .from_("message")
-            .select("message_id, from_user, content, sent_datetime, conversation_id")
+            .select("message_id, from_user, content, sent_datetime, conversation_id, is_encrypted")
             .eq("conversation_id", conversation_id)
             .order("sent_datetime", desc=False)
             .execute()
@@ -532,7 +532,8 @@ async def post_message(
             "from_user": current_user["id"], # Force sender to be the current user
             "content": payload.content,
             "sent_datetime": payload.sent_datetime.replace(tzinfo=None).isoformat(),
-            "conversation_id": conversation_id
+            "conversation_id": conversation_id,
+            "is_encrypted": payload.is_encrypted if hasattr(payload, 'is_encrypted') else True
         }
 
         resp = supabase.from_("message").insert(new_message).execute()
