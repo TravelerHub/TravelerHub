@@ -12,9 +12,11 @@
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",
     "@heroicons/react": "^2.2.0",
+    "@lottiefiles/react-lottie-player": "^3.6.0",
     "@mapbox/mapbox-sdk": "^0.16.2",
     "@supabase/supabase-js": "^2.87.1",
     "@tailwindcss/vite": "^4.1.17",
+    "lottie-react": "^2.4.1",
     "mapbox-gl": "^3.18.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

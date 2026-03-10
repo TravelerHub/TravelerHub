@@ -18,7 +18,7 @@ import Expenses from "./app/pages/Expenses.jsx";
 import Message from "./app/pages/Message.jsx";
 import Booking from "./app/pages/Booking.jsx";
 import Finance from "./app/pages/Finance.jsx";
-
+import WelcomeAfterLogin from "./app/pages/WelcomeAfterLogin.jsx";
 
 const router = createBrowserRouter([
     { path: "/", element: <Landing /> },
@@ -39,6 +39,8 @@ const router = createBrowserRouter([
     { path: "/message", element: <Message /> },
     {path: "/booking", element: <Booking /> },
     { path: "/finance", element: <Finance /> }
+    {path: "/messagetesting", element: <MessageTesting /> },
+    {path: "/welcome", element: <WelcomeAfterLogin /> }
 ]);
 
 export default router;
