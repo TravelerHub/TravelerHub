@@ -1,25 +1,30 @@
+const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_PLACES_API_KEY;
+
+// Forward geocoding: text query → coordinates
+// Returns same shape as before so callers in Navigation.jsx don't change
 export async function searchPlaces(query, options = {}) {
   try {
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?` +
-      `limit=${options.limit || 5}&` +
-      `access_token=${import.meta.env.VITE_MAPBOX_TOKEN}`;
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?` +
+      `address=${encodeURIComponent(query)}&` +
+      `key=${GOOGLE_API_KEY}`;
 
     const response = await fetch(url);
-    
-    if (!response.ok) {
-      throw new Error(`Geocoding API error: ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`Geocoding API error: ${response.status}`);
 
     const data = await response.json();
+    if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+      throw new Error(`Geocoding failed: ${data.status}`);
+    }
 
-    return data.features.map(feature => ({
-      id: feature.id,
-      name: feature.place_name,
-      shortName: feature.text,
-      coordinates: feature.geometry.coordinates,
-      category: feature.place_type[0],
-      address: feature.properties.address || '',
-      context: feature.context || []
+    const limit = options.limit || 5;
+    return (data.results || []).slice(0, limit).map(result => ({
+      id: result.place_id,
+      name: result.formatted_address,
+      shortName: result.address_components?.[0]?.long_name || result.formatted_address,
+      coordinates: [result.geometry.location.lng, result.geometry.location.lat], // [lng, lat]
+      category: result.types?.[0] || 'address',
+      address: result.formatted_address,
+      context: result.address_components || [],
     }));
   } catch (error) {
     console.error('Geocoding search error:', error);
@@ -27,29 +32,28 @@ export async function searchPlaces(query, options = {}) {
   }
 }
 
+// Alias used in some callers
+export const searchPlacesByText = searchPlaces;
+
+// Reverse geocoding: [lng, lat] coordinates → place name
 export async function getPlaceName(coordinates) {
   try {
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${coordinates[0]},${coordinates[1]}.json?` +
-      `limit=1&` +
-      `access_token=${import.meta.env.VITE_MAPBOX_TOKEN}`;
+    // coordinates is [lng, lat] (Mapbox convention) — Google expects lat,lng
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?` +
+      `latlng=${coordinates[1]},${coordinates[0]}&` +
+      `key=${GOOGLE_API_KEY}`;
 
     const response = await fetch(url);
-    
-    if (!response.ok) {
-      throw new Error(`Reverse geocoding error: ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`Reverse geocoding error: ${response.status}`);
 
     const data = await response.json();
+    if (data.status !== 'OK' || data.results.length === 0) return null;
 
-    if (data.features.length === 0) {
-      return null;
-    }
-
-    const feature = data.features[0];
+    const result = data.results[0];
     return {
-      name: feature.place_name,
-      coordinates: feature.geometry.coordinates,
-      address: feature.properties.address || ''
+      name: result.formatted_address,
+      coordinates: [result.geometry.location.lng, result.geometry.location.lat],
+      address: result.formatted_address,
     };
   } catch (error) {
     console.error('Reverse geocoding error:', error);
@@ -57,28 +61,34 @@ export async function getPlaceName(coordinates) {
   }
 }
 
+// Proximity-biased search: query near a [lng, lat] point
 export async function searchNearLocation(query, proximity) {
   try {
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?` +
-      `proximity=${proximity[0]},${proximity[1]}&` +
-      `limit=10&` +
-      `access_token=${import.meta.env.VITE_MAPBOX_TOKEN}`;
+    // Use Google Geocoding with a location bias bounding box (~10km around proximity)
+    const [lng, lat] = proximity;
+    const delta = 0.1; // ~11km
+    const bounds = `${lat - delta},${lng - delta}|${lat + delta},${lng + delta}`;
+
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?` +
+      `address=${encodeURIComponent(query)}&` +
+      `bounds=${encodeURIComponent(bounds)}&` +
+      `key=${GOOGLE_API_KEY}`;
 
     const response = await fetch(url);
-    
-    if (!response.ok) {
-      throw new Error(`Proximity search error: ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`Proximity search error: ${response.status}`);
 
     const data = await response.json();
+    if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+      throw new Error(`Proximity search failed: ${data.status}`);
+    }
 
-    return data.features.map(feature => ({
-      id: feature.id,
-      name: feature.place_name,
-      shortName: feature.text,
-      coordinates: feature.geometry.coordinates,
-      category: feature.place_type[0],
-      address: feature.properties.address || ''
+    return (data.results || []).slice(0, 10).map(result => ({
+      id: result.place_id,
+      name: result.formatted_address,
+      shortName: result.address_components?.[0]?.long_name || result.formatted_address,
+      coordinates: [result.geometry.location.lng, result.geometry.location.lat],
+      category: result.types?.[0] || 'address',
+      address: result.formatted_address,
     }));
   } catch (error) {
     console.error('Proximity search error:', error);

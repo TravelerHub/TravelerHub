@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { analyzeReceipt, analyzeDocument } from "../../services/visionService.js";
+import { saveChecklist, toggleChecklistItem } from "../../services/checklistService.js";
 
 import {
   CameraIcon,
@@ -11,6 +12,7 @@ import {
   PencilIcon,
   DocumentTextIcon,
   ReceiptPercentIcon,
+  MapPinIcon,
 } from "@heroicons/react/24/outline";
 
 function Expenses() {
@@ -31,6 +33,11 @@ function Expenses() {
   const [result, setResult] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState(null);
+
+  // Checklist state
+  const [checklistChecked, setChecklistChecked] = useState({});
+  const [savingChecklist, setSavingChecklist] = useState(false);
+  const [checklistSaved, setChecklistSaved] = useState(false);
 
   // Handle file selection (from gallery)
   const handleFileSelect = (e) => {
@@ -432,12 +439,71 @@ function Expenses() {
                     <div className="mt-2 space-y-2">
                       {result.checklist_items.map((item, index) => (
                         <div key={index} className="flex items-start gap-2">
-                          <input type="checkbox" className="mt-1 rounded" />
-                          <span className="text-sm text-gray-700">{item}</span>
+                          <input
+                            type="checkbox"
+                            className="mt-1 rounded"
+                            checked={checklistChecked[index] || false}
+                            onChange={(e) =>
+                              setChecklistChecked(prev => ({ ...prev, [index]: e.target.checked }))
+                            }
+                          />
+                          <span className={`text-sm ${checklistChecked[index] ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
+                            {item}
+                          </span>
                         </div>
                       ))}
                     </div>
+
+                    {/* Save Checklist Button */}
+                    {!checklistSaved ? (
+                      <button
+                        onClick={async () => {
+                          setSavingChecklist(true);
+                          try {
+                            await saveChecklist({
+                              document_title: result.title || 'Untitled Document',
+                              document_type: result.document_type || 'unknown',
+                              source_location: result.details?.location || null,
+                              source_address: result.details?.address || null,
+                              items: result.checklist_items,
+                            });
+                            setChecklistSaved(true);
+                          } catch (err) {
+                            console.error('Save checklist error:', err);
+                            alert('Failed to save checklist.');
+                          } finally {
+                            setSavingChecklist(false);
+                          }
+                        }}
+                        disabled={savingChecklist}
+                        className="w-full mt-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition text-sm disabled:bg-gray-400 flex items-center justify-center gap-2"
+                      >
+                        {savingChecklist ? (
+                          <><ArrowPathIcon className="w-4 h-4 animate-spin" /> Saving...</>
+                        ) : (
+                          <><CheckIcon className="w-4 h-4" /> Save Checklist</>
+                        )}
+                      </button>
+                    ) : (
+                      <p className="mt-3 text-sm text-green-600 font-medium flex items-center gap-1">
+                        <CheckIcon className="w-4 h-4" /> Checklist saved!
+                      </p>
+                    )}
                   </div>
+                )}
+
+                {/* Navigate Here — if document has a location/address */}
+                {result.details && (result.details.location || result.details.address) && (
+                  <button
+                    onClick={() => {
+                      const addr = result.details.address || result.details.location;
+                      navigate(`/navigation?destination=${encodeURIComponent(addr)}`);
+                    }}
+                    className="w-full mt-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition flex items-center justify-center gap-2"
+                  >
+                    <MapPinIcon className="w-5 h-5" />
+                    Navigate to this Location
+                  </button>
                 )}
               </div>
             )}

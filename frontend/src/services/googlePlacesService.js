@@ -89,7 +89,7 @@ export const getPlaceDetails = async (placeId) => {
       method: 'GET',
       headers: {
         'X-Goog-Api-Key': GOOGLE_API_KEY,
-        'X-Goog-FieldMask': 'id,displayName,formattedAddress,location,rating,userRatingCount,priceLevel,types,photos,regularOpeningHours,internationalPhoneNumber,websiteUri,reviews'
+        'X-Goog-FieldMask': 'id,displayName,formattedAddress,location,rating,userRatingCount,priceLevel,types,photos,regularOpeningHours,internationalPhoneNumber,websiteUri,reviews,googleMapsUri'
       }
     });
 
@@ -125,7 +125,8 @@ export const getPlaceDetails = async (placeId) => {
         rating: review.rating,
         text: review.text?.text || '',
         time: review.publishTime
-      })) : []
+      })) : [],
+      googleMapsUri: place.googleMapsUri || null,
     };
   } catch (error) {
     console.error('Error getting place details:', error);
@@ -208,4 +209,34 @@ export const getPriceLevelSymbol = (priceLevel) => {
     'PRICE_LEVEL_VERY_EXPENSIVE': '$$$$'
   };
   return levels[priceLevel] || '';
+};
+
+/**
+ * Search for hidden gems — lesser-known but high-quality places nearby.
+ * Searches for scenic viewpoints, local favorites, and unique spots,
+ * then filters for high rating + low review count (not tourist-packed).
+ */
+export const searchHiddenGems = async (latitude, longitude, radius = 3000) => {
+  const queries = ['scenic viewpoint', 'local favorite spot', 'hidden gem'];
+
+  try {
+    const allResults = await Promise.all(
+      queries.map(q => searchPlacesByText(q, latitude, longitude))
+    );
+
+    // Flatten, deduplicate, and filter for quality + low popularity
+    const seen = new Set();
+    return allResults
+      .flat()
+      .filter(p => {
+        if (seen.has(p.id)) return false;
+        seen.add(p.id);
+        // High quality but not tourist-overrun
+        return (p.rating || 0) >= 4.0 && (p.ratingCount || 0) < 500;
+      })
+      .slice(0, 10);
+  } catch (error) {
+    console.error('Error searching hidden gems:', error);
+    return [];
+  }
 };

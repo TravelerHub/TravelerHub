@@ -1,16 +1,18 @@
-import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { haversineDistance } from '../../utils/haversine';
 import Map from '../../components/Map';
 import { searchPlaces, getPlaceName } from '../../services/geocodingService';
 import { getOptimizedRoute } from '../../services/routeService';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
-import { 
-  searchNearbyPlaces, 
-  searchPlacesByText, 
+import {
+  searchNearbyPlaces,
+  searchPlacesByText,
   getPlaceDetails,
   getPhotoUrl,
-  getPriceLevelSymbol 
+  getPriceLevelSymbol,
+  searchHiddenGems,
 } from '../../services/googlePlacesService';
 
 // Add these new icons
@@ -49,7 +51,12 @@ import {
   CheckIcon,
   FireIcon,
   ArrowsRightLeftIcon,
-  ChevronRightIcon  
+  ChevronRightIcon,
+  ArrowRightIcon,
+  ArrowLeftIcon,
+  ArrowUpIcon,
+  ArrowUturnLeftIcon,
+  ArrowUturnRightIcon,
 } from '@heroicons/react/24/outline';
 
 // Import places service
@@ -101,7 +108,8 @@ function Navigation() {
     { id: 'hotels', label: 'Hotels', Icon: BuildingOfficeIcon },
     { id: 'attractions', label: 'Attractions', Icon: MapIcon },
     { id: 'gas_stations', label: 'Gas', Icon: BoltIcon },
-    { id: 'parking', label: 'Parking', Icon: Square3Stack3DIcon }
+    { id: 'parking', label: 'Parking', Icon: Square3Stack3DIcon },
+    { id: 'hidden_gems', label: 'Hidden Gems', Icon: FireIcon }
   ];
 
 
@@ -109,6 +117,30 @@ function Navigation() {
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [showPlaceDetails, setShowPlaceDetails] = useState(false);
   const [loadingPlaceDetails, setLoadingPlaceDetails] = useState(false);
+
+  // Transport mode state
+  const [transportMode, setTransportMode] = useState('driving');
+
+  // User preferences state
+  const [userPreferences, setUserPreferences] = useState(null);
+
+  // Auto-suggest places state
+  const [suggestedPlaces, setSuggestedPlaces] = useState([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+  // Real-time navigation state
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [userPosition, setUserPosition] = useState(null);
+  const stepListRef = useRef(null);
+  const [searchParams] = useSearchParams();
+
+  // Custom pins state (user-placed pins via map click)
+  const [customPins, setCustomPins] = useState([]);
+  const [showPinPrompt, setShowPinPrompt] = useState(false);
+  const [pendingPin, setPendingPin] = useState(null);
+  const [pinLabel, setPinLabel] = useState('');
+  const [addPinMode, setAddPinMode] = useState(false);
 
   // Load saved routes on mount
   useEffect(() => {
@@ -119,11 +151,173 @@ function Navigation() {
   useEffect(() => {
     // Make function available to map markers
     window.handleViewPlaceDetails = handleViewPlaceDetails;
-    
+
     return () => {
       delete window.handleViewPlaceDetails;
     };
   }, []);
+
+  // Fetch user preferences on mount
+  useEffect(() => {
+    const fetchPreferences = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const response = await fetch('http://localhost:8000/preferences/me', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const prefs = await response.json();
+          setUserPreferences(prefs);
+        }
+        // 401 = expired token; fail silently — navigation works without preferences
+      } catch (error) {
+        console.warn('Could not load preferences:', error.message);
+      }
+    };
+    fetchPreferences();
+  }, []);
+
+  // Auto-suggest places when first marker is added
+  useEffect(() => {
+    if (markers.length === 0) {
+      setSuggestedPlaces([]);
+      return;
+    }
+    if (markers.length === 1 && userPreferences?.preferred_categories?.length > 0) {
+      fetchSuggestedPlaces(markers[0].coordinates);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markers.length, userPreferences]);
+
+  const fetchSuggestedPlaces = async (coordinates) => {
+    const [lng, lat] = coordinates;
+    setLoadingSuggestions(true);
+    try {
+      const categoryTypeMap = {
+        restaurants: 'restaurant',
+        cafes: 'cafe',
+        hotels: 'lodging',
+        attractions: 'tourist_attraction',
+        bars: 'bar',
+        shopping: 'shopping_mall',
+      };
+      const categoriesToFetch = (userPreferences?.preferred_categories || []).slice(0, 3);
+      const results = await Promise.all(
+        categoriesToFetch.map(cat => {
+          const type = categoryTypeMap[cat] || cat;
+          return searchNearbyPlaces(lat, lng, type, 2000);
+        })
+      );
+      // Flatten and deduplicate by id
+      const seen = new Set();
+      const combined = results.flat().filter(p => {
+        if (seen.has(p.id)) return false;
+        seen.add(p.id);
+        return true;
+      });
+      setSuggestedPlaces(combined.slice(0, 8));
+    } catch (error) {
+      console.error('Auto-suggest error:', error);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
+  // ── Real-time navigation handlers ────────────────────────────────
+  const handleStartNavigation = () => {
+    if (!currentRoute || !currentRoute.steps?.length) return;
+    setIsNavigating(true);
+    setCurrentStepIndex(0);
+  };
+
+  const handleExitNavigation = () => {
+    setIsNavigating(false);
+    setCurrentStepIndex(0);
+    setUserPosition(null);
+  };
+
+  // Handle map click — add a custom pin when in pin mode
+  const handleMapClick = useCallback((lngLat) => {
+    if (!addPinMode) return;
+    setPendingPin(lngLat);
+    setPinLabel('');
+    setShowPinPrompt(true);
+    setAddPinMode(false);
+  }, [addPinMode]);
+
+  const handleConfirmPin = () => {
+    if (pendingPin) {
+      setCustomPins(prev => [...prev, {
+        lng: pendingPin.lng,
+        lat: pendingPin.lat,
+        label: pinLabel.trim() || 'My Pin',
+        address: `${pendingPin.lat.toFixed(5)}, ${pendingPin.lng.toFixed(5)}`,
+      }]);
+    }
+    setShowPinPrompt(false);
+    setPendingPin(null);
+    setPinLabel('');
+  };
+
+  const handleRemovePin = (index) => {
+    setCustomPins(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUserPositionUpdate = useCallback((pos) => {
+    setUserPosition(pos);
+
+    if (!currentRoute?.steps) return;
+
+    const userCoord = [pos.lng, pos.lat];
+    const steps = currentRoute.steps;
+
+    // Determine proximity threshold based on transport mode
+    const threshold = transportMode === 'walking' ? 30
+      : transportMode === 'cycling' ? 50
+      : 100; // driving / transit
+
+    // Check if user has reached the next step (or any step ahead)
+    setCurrentStepIndex(prev => {
+      for (let i = prev + 1; i < steps.length; i++) {
+        if (steps[i].start_location) {
+          const dist = haversineDistance(userCoord, steps[i].start_location);
+          if (dist < threshold) {
+            // Auto-scroll step list to current step
+            if (stepListRef.current) {
+              const stepEl = stepListRef.current.querySelector(`[data-step-index="${i}"]`);
+              if (stepEl) stepEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            return i;
+          }
+        }
+      }
+      return prev;
+    });
+  }, [currentRoute, transportMode]);
+
+  // Handle ?destination= query param from Vision → Navigation link
+  useEffect(() => {
+    const dest = searchParams.get('destination');
+    if (dest) {
+      // Auto-search and add as second marker
+      import('../../services/geocodingService').then(({ searchPlaces }) => {
+        searchPlaces(dest).then(results => {
+          if (results?.length > 0) {
+            const place = results[0];
+            setMarkers(prev => [
+              ...prev,
+              {
+                coordinates: place.coordinates || [place.lng, place.lat],
+                title: place.name || dest,
+                description: place.address || dest,
+              },
+            ]);
+          }
+        });
+      });
+    }
+  }, [searchParams]);
 
   const loadSavedRoutes = async () => {
     try {
@@ -329,13 +523,69 @@ function Navigation() {
 
     try {
       const waypoints = markers.map(m => m.coordinates);
-      const route = await getOptimizedRoute(waypoints);
+      const route = await getOptimizedRoute(waypoints, transportMode);
       setCurrentRoute(route);
+      // Fetch suggestions along the calculated route
+      fetchAlongRouteSuggestions(route);
     } catch (error) {
-      setRouteError('Unable to calculate route. Please try again.');
-      console.error(error);
+      setRouteError(error.message || 'Unable to calculate route. Please try again.');
+      console.error('Route error:', error);
     } finally {
       setRouteLoading(false);
+    }
+  };
+
+  // Fetch interesting places along the calculated route
+  const fetchAlongRouteSuggestions = async (route) => {
+    if (!route?.geometry?.coordinates || !userPreferences?.preferred_categories?.length) return;
+    setLoadingSuggestions(true);
+    try {
+      const coords = route.geometry.coordinates;
+      const numSamples = 5;
+      const samplePoints = [];
+      for (let i = 1; i < numSamples; i++) {
+        const idx = Math.floor((i * coords.length) / (numSamples + 1));
+        samplePoints.push(coords[idx]);
+      }
+
+      const categoryTypeMap = {
+        restaurant: 'restaurant', cafe: 'cafe', lodging: 'lodging',
+        tourist_attraction: 'tourist_attraction', museum: 'museum',
+        park: 'park', shopping_mall: 'shopping_mall',
+      };
+      const topCategories = userPreferences.preferred_categories.slice(0, 2);
+
+      const allResults = await Promise.all(
+        samplePoints.flatMap(([lng, lat]) =>
+          topCategories.map(cat => {
+            const type = categoryTypeMap[cat] || cat;
+            return searchNearbyPlaces(lat, lng, type, 1000);
+          })
+        )
+      );
+
+      // Deduplicate by id
+      const seen = new Set();
+      const combined = allResults.flat().filter(p => {
+        if (seen.has(p.id)) return false;
+        seen.add(p.id);
+        return true;
+      });
+
+      // Apply avoid_types filter
+      const avoidTypes = userPreferences.avoid_types || [];
+      const filtered = combined.filter(p => {
+        if (avoidTypes.length > 0 && p.types) {
+          if (avoidTypes.some(avoid => p.types.includes(avoid))) return false;
+        }
+        return true;
+      });
+
+      setSuggestedPlaces(filtered.slice(0, 10));
+    } catch (error) {
+      console.error('Along-route suggestions error:', error);
+    } finally {
+      setLoadingSuggestions(false);
     }
   };
 
@@ -392,10 +642,17 @@ function Navigation() {
     let results;
     
     if (placesQuery.trim()) {
-      // Text search
-      results = await searchPlacesByText(placesQuery, latitude, longitude);
+      // Text search — enhance with dietary restrictions for food searches
+      let query = placesQuery;
+      if (userPreferences?.dietary_restrictions?.length > 0) {
+        const foodTerms = ['restaurant', 'food', 'eat', 'cafe', 'dining'];
+        if (foodTerms.some(t => query.toLowerCase().includes(t))) {
+          query = `${userPreferences.dietary_restrictions[0]} ${query}`;
+        }
+      }
+      results = await searchPlacesByText(query, latitude, longitude);
     } else {
-      // Category search
+      // Category search — enhance with dietary prefix for restaurant/cafe
       const categoryTypeMap = {
         restaurants: 'restaurant',
         cafes: 'cafe',
@@ -404,13 +661,66 @@ function Navigation() {
         gas_stations: 'gas_station',
         parking: 'parking'
       };
-      
-      const type = categoryTypeMap[selectedCategory] || 'restaurant';
-      results = await searchNearbyPlaces(latitude, longitude, type);
+
+      if (selectedCategory === 'hidden_gems') {
+        results = await searchHiddenGems(latitude, longitude);
+      } else {
+        const isFoodCategory = ['restaurants', 'cafes'].includes(selectedCategory);
+        if (isFoodCategory && userPreferences?.dietary_restrictions?.length > 0) {
+          const dietaryPrefix = userPreferences.dietary_restrictions[0];
+          const typeLabel = selectedCategory === 'cafes' ? 'cafe' : 'restaurant';
+          results = await searchPlacesByText(`${dietaryPrefix} ${typeLabel}`, latitude, longitude);
+        } else {
+          const type = categoryTypeMap[selectedCategory] || 'restaurant';
+          results = await searchNearbyPlaces(latitude, longitude, type);
+        }
+      }
+    }
+
+    // Filter and rank by user preferences
+    if (userPreferences && results.length > 0) {
+      const priceLevelOrder = [
+        'PRICE_LEVEL_FREE',
+        'PRICE_LEVEL_INEXPENSIVE',
+        'PRICE_LEVEL_MODERATE',
+        'PRICE_LEVEL_EXPENSIVE',
+        'PRICE_LEVEL_VERY_EXPENSIVE',
+      ];
+      const maxPriceIndex = {
+        budget: 1,
+        inexpensive: 2,
+        moderate: 3,
+        expensive: 4,
+        any: 5,
+      }[userPreferences.price_preference] ?? 5;
+      const preferredCategories = userPreferences.preferred_categories || [];
+      const avoidTypes = userPreferences.avoid_types || [];
+
+      results = results
+        .filter(p => {
+          // Price filter
+          if (p.priceLevel) {
+            const priceIndex = priceLevelOrder.indexOf(p.priceLevel);
+            if (priceIndex !== -1 && priceIndex > maxPriceIndex) return false;
+          }
+          // Avoid types filter
+          if (avoidTypes.length > 0 && p.types) {
+            if (avoidTypes.some(avoid => p.types.includes(avoid))) return false;
+          }
+          return true;
+        })
+        .map(p => {
+          // Compute preference match score (0-3)
+          let score = 0;
+          if (preferredCategories.some(cat => p.types?.includes(cat))) score += 2;
+          if (p.rating >= 4.0) score += 1;
+          return { ...p, preferenceScore: score };
+        })
+        .sort((a, b) => b.preferenceScore - a.preferenceScore);
     }
 
     setEnhancedPlaces(results);
-    setPlacesResults([]); // Clear Mapbox results
+    setPlacesResults([]); // Clear old results
   } catch (error) {
     console.error('Google Places search error:', error);
   } finally {
@@ -794,6 +1104,66 @@ function Navigation() {
               </div>
             </div>
 
+            {/* Along Your Route / Suggested for You */}
+            {(suggestedPlaces.length > 0 || loadingSuggestions) && markers.length >= 1 && (
+              <div className="bg-white rounded-xl shadow-sm border border-yellow-200 p-6">
+                <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                  <StarIconSolid className="w-5 h-5 text-yellow-500" />
+                  {currentRoute ? 'Along Your Route' : 'Suggested for You'}
+                  <span className="text-xs font-normal text-gray-400 ml-1">Based on your preferences</span>
+                </h2>
+                {loadingSuggestions ? (
+                  <div className="flex items-center justify-center py-4">
+                    <ArrowPathIcon className="w-6 h-6 text-yellow-500 animate-spin" />
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {suggestedPlaces.map((place, index) => (
+                      <div
+                        key={place.id || index}
+                        className="border border-gray-200 rounded-lg p-3 hover:border-yellow-300 hover:bg-yellow-50 transition cursor-pointer group"
+                        onClick={() => handleViewPlaceDetails(place)}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex gap-2 flex-1 min-w-0">
+                            {place.photos && place.photos.length > 0 ? (
+                              <img
+                                src={getPhotoUrl(place.photos[0].name, 60)}
+                                alt={place.name}
+                                className="w-10 h-10 object-cover rounded-lg flex-shrink-0"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <StarIconSolid className="w-5 h-5 text-yellow-400" />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-gray-900 text-sm truncate">
+                                {place.name}
+                              </div>
+                              {place.rating && (
+                                <div className="flex items-center gap-1 mt-0.5">
+                                  <StarIconSolid className="w-3 h-3 text-yellow-400" />
+                                  <span className="text-xs text-gray-600">{place.rating}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleAddPlaceToRoute(place); }}
+                            className="text-yellow-600 hover:text-yellow-700 p-1 hover:bg-yellow-100 rounded transition flex-shrink-0"
+                            title="Add to route"
+                          >
+                            <PlusIcon className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Places Search Card */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <button 
@@ -975,6 +1345,14 @@ function Navigation() {
                                     </span>
                                   </div>
                                 )}
+
+                                {/* Preference match badge */}
+                                {place.preferenceScore >= 2 && (
+                                  <div className="flex items-center gap-1 mt-1">
+                                    <CheckIcon className="w-3 h-3 text-green-600" />
+                                    <span className="text-xs text-green-700 font-medium">Matches preferences</span>
+                                  </div>
+                                )}
                               </div>
 
                               {/* Arrow */}
@@ -996,15 +1374,53 @@ function Navigation() {
                 Quick Actions
               </h3>
               <div className="space-y-2">
-                <button 
+                {/* Transport Mode Selector */}
+                <div className="pb-1">
+                  <p className="text-xs text-gray-500 mb-2 font-medium">Transport Mode</p>
+                  <div className="grid grid-cols-4 gap-1">
+                    {[
+                      { id: 'driving', label: 'Drive', emoji: '🚗' },
+                      { id: 'walking', label: 'Walk', emoji: '🚶' },
+                      { id: 'cycling', label: 'Bike', emoji: '🚲' },
+                      { id: 'transit', label: 'Transit', emoji: '🚌' },
+                    ].map(mode => (
+                      <button
+                        key={mode.id}
+                        onClick={() => setTransportMode(mode.id)}
+                        className={`flex flex-col items-center py-2 px-1 rounded-lg text-xs font-medium transition ${
+                          transportMode === mode.id
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        <span className="text-base">{mode.emoji}</span>
+                        <span>{mode.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
                   onClick={handleGetCurrentLocation}
                   className="w-full flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition text-sm font-medium"
                 >
                   <MapPinIcon className="w-5 h-5" />
                   <span>Add Current Location</span>
                 </button>
-                
-                <button 
+
+                <button
+                  onClick={() => setAddPinMode(true)}
+                  className={`w-full flex items-center gap-2 px-4 py-2 rounded-lg transition text-sm font-medium ${
+                    addPinMode
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                  }`}
+                >
+                  <MapPinIcon className="w-5 h-5" />
+                  <span>{addPinMode ? 'Click map to place pin...' : 'Drop a Pin'}</span>
+                </button>
+
+                <button
                   onClick={handlePlanRoute}
                   disabled={routeLoading || markers.length < 2}
                   className="w-full flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1017,10 +1433,18 @@ function Navigation() {
                   <span>{routeLoading ? 'Planning...' : 'Plan Route'}</span>
                 </button>
 
-                <button 
+                {routeError && (
+                  <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 flex items-start gap-1">
+                    <XMarkIcon className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                    {routeError}
+                  </p>
+                )}
+
+                <button
                   onClick={handleOptimizeRoute}
-                  disabled={markers.length < 3}
+                  disabled={markers.length < 3 || transportMode === 'transit'}
                   className="w-full flex items-center gap-2 px-4 py-2 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={transportMode === 'transit' ? 'Route optimization not available for transit' : ''}
                 >
                   <BoltIcon className="w-5 h-5" />
                   <span>Optimize Route</span>
@@ -1036,6 +1460,48 @@ function Navigation() {
                 </button>
               </div>
             </div>
+
+            {/* Custom Pins Card */}
+            {customPins.length > 0 && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <MapPinIcon className="w-4 h-4 text-amber-500" />
+                  My Pins ({customPins.length})
+                </h3>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {customPins.map((pin, index) => (
+                    <div key={index} className="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 border border-amber-200">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{pin.label}</p>
+                        <p className="text-xs text-gray-500">{pin.address}</p>
+                      </div>
+                      <div className="flex items-center gap-1 ml-2">
+                        <button
+                          onClick={() => {
+                            setMarkers(prev => [...prev, {
+                              coordinates: [pin.lng, pin.lat],
+                              title: pin.label,
+                              description: pin.address,
+                            }]);
+                          }}
+                          className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition"
+                          title="Add as waypoint"
+                        >
+                          <PlusIcon className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleRemovePin(index)}
+                          className="p-1.5 text-red-500 hover:bg-red-100 rounded-lg transition"
+                          title="Remove pin"
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Saved Routes Card */}
             {savedRoutes.length > 0 && (
@@ -1081,16 +1547,96 @@ function Navigation() {
 
           {/* Map */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 h-[700px]">
-              <Map 
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 h-[700px] relative">
+              <Map
                 ref={mapRef}
-                markers={markers} 
-                center={markers.length > 0 ? markers[0].coordinates : [-118.2437, 34.0522]} 
+                markers={markers}
+                center={markers.length > 0 ? markers[0].coordinates : [-118.2437, 34.0522]}
                 zoom={12}
                 route={currentRoute}
                 onMarkerDragEnd={handleMarkerDrag}
                 enhancedPlaces={enhancedPlaces}
+                navigationMode={isNavigating}
+                onUserPositionUpdate={handleUserPositionUpdate}
+                currentStepIndex={currentStepIndex}
+                onMapClick={handleMapClick}
+                customPins={customPins}
               />
+              {/* "Add Pin" mode indicator */}
+              {addPinMode && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-amber-500 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium flex items-center gap-2 animate-pulse">
+                  <MapPinIcon className="w-4 h-4" />
+                  Click on the map to place a pin
+                  <button onClick={() => setAddPinMode(false)} className="ml-2 hover:bg-amber-600 rounded-full p-0.5">
+                    <XMarkIcon className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+              {/* Floating next-instruction card during navigation */}
+              {isNavigating && currentRoute?.steps?.[currentStepIndex] && (() => {
+                const step = currentRoute.steps[currentStepIndex];
+                const nextStep = currentRoute.steps[currentStepIndex + 1];
+                const progress = Math.round(((currentStepIndex + 1) / currentRoute.steps.length) * 100);
+                return (
+                  <div className="absolute top-4 left-4 right-4 z-10">
+                    {/* Progress bar */}
+                    <div className="w-full h-1 bg-gray-200 rounded-full mb-1 overflow-hidden">
+                      <div className="h-full bg-blue-600 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
+                    </div>
+                    {/* Main instruction card */}
+                    <div className="bg-blue-600 rounded-xl shadow-xl p-4 text-white">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-shrink-0 w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                          <ArrowUpIcon className="w-7 h-7" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-base font-bold leading-tight">
+                            {step.maneuver?.instruction || `Step ${currentStepIndex + 1}`}
+                          </p>
+                          <div className="flex items-center gap-3 mt-1 text-blue-100 text-sm">
+                            <span className="font-semibold text-white">
+                              {step.distance >= 1000
+                                ? `${(step.distance / 1000).toFixed(1)} km`
+                                : `${Math.round(step.distance)} m`}
+                            </span>
+                            <span>
+                              {step.duration >= 60
+                                ? `${Math.round(step.duration / 60)} min`
+                                : `${Math.round(step.duration)} sec`}
+                            </span>
+                            <span className="text-xs">Step {currentStepIndex + 1}/{currentRoute.steps.length}</span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={handleExitNavigation}
+                          className="flex-shrink-0 w-9 h-9 bg-white/20 text-white rounded-full flex items-center justify-center hover:bg-white/30 transition"
+                          title="Exit Navigation"
+                        >
+                          <XMarkIcon className="w-5 h-5" />
+                        </button>
+                      </div>
+                      {/* Upcoming step preview */}
+                      {nextStep && (
+                        <div className="mt-3 pt-3 border-t border-white/20 flex items-center gap-2 text-blue-100 text-xs">
+                          <span className="font-medium text-white/70">Then:</span>
+                          <span className="truncate">{nextStep.maneuver?.instruction || 'Continue'}</span>
+                          <span className="ml-auto font-medium whitespace-nowrap">
+                            {nextStep.distance >= 1000
+                              ? `${(nextStep.distance / 1000).toFixed(1)} km`
+                              : `${Math.round(nextStep.distance)} m`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    {/* GPS accuracy indicator */}
+                    {userPosition && (
+                      <div className="mt-1 text-right text-xs text-gray-500">
+                        GPS accuracy: ~{Math.round(userPosition.accuracy || 0)}m
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -1098,10 +1644,29 @@ function Navigation() {
         {/* Route Details */}
         {currentRoute && currentRoute.steps && currentRoute.steps.length > 0 && (
           <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <ArrowsRightLeftIcon className="w-5 h-5 text-blue-600" />
-              Route Overview & Directions
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                <ArrowsRightLeftIcon className="w-5 h-5 text-blue-600" />
+                Route Overview & Directions
+              </h2>
+              {!isNavigating ? (
+                <button
+                  onClick={handleStartNavigation}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-semibold shadow-sm"
+                >
+                  <MapPinIcon className="w-4 h-4" />
+                  Start Navigation
+                </button>
+              ) : (
+                <button
+                  onClick={handleExitNavigation}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-semibold shadow-sm"
+                >
+                  <XMarkIcon className="w-4 h-4" />
+                  Exit Navigation
+                </button>
+              )}
+            </div>
             
             <div className="space-y-6">
               {/* Summary cards */}
@@ -1137,80 +1702,224 @@ function Navigation() {
                 </div>
               </div>
 
+              {/* Journey Segment Summary Bar */}
+              {(() => {
+                // Group consecutive steps by travel_mode into segments
+                const segments = [];
+                let current = null;
+                currentRoute.steps.forEach(step => {
+                  const mode = step.travel_mode || 'DRIVING';
+                  if (!current || current.mode !== mode) {
+                    current = { mode, duration: 0, steps: [] };
+                    segments.push(current);
+                  }
+                  current.duration += step.duration;
+                  current.steps.push(step);
+                });
+
+                const modeIcon = (mode, transit) => {
+                  if (mode === 'TRANSIT' && transit) {
+                    const vt = transit.vehicleType;
+                    if (vt === 'SUBWAY') return '🚇';
+                    if (vt === 'TRAM') return '🚊';
+                    if (vt === 'RAIL') return '🚂';
+                    if (vt === 'FERRY') return '⛴';
+                    return '🚌';
+                  }
+                  if (mode === 'WALKING') return '🚶';
+                  if (mode === 'BICYCLING') return '🚲';
+                  return '🚗';
+                };
+
+                const fmtDur = (s) => {
+                  if (s >= 3600) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+                  return `${Math.round(s / 60)} min`;
+                };
+
+                if (segments.length <= 1) return null;
+
+                return (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Journey Breakdown</p>
+                    <div className="flex items-center flex-wrap gap-2">
+                      {segments.map((seg, i) => {
+                        const firstTransit = seg.steps.find(s => s.transit)?.transit;
+                        const lineName = firstTransit?.lineShortName || firstTransit?.lineName;
+                        return (
+                          <div key={i} className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-full px-3 py-1.5 text-sm shadow-sm">
+                              <span>{modeIcon(seg.mode, firstTransit)}</span>
+                              <span className="font-medium text-gray-800">
+                                {lineName ? `${lineName} · ` : ''}{fmtDur(seg.duration)}
+                              </span>
+                              {firstTransit?.numStops && (
+                                <span className="text-gray-500 text-xs">({firstTransit.numStops} stops)</span>
+                              )}
+                            </div>
+                            {i < segments.length - 1 && (
+                              <ChevronRightIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Turn-by-turn directions */}
               <div className="border-t border-gray-200 pt-6">
                 <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
                   <ArrowsRightLeftIcon className="w-5 h-5 text-blue-600" />
                   Turn-by-Turn Directions ({currentRoute.steps.length} steps)
                 </h3>
-                <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
+                <div ref={stepListRef} className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
                   {currentRoute.steps.map((step, index) => {
-                    // Get maneuver type for icon
-                    const maneuverType = step.maneuver.type;
-                    const modifier = step.maneuver.modifier;
-                    
-                    // Determine icon based on maneuver
-                    let icon = '➡️';
-                    if (maneuverType === 'turn') {
-                      if (modifier === 'left') icon = '⬅️';
-                      else if (modifier === 'right') icon = '➡️';
-                      else if (modifier === 'sharp left') icon = '↖️';
-                      else if (modifier === 'sharp right') icon = '↗️';
-                      else if (modifier === 'slight left') icon = '↰';
-                      else if (modifier === 'slight right') icon = '↱';
-                    } else if (maneuverType === 'depart') {
-                      icon = '🚀';
-                    } else if (maneuverType === 'arrive') {
-                      icon = '🏁';
-                    } else if (maneuverType === 'roundabout') {
-                      icon = '🔄';
-                    } else if (maneuverType === 'merge') {
-                      icon = '🔀';
+                    // Step highlighting for navigation mode
+                    const isCompleted = isNavigating && index < currentStepIndex;
+                    const isCurrent = isNavigating && index === currentStepIndex;
+
+                    // ── TRANSIT STEP CARD ─────────────────────────────────
+                    if (step.travel_mode === 'TRANSIT' && step.transit) {
+                      const t = step.transit;
+                      const vt = t.vehicleType || 'BUS';
+                      const vehicleLabel = { BUS: 'Bus', SUBWAY: 'Subway', TRAM: 'Tram', RAIL: 'Train', FERRY: 'Ferry' }[vt] || vt;
+                      const vehicleEmoji = { BUS: '🚌', SUBWAY: '🚇', TRAM: '🚊', RAIL: '🚂', FERRY: '⛴' }[vt] || '🚌';
+                      const borderCls = { BUS: 'border-amber-300', SUBWAY: 'border-blue-400', TRAM: 'border-green-400', RAIL: 'border-gray-400', FERRY: 'border-cyan-400' }[vt] || 'border-amber-300';
+                      const bgCls = { BUS: 'bg-amber-50', SUBWAY: 'bg-blue-50', TRAM: 'bg-green-50', RAIL: 'bg-gray-50', FERRY: 'bg-cyan-50' }[vt] || 'bg-amber-50';
+                      const headerCls = { BUS: 'text-amber-800 bg-amber-100 border-amber-200', SUBWAY: 'text-blue-800 bg-blue-100 border-blue-200', TRAM: 'text-green-800 bg-green-100 border-green-200', RAIL: 'text-gray-800 bg-gray-100 border-gray-200', FERRY: 'text-cyan-800 bg-cyan-100 border-cyan-200' }[vt] || 'text-amber-800 bg-amber-100 border-amber-200';
+
+                      return (
+                        <div key={index} data-step-index={index} className={`rounded-xl border-2 ${borderCls} ${bgCls} overflow-hidden transition-all ${isCompleted ? 'opacity-40' : ''} ${isCurrent ? 'ring-2 ring-blue-500 ring-offset-2' : ''}`}>
+                          {/* Header row */}
+                          <div className={`flex items-center gap-2 px-4 py-2.5 border-b ${headerCls}`}>
+                            <span className="text-lg">{vehicleEmoji}</span>
+                            <span className="font-semibold text-sm">
+                              {vehicleLabel}{t.lineName ? ` · ${t.lineName}` : ''}
+                              {t.lineShortName && t.lineShortName !== t.lineName ? ` (${t.lineShortName})` : ''}
+                            </span>
+                            <div className="ml-auto flex items-center gap-2 text-xs opacity-75">
+                              <ClockIcon className="w-3.5 h-3.5" />
+                              {step.duration >= 60 ? `${Math.round(step.duration / 60)} min` : `${step.duration}s`}
+                            </div>
+                          </div>
+
+                          {/* Body */}
+                          <div className="px-4 py-3 space-y-2.5">
+                            {/* Departure stop */}
+                            {t.departureStop && (
+                              <div className="flex items-start gap-3">
+                                <div className="flex-shrink-0 w-3 h-3 rounded-full bg-green-500 ring-2 ring-white shadow mt-1" />
+                                <div>
+                                  <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide leading-none mb-0.5">Board</p>
+                                  <p className="text-sm font-semibold text-gray-900">{t.departureStop}</p>
+                                  {t.departureTime && <p className="text-xs text-gray-500 mt-0.5">{t.departureTime}</p>}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Stops / headsign connector */}
+                            {(t.numStops || t.headsign) && (
+                              <div className="flex items-center gap-3 pl-1.5">
+                                <div className="w-0.5 h-7 bg-gray-300 ml-0.5" />
+                                <p className="text-xs text-gray-500 ml-2">
+                                  {t.numStops ? `${t.numStops} stops` : ''}
+                                  {t.numStops && t.headsign ? ' · ' : ''}
+                                  {t.headsign ? `toward ${t.headsign}` : ''}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Arrival stop */}
+                            {t.arrivalStop && (
+                              <div className="flex items-start gap-3">
+                                <div className="flex-shrink-0 w-3 h-3 rounded-full bg-red-500 ring-2 ring-white shadow mt-1" />
+                                <div>
+                                  <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide leading-none mb-0.5">Exit</p>
+                                  <p className="text-sm font-semibold text-gray-900">{t.arrivalStop}</p>
+                                  {t.arrivalTime && <p className="text-xs text-gray-500 mt-0.5">{t.arrivalTime}</p>}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Fallback if no stop data */}
+                            {!t.departureStop && !t.arrivalStop && (
+                              <p className="text-sm text-gray-700">{step.maneuver.instruction}</p>
+                            )}
+                          </div>
+                        </div>
+                      );
                     }
 
+                    // ── DRIVING / WALKING / CYCLING STEP CARD ────────────
+                    const maneuverType = (step.maneuver.type || '').toLowerCase();
+
+                    const getDirectionIcon = (type) => {
+                      if (type.includes('arrive')) return <MapPinIcon className="w-5 h-5 text-red-500" />;
+                      if (type.includes('depart')) return <MapPinIcon className="w-5 h-5 text-green-500" />;
+                      if (type.includes('roundabout') || type.includes('rotary')) return <ArrowPathIcon className="w-5 h-5 text-gray-600" />;
+                      if (type.includes('uturn') || type.includes('u-turn')) return <ArrowUturnLeftIcon className="w-5 h-5 text-gray-700" />;
+                      if (type.includes('sharp-right') || type.includes('sharp right')) return <ArrowUturnRightIcon className="w-5 h-5 text-gray-700" />;
+                      if (type.includes('sharp-left') || type.includes('sharp left')) return <ArrowUturnLeftIcon className="w-5 h-5 text-gray-700" />;
+                      if (type.includes('slight-right') || type.includes('slight right') || type.includes('ramp-right')) return <ArrowRightIcon className="w-5 h-5 text-gray-700" style={{ transform: 'rotate(-30deg)' }} />;
+                      if (type.includes('slight-left') || type.includes('slight left') || type.includes('ramp-left')) return <ArrowLeftIcon className="w-5 h-5 text-gray-700" style={{ transform: 'rotate(30deg)' }} />;
+                      if (type.includes('turn-right') || (type.includes('right') && !type.includes('left'))) return <ArrowRightIcon className="w-5 h-5 text-gray-700" />;
+                      if (type.includes('turn-left') || (type.includes('left') && !type.includes('right'))) return <ArrowLeftIcon className="w-5 h-5 text-gray-700" />;
+                      return <ArrowUpIcon className="w-5 h-5 text-gray-700" />;
+                    };
+
+                    const modeBadge = step.travel_mode === 'WALKING'
+                      ? { emoji: '🚶', cls: 'text-green-700 bg-green-100' }
+                      : step.travel_mode === 'BICYCLING'
+                      ? { emoji: '🚲', cls: 'text-orange-700 bg-orange-100' }
+                      : { emoji: '🚗', cls: 'text-blue-700 bg-blue-100' };
+
                     return (
-                      <div 
-                        key={index} 
-                        className="flex gap-4 p-4 bg-gradient-to-r from-gray-50 to-white rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all group"
+                      <div
+                        key={index}
+                        data-step-index={index}
+                        className={`flex gap-3 p-4 bg-gradient-to-r from-gray-50 to-white rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all group ${isCompleted ? 'opacity-40' : ''} ${isCurrent ? 'ring-2 ring-blue-500 ring-offset-2' : ''}`}
                       >
                         {/* Step number */}
-                        <div className="flex items-start justify-center flex-shrink-0">
-                          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-full font-bold text-sm flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                        <div className="flex-shrink-0">
+                          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-full font-bold text-xs flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
                             {index + 1}
                           </div>
                         </div>
 
-                        {/* Instruction */}
-                        <div className="flex-1">
-                          <div className="flex items-start gap-2 mb-2">
-                            <span className="text-2xl">{icon}</span>
-                            <div className="flex-1">
-                              <p className="text-sm font-medium text-gray-900 leading-relaxed">
-                                {step.maneuver.instruction}
-                              </p>
-                              {step.name && step.name !== step.maneuver.instruction && (
-                                <p className="text-xs text-blue-600 mt-1 font-medium">
-                                  on {step.name}
-                                </p>
-                              )}
-                            </div>
+                        {/* Direction icon */}
+                        <div className="flex-shrink-0">
+                          <div className="w-9 h-9 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
+                            {getDirectionIcon(maneuverType)}
                           </div>
+                        </div>
 
-                          {/* Distance and duration */}
-                          <div className="flex items-center gap-4 text-xs text-gray-600">
-                            <span className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded">
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 leading-relaxed">
+                            {step.maneuver.instruction}
+                          </p>
+                          {step.name && step.name !== step.maneuver.instruction && (
+                            <p className="text-xs text-blue-600 mt-0.5 font-medium flex items-center gap-1">
+                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                              {step.name}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-2 mt-2 text-xs text-gray-500 flex-wrap">
+                            <span className="flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded-full">
                               <MapPinIcon className="w-3 h-3" />
-                              {step.distance >= 1000 
+                              {step.distance >= 1000
                                 ? `${(step.distance / 1000).toFixed(1)} km`
-                                : `${Math.round(step.distance)} m`
-                              }
+                                : `${Math.round(step.distance)} m`}
                             </span>
-                            <span className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded">
+                            <span className="flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded-full">
                               <ClockIcon className="w-3 h-3" />
                               {step.duration >= 60
                                 ? `${Math.round(step.duration / 60)} min`
-                                : `${Math.round(step.duration)} sec`
-                              }
+                                : `${Math.round(step.duration)} sec`}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full font-medium ${modeBadge.cls}`}>
+                              {modeBadge.emoji}
                             </span>
                           </div>
                         </div>
@@ -1238,6 +1947,46 @@ function Navigation() {
       </div>
 
       {/* Save Route Modal */}
+      {/* Pin Label Prompt Modal */}
+      {showPinPrompt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-lg max-w-sm w-full p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <MapPinIcon className="w-5 h-5 text-amber-500" />
+              Name Your Pin
+            </h3>
+            <input
+              type="text"
+              value={pinLabel}
+              onChange={(e) => setPinLabel(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleConfirmPin()}
+              placeholder="e.g., Nice viewpoint, Meet here..."
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none mb-2"
+              autoFocus
+            />
+            {pendingPin && (
+              <p className="text-xs text-gray-400 mb-4">
+                {pendingPin.lat.toFixed(5)}, {pendingPin.lng.toFixed(5)}
+              </p>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={handleConfirmPin}
+                className="flex-1 bg-amber-500 text-white py-2 rounded-lg hover:bg-amber-600 font-medium transition"
+              >
+                Add Pin
+              </button>
+              <button
+                onClick={() => { setShowPinPrompt(false); setPendingPin(null); }}
+                className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg hover:bg-gray-200 font-medium transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSaveModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6">
@@ -1475,7 +2224,6 @@ function Navigation() {
                     </button>
                     <button
                       onClick={() => {
-                        // Navigate to this place
                         const [lng, lat] = selectedPlace.coordinates;
                         if (mapRef.current) {
                           mapRef.current.flyTo({
@@ -1491,6 +2239,19 @@ function Navigation() {
                       View on Map
                     </button>
                   </div>
+
+                  {/* Reserve a Table — shown for restaurants, cafes, food places */}
+                  {selectedPlace.googleMapsUri && selectedPlace.types &&
+                    selectedPlace.types.some(t => ['restaurant', 'cafe', 'food', 'meal_delivery', 'meal_takeaway', 'bar'].includes(t)) && (
+                    <a
+                      href={selectedPlace.googleMapsUri}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block w-full mt-3 px-4 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 font-medium text-center transition"
+                    >
+                      Reserve a Table
+                    </a>
+                  )}
                 </>
               )}
             </div>
