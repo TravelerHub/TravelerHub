@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { API_BASE } from '../../config';
 
 export default function NewPassword() {
   const [newPassword, setNewPassword] = useState("");
@@ -56,7 +57,7 @@ export default function NewPassword() {
     setLoading(true);
 
     try {
-      const response = await fetch("http://localhost:8000/updatepassword", {
+      const response = await fetch(`${API_BASE}/updatepassword`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
