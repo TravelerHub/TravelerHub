@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_BASE } from '../../config';
 import ImageUpload from "../../components/ImageUpload.jsx";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 
@@ -41,7 +42,7 @@ function Dashboard() {
     try {
       const token = localStorage.getItem("token");
       if (!token) return;
-      const res = await fetch("http://localhost:8000/groups/me", {
+      const res = await fetch(`${API_BASE}/groups/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -65,7 +66,7 @@ function Dashboard() {
     setCreateError("");
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:8000/groups/", {
+      const res = await fetch(`${API_BASE}/groups/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -101,7 +102,7 @@ function Dashboard() {
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(
-        `http://localhost:8000/groups/${trip.group_id}/members`,
+        `${API_BASE}/groups/${trip.group_id}/members`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (res.ok) setMembers(await res.json());
@@ -115,7 +116,7 @@ function Dashboard() {
   const handleMakeLeader = async (groupId, userId) => {
     try {
       const token = localStorage.getItem("token");
-      await fetch(`http://localhost:8000/groups/${groupId}/members/${userId}/role`, {
+      await fetch(`${API_BASE}/groups/${groupId}/members/${userId}/role`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

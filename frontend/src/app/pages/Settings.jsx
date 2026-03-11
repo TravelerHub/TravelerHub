@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_BASE } from '../../config';
 import TravelPreferences from "../../components/TravelPreferences";
 
 function Settings() {
@@ -47,7 +48,7 @@ function Settings() {
     try {
       const token = localStorage.getItem("token");
 
-      const response = await fetch("http://localhost:8000/users/me/password", {
+      const response = await fetch(`${API_BASE}/users/me/password`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

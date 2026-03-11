@@ -1,6 +1,6 @@
 import polyline from '@mapbox/polyline';
 
-const API_BASE = 'http://localhost:8000';
+import { API_BASE } from '../config';
 
 // Map our mode names to Google Directions API mode names
 const MODE_MAP = {

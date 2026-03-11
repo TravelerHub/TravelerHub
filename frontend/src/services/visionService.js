@@ -1,4 +1,4 @@
-const BASE_URL = "http://127.0.0.1:8000";
+import { API_BASE } from '../config';
 
 function getToken() {
   return localStorage.getItem("token");
@@ -9,7 +9,7 @@ export const analyzeReceipt = async (file) => {
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch(`${BASE_URL}/vision/analyze-receipt`, {
+  const response = await fetch(`${API_BASE}/vision/analyze-receipt`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -29,7 +29,7 @@ export const analyzeDocument = async (file) => {
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch(`${BASE_URL}/vision/analyze-document`, {
+  const response = await fetch(`${API_BASE}/vision/analyze-document`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,

@@ -1,14 +1,18 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends
+from pydantic import BaseModel
+from typing import Optional
 from utils import oauth2
-import google.generativeai as genai
+from supabase_client import supabase
+from google import genai
+from google.genai import types
 import os
 import json
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Configure Gemini
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+# Configure Gemini client (new google-genai SDK)
+client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
 router = APIRouter(
     prefix="/vision",
@@ -34,13 +38,10 @@ async def analyze_receipt(
     # 2. Read file content
     file_content = await file.read()
     
-    # 3. Set up Gemini model
-    model = genai.GenerativeModel("gemini-2.5-flash")
-
-    # 4. Create the prompt
-    prompt = """Analyze this receipt image and extract the following information. 
+    # 3. Create the prompt
+    prompt = """Analyze this receipt image and extract the following information.
     Return ONLY valid JSON with no extra text, no markdown backticks, no explanation.
-    
+
     {
         "merchant_name": "store or restaurant name",
         "date": "date on receipt in YYYY-MM-DD format, or null if not visible",
@@ -58,16 +59,19 @@ async def analyze_receipt(
         "currency": "USD",
         "payment_method": "cash/card/other or null if not visible"
     }
-    
+
     If you cannot read a value, use null. For items you cannot read, skip them.
     Always return valid JSON."""
 
-    # 5. Call Gemini
+    # 4. Call Gemini
     try:
-        response = model.generate_content([
-            prompt,
-            {"mime_type": file.content_type, "data": file_content}
-        ])
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                prompt,
+                types.Part.from_bytes(data=file_content, mime_type=file.content_type),
+            ],
+        )
 
         # 6. Parse the response
         response_text = response.text.strip()
@@ -120,11 +124,9 @@ async def analyze_document(
 
     file_content = await file.read()
 
-    model = genai.GenerativeModel("gemini-2.5-flash")
-
     prompt = """Analyze this travel document image and extract key information.
     Return ONLY valid JSON with no extra text, no markdown backticks, no explanation.
-    
+
     {
         "document_type": "flight_ticket/hotel_confirmation/car_rental/event_ticket/other",
         "title": "brief description of the document",
@@ -143,14 +145,17 @@ async def analyze_document(
             "another actionable item"
         ]
     }
-    
+
     If you cannot read a value, use null. Always return valid JSON."""
 
     try:
-        response = model.generate_content([
-            prompt,
-            {"mime_type": file.content_type, "data": file_content}
-        ])
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                prompt,
+                types.Part.from_bytes(data=file_content, mime_type=file.content_type),
+            ],
+        )
 
         response_text = response.text.strip()
         if response_text.startswith("```json"):
@@ -180,4 +185,46 @@ async def analyze_document(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to analyze document"
+        )
+
+
+class ExpenseData(BaseModel):
+    merchant_name: Optional[str] = None
+    date: Optional[str] = None
+    items: Optional[list] = None
+    subtotal: Optional[float] = None
+    tax: Optional[float] = None
+    tip: Optional[float] = None
+    total: Optional[float] = None
+    currency: Optional[str] = "USD"
+    payment_method: Optional[str] = None
+
+
+@router.post("/save-expense")
+async def save_expense(
+    expense: ExpenseData,
+    current_user: dict = Depends(oauth2.get_current_user)
+):
+    """Save a parsed receipt/expense to the database."""
+    try:
+        user_id = current_user.get("id") or current_user.get("user_id")
+        row = {
+            "user_id": user_id,
+            "merchant_name": expense.merchant_name,
+            "date": expense.date,
+            "items": expense.items,
+            "subtotal": expense.subtotal,
+            "tax": expense.tax,
+            "tip": expense.tip,
+            "total": expense.total,
+            "currency": expense.currency,
+            "payment_method": expense.payment_method,
+        }
+        result = supabase.table("expenses").insert(row).execute()
+        return {"success": True, "id": result.data[0]["id"] if result.data else None}
+    except Exception as e:
+        print(f"Save expense error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save expense"
         )
