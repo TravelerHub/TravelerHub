@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { API_BASE } from '../../config';
 import Navbar from "../../components/navbar/Navbar_empty";
 
 function OTP() {
@@ -48,7 +49,7 @@ function OTP() {
     setLoading(true);
 
     try {
-      const response = await fetch("http://localhost:8000/verify-otp", {
+      const response = await fetch(`${API_BASE}/verify-otp`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

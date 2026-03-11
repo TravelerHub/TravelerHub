@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { API_BASE } from '../../config';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -29,7 +30,7 @@ function Calendar() {
       try {
         const token = localStorage.getItem('token');
         if (!token) return;
-        const res = await fetch('http://localhost:8000/groups/me', {
+        const res = await fetch(`${API_BASE}/groups/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
@@ -125,7 +126,7 @@ function Calendar() {
             <option value="">All Trips</option>
             {trips.map(trip => (
               <option key={trip.group_id} value={trip.group_id}>
-                {trip.trip_name || trip.group_id}
+                {trip.name || trip.group_id}
               </option>
             ))}
           </select>

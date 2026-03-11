@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { API_BASE } from '../../config';
 import { haversineDistance } from '../../utils/haversine';
 import Map from '../../components/Map';
 import { searchPlaces, getPlaceName } from '../../services/geocodingService';
@@ -163,7 +164,7 @@ function Navigation() {
       try {
         const token = localStorage.getItem('token');
         if (!token) return;
-        const response = await fetch('http://localhost:8000/preferences/me', {
+        const response = await fetch(`${API_BASE}/preferences/me`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {
@@ -324,7 +325,7 @@ function Navigation() {
       const token = localStorage.getItem('token');
       if (!token) return;
       
-      const response = await fetch('http://localhost:8000/routes/', {
+      const response = await fetch(`${API_BASE}/routes/`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -783,7 +784,7 @@ function Navigation() {
         total_duration: currentRoute.duration
       };
 
-      const response = await fetch('http://localhost:8000/routes/', {
+      const response = await fetch(`${API_BASE}/routes/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -833,7 +834,7 @@ function Navigation() {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8000/routes/${routeId}`, {
+      const response = await fetch(`${API_BASE}/routes/${routeId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`

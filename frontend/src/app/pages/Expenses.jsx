@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_BASE } from '../../config';
 import { analyzeReceipt, analyzeDocument } from "../../services/visionService.js";
 import { saveChecklist, toggleChecklistItem } from "../../services/checklistService.js";
 
@@ -106,7 +107,7 @@ function Expenses() {
     const data = isEditing ? editData : result;
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/vision/save-expense", {
+      const response = await fetch(`${API_BASE}/vision/save-expense`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
