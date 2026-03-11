@@ -15,6 +15,10 @@ from routers import groups
 from routers import navigation
 from routers import checklists
 from routers import calendar
+from routers import ai_chat
+from routers import discovery
+from routers import smart_route
+from routers import nominations
 
 app = FastAPI()
 
@@ -41,6 +45,10 @@ app.include_router(groups.router)         # /groups
 app.include_router(navigation.router)     # /navigation
 app.include_router(checklists.router)    # /checklists
 app.include_router(calendar.router)      # /calendar
+app.include_router(ai_chat.router)       # /ai-chat
+app.include_router(discovery.router)     # /discovery
+app.include_router(smart_route.router)   # /smart-route
+app.include_router(nominations.router)   # /nominations
 
 
 
