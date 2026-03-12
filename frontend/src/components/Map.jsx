@@ -16,6 +16,8 @@ const Map = forwardRef(function Map({
   currentStepIndex = 0,
   onMapClick,
   customPins = [],
+  discoveryPlaces = [],   // Friend activity markers from Discovery overlay
+  expenseMarkers = [],    // Geo-tagged expense markers
 }, ref) {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
@@ -25,6 +27,8 @@ const Map = forwardRef(function Map({
   const onPositionUpdateRef = useRef(onUserPositionUpdate);
   const onMapClickRef = useRef(null);
   const customPinsRef = useRef([]);
+  const discoveryMarkersRef = useRef([]);
+  const expenseMarkersRef = useRef([]);
 
   // Keep callback refs fresh on every render
   useEffect(() => {
@@ -91,6 +95,10 @@ const Map = forwardRef(function Map({
     return () => {
       placesMarkersRef.current.forEach(marker => marker.remove());
       placesMarkersRef.current = [];
+      discoveryMarkersRef.current.forEach(marker => marker.remove());
+      discoveryMarkersRef.current = [];
+      expenseMarkersRef.current.forEach(marker => marker.remove());
+      expenseMarkersRef.current = [];
       if (mapRef.current) {
         mapRef.current.remove();
       }
@@ -252,6 +260,78 @@ const Map = forwardRef(function Map({
       customPinsRef.current.push(marker);
     });
   }, [customPins]);
+
+  // Render discovery (friend activity) markers
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    discoveryMarkersRef.current.forEach(m => m.remove());
+    discoveryMarkersRef.current = [];
+
+    if (!discoveryPlaces || discoveryPlaces.length === 0) return;
+
+    discoveryPlaces.forEach((place) => {
+      const el = document.createElement('div');
+      const color = place.color || '#6B7280';
+      el.innerHTML = `
+        <div style="width: 14px; height: 14px; background: ${color}; border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3); cursor: pointer; opacity: 0.85;"></div>
+      `;
+
+      const popupHTML = `
+        <div style="padding: 8px; max-width: 200px;">
+          <div style="font-weight: bold; font-size: 13px;">${place.name}</div>
+          ${place.rating ? `<div style="font-size: 11px; color: #666;">⭐ ${place.rating}</div>` : ''}
+          ${place.savedBy ? `<div style="font-size: 11px; color: #888; margin-top: 2px;">Saved by ${place.isMine ? 'you' : place.savedBy}</div>` : ''}
+          ${place.address ? `<div style="font-size: 11px; color: #999; margin-top: 2px;">${place.address}</div>` : ''}
+        </div>
+      `;
+
+      const marker = new mapboxgl.Marker({ element: el, draggable: false })
+        .setLngLat(place.coordinates)
+        .setPopup(new mapboxgl.Popup({ offset: 10 }).setHTML(popupHTML))
+        .addTo(mapRef.current);
+
+      discoveryMarkersRef.current.push(marker);
+    });
+  }, [discoveryPlaces]);
+
+  // Render expense markers (size/color based on amount/category)
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    expenseMarkersRef.current.forEach(m => m.remove());
+    expenseMarkersRef.current = [];
+
+    if (!expenseMarkers || expenseMarkers.length === 0) return;
+
+    expenseMarkers.forEach((exp) => {
+      const size = exp.size === 'large' ? 28 : exp.size === 'medium' ? 22 : 16;
+      const color = exp.color || '#10B981';
+      const el = document.createElement('div');
+      el.innerHTML = `
+        <div style="width: ${size}px; height: ${size}px; background: ${color}; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.25); cursor: pointer; display: flex; align-items: center; justify-content: center;">
+          <span style="color: white; font-size: ${size < 22 ? 8 : 10}px; font-weight: bold;">$</span>
+        </div>
+      `;
+
+      const popupHTML = `
+        <div style="padding: 8px; max-width: 200px;">
+          <div style="font-weight: bold; font-size: 13px;">${exp.name}</div>
+          <div style="font-size: 14px; font-weight: 600; color: #059669; margin-top: 2px;">
+            ${exp.currency === 'USD' ? '$' : exp.currency}${exp.amount.toFixed(2)}
+          </div>
+          ${exp.category ? `<div style="font-size: 11px; color: #888; margin-top: 2px;">${exp.category}</div>` : ''}
+        </div>
+      `;
+
+      const marker = new mapboxgl.Marker({ element: el, draggable: false })
+        .setLngLat(exp.coordinates)
+        .setPopup(new mapboxgl.Popup({ offset: 10 }).setHTML(popupHTML))
+        .addTo(mapRef.current);
+
+      expenseMarkersRef.current.push(marker);
+    });
+  }, [expenseMarkers]);
 
   // Draw route (with completed segment coloring during navigation)
   useEffect(() => {
