@@ -62,7 +62,7 @@ function Dashboard() {
             
             {/* 2. Poll Icon Button */}
             <div 
-              onClick={() => navigate("/polls/123")} 
+              onClick={() => navigate("/polls")} 
               className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition"
             >
               <div className="text-4xl mb-3">📊</div>

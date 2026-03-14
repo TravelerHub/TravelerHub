@@ -149,3 +149,26 @@ def get_poll_results(
     except Exception as e:
         print(f"Error fetching poll results: {e}")
         raise HTTPException(status_code=500, detail="Error fetching poll results")
+    
+@router.get("/trips/{trip_id}/polls")
+def get_trip_polls(
+    trip_id: str,
+    current_user: dict = Depends(oauth2.get_current_user)
+):
+    """Get all polls for a specific trip"""
+    try:
+        # 1. Verify Trip exists
+        trip_res = supabase.table("trips").select("*").eq("id", trip_id).execute()
+        if not trip_res.data:
+            raise HTTPException(status_code=404, detail="Trip not found")
+        
+        # 2. Fetch all polls for this trip, ordering by newest first
+        polls_res = supabase.table("polls").select("*").eq("trip_id", trip_id).order("created_at", desc=True).execute()
+        
+        return polls_res.data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error fetching polls: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching polls")

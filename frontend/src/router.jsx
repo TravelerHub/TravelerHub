@@ -19,6 +19,8 @@ import Expenses from "./app/pages/Expenses.jsx";
 import Message from "./app/pages/Message.jsx";
 import MessageTesting from "./app/pages/Messager_Testing.jsx";
 import Booking from "./app/pages/Booking.jsx";
+import AllPollsPage from "./app/pages/AllPollsPage.jsx";
+import CreatePoll from './app/pages/CreatePoll.jsx';
 
 
 const router = createBrowserRouter([
@@ -36,11 +38,12 @@ const router = createBrowserRouter([
     { path: "/resetpassword", element: <ResetPassword /> },
     { path: "/otp", element: <OTP /> },
     { path: "/newpassword", element: <NewPassword /> },
-    { path: "/polls", element: <Dashboard /> },
+    { path: "/polls/:tripId", element: <AllPollsPage /> },
     { path: "/polls/:pollId", element: <PollDetail /> },
     { path: "/newpassword", element: <NewPassword /> }, 
     { path: "/expenses", element: <Expenses /> },
     { path: "/message", element: <Message /> },
+    {path: '/create-poll', element: <CreatePoll />},
     {path: "/messagetesting", element: <MessageTesting /> },
     {path: "/booking", element: <Booking /> }
 ]);
