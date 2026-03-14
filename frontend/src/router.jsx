@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, Outlet } from "react-router-dom";
 
 import Landing from "./app/pages/Landing.jsx";
 import About from "./app/pages/About.jsx";
@@ -11,19 +11,32 @@ import Dashboard from "./app/pages/Dashboard.jsx";
 import Settings from "./app/pages/Settings.jsx";
 import Profile from "./app/pages/Profile.jsx"; 
 import Navigation from "./app/pages/Navigation.jsx";
-import ResetPassword from "./app/pages/ResetPassword.jsx"; 
+import ResetPassword from "./app/pages/ResetPassword.jsx";
 import OTP from "./app/pages/OTP.jsx";
 import NewPassword from "./app/pages/NewPassword.jsx";
 import PollDetail from "./app/pages/pollDetails.jsx";
 import Expenses from "./app/pages/Expenses.jsx";
 import Message from "./app/pages/Message.jsx";
-import MessageTesting from "./app/pages/Messager_Testing.jsx";
 import Booking from "./app/pages/Booking.jsx";
 import AllPollsPage from "./app/pages/AllPollsPage.jsx";
 import CreatePoll from './app/pages/CreatePoll.jsx';
+import Calendar from "./app/pages/Calendar.jsx";
+import Finance from "./app/pages/Finance.jsx";
+import WelcomeAfterLogin from "./app/pages/WelcomeAfterLogin.jsx";
+import ChatWidget from "./components/ChatWidget.jsx";
 
+// Layout that injects the floating AI chat widget on authenticated pages
+function AuthLayout() {
+  return (
+    <>
+      <Outlet />
+      <ChatWidget />
+    </>
+  );
+}
 
 const router = createBrowserRouter([
+    // Public routes (no chat widget)
     { path: "/", element: <Landing /> },
     { path: "/about", element: <About /> },
     { path: "/contactus", element: <ContactUs /> },
@@ -31,10 +44,6 @@ const router = createBrowserRouter([
     { path: "/feedback", element: <Feedback /> },
     { path: "/login", element: <Login /> },
     { path: "/signup", element: <SignUp /> },
-    { path: "/dashboard", element: <Dashboard /> },
-    { path: "/settings", element: <Settings /> },
-    { path: "/profile", element: <Profile />}, 
-    { path: "/navigation", element: <Navigation /> },
     { path: "/resetpassword", element: <ResetPassword /> },
     { path: "/otp", element: <OTP /> },
     { path: "/newpassword", element: <NewPassword /> },
@@ -46,6 +55,23 @@ const router = createBrowserRouter([
     {path: '/create-poll', element: <CreatePoll />},
     {path: "/messagetesting", element: <MessageTesting /> },
     {path: "/booking", element: <Booking /> }
+
+    // Authenticated routes (chat widget available)
+    {
+      element: <AuthLayout />,
+      children: [
+        { path: "/dashboard", element: <Dashboard /> },
+        { path: "/settings", element: <Settings /> },
+        { path: "/profile", element: <Profile /> },
+        { path: "/navigation", element: <Navigation /> },
+        { path: "/expenses", element: <Expenses /> },
+        { path: "/message", element: <Message /> },
+        { path: "/booking", element: <Booking /> },
+        { path: "/calendar", element: <Calendar /> },
+        { path: "/finance", element: <Finance /> },
+        { path: "/welcome", element: <WelcomeAfterLogin /> },
+      ],
+    },
 ]);
 
 export default router;

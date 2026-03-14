@@ -1,6 +1,6 @@
 import MessageBubble from "./MessagerBubble";
 
-export default function MessageList({ messages, currentUserId }) {
+export default function MessageList({ messages, currentUserId, conversationId }) {
   if (!messages?.length) {
     return (
       <div className="text-sm text-gray-500 text-center mt-8">
@@ -12,7 +12,12 @@ export default function MessageList({ messages, currentUserId }) {
   return (
     <div className="space-y-2">
       {messages.map((m) => (
-        <MessageBubble key={m.message_id} msg={m} isMine={m.from_user === currentUserId} />
+        <MessageBubble 
+          key={m.message_id} 
+          msg={m} 
+          isMine={m.from_user === currentUserId}
+          conversationId={conversationId}
+        />
       ))}
     </div>
   );

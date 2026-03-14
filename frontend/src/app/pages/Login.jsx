@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { API_BASE } from '../../config';
 import Navbar_empty from "../../components/navbar/Navbar_empty";
 import Footer from "../../components/Footer";
 
@@ -11,15 +12,10 @@ function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  async function _verifyPassword(password, hashedPassword) {
-    const isMatch = await bcrypt.compare(password, hashedPassword);
-    return isMatch;
-  }
-
   async function _Login(e) {
     e.preventDefault();
     setError("");
-    const response = await fetch("http://localhost:8000/login", {
+    const response = await fetch(`${API_BASE}/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -35,7 +31,7 @@ function Login() {
       // Store the token for authenticated requests
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("user", JSON.stringify(data.user));
-      navigate("/dashboard");
+      navigate("/welcome");
     }
     else {
       setError(data.detail || "Error logging in. Please try again!");
