@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_BASE } from '../../config';
 
 function Profile() {
   const navigate = useNavigate();
@@ -39,7 +40,7 @@ function Profile() {
     try {
       const token = localStorage.getItem("token");
 
-      const response = await fetch("http://localhost:8000/users/me", {
+      const response = await fetch(`${API_BASE}/users/me`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { API_BASE } from '../../config';
 import Navbar_empty from "../../components/navbar/Navbar_empty";
 
 function ResetPassword() {
@@ -14,7 +15,7 @@ function ResetPassword() {
     setLoading(true);
 
     try {
-      const response = await fetch("http://localhost:8000/resetpassword", {
+      const response = await fetch(`${API_BASE}/resetpassword`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
