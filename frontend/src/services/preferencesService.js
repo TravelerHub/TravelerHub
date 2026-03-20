@@ -1,4 +1,4 @@
-const BASE_URL = "http://127.0.0.1:8000";
+import { API_BASE } from '../config';
 
 function getToken() {
   return localStorage.getItem("token");
@@ -6,7 +6,7 @@ function getToken() {
 
 export const getPreferences = async () => {
   const token = getToken();
-  const response = await fetch(`${BASE_URL}/preferences/me`, {
+  const response = await fetch(`${API_BASE}/preferences/me`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -18,7 +18,7 @@ export const getPreferences = async () => {
 
 export const updatePreferences = async (prefs) => {
   const token = getToken();
-  const response = await fetch(`${BASE_URL}/preferences/me`, {
+  const response = await fetch(`${API_BASE}/preferences/me`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",

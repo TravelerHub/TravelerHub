@@ -1,4 +1,4 @@
-const BASE_URL = "http://127.0.0.1:8000";
+import { API_BASE } from '../config';
 
 function getToken() {
   return localStorage.getItem("token");
@@ -6,7 +6,7 @@ function getToken() {
 
 export const getFavorites = async (category = null) => {
   const token = getToken();
-  let url = `${BASE_URL}/favorites/`;
+  let url = `${API_BASE}/favorites/`;
   if (category) url += `?category=${category}`;
 
   const response = await fetch(url, {
@@ -21,7 +21,7 @@ export const getFavorites = async (category = null) => {
 
 export const addFavorite = async (place) => {
   const token = getToken();
-  const response = await fetch(`${BASE_URL}/favorites/`, {
+  const response = await fetch(`${API_BASE}/favorites/`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -48,7 +48,7 @@ export const addFavorite = async (place) => {
 
 export const removeFavorite = async (placeId) => {
   const token = getToken();
-  const response = await fetch(`${BASE_URL}/favorites/${placeId}`, {
+  const response = await fetch(`${API_BASE}/favorites/${placeId}`, {
     method: "DELETE",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -61,7 +61,7 @@ export const removeFavorite = async (placeId) => {
 
 export const checkFavorite = async (placeId) => {
   const token = getToken();
-  const response = await fetch(`${BASE_URL}/favorites/check/${placeId}`, {
+  const response = await fetch(`${API_BASE}/favorites/check/${placeId}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -73,7 +73,7 @@ export const checkFavorite = async (placeId) => {
 
 export const updateFavoriteNotes = async (placeId, notes) => {
   const token = getToken();
-  const response = await fetch(`${BASE_URL}/favorites/${placeId}`, {
+  const response = await fetch(`${API_BASE}/favorites/${placeId}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",

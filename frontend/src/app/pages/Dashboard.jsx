@@ -1,11 +1,12 @@
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_BASE } from '../../config';
 import ImageUpload from "../../components/ImageUpload.jsx";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 
 function Dashboard() {
   const navigate = useNavigate();
 
-  // Load user from localStorage
   const getStoredUser = () => {
     const stored = localStorage.getItem("user");
     if (stored) return JSON.parse(stored);
@@ -14,22 +15,127 @@ function Dashboard() {
 
   const user = getStoredUser();
 
-  const getInitials = (name) => {
-    if (!name) return "?";
-    return name.slice(0, 2).toUpperCase();
+  // Trips state
+  const [trips, setTrips] = useState([]);
+  const [loadingTrips, setLoadingTrips] = useState(false);
+
+  // Create trip modal state
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newTripName, setNewTripName] = useState("");
+  const [newTripDescription, setNewTripDescription] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+
+  // Members modal state
+  const [showMembersModal, setShowMembersModal] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [members, setMembers] = useState([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+
+  useEffect(() => {
+    if (user) fetchTrips();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fetchTrips = async () => {
+    setLoadingTrips(true);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+      const res = await fetch(`${API_BASE}/groups/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTrips(data);
+      }
+    } catch (err) {
+      console.error("Error fetching trips:", err);
+    } finally {
+      setLoadingTrips(false);
+    }
   };
 
-  // If no user, redirect to login
+  const handleCreateTrip = async (e) => {
+    e.preventDefault();
+    if (!newTripName.trim()) {
+      setCreateError("Trip name is required.");
+      return;
+    }
+    setCreating(true);
+    setCreateError("");
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/groups/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: newTripName.trim(),
+          description: newTripDescription.trim() || null,
+        }),
+      });
+
+      if (res.ok) {
+        setShowCreateModal(false);
+        setNewTripName("");
+        setNewTripDescription("");
+        fetchTrips();
+      } else {
+        const err = await res.json();
+        setCreateError(err.detail || "Failed to create trip.");
+      }
+    } catch (err) {
+      console.error("Error creating trip:", err);
+      setCreateError("Something went wrong. Please try again.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleViewMembers = async (trip) => {
+    setSelectedGroup(trip);
+    setShowMembersModal(true);
+    setLoadingMembers(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(
+        `${API_BASE}/groups/${trip.group_id}/members`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (res.ok) setMembers(await res.json());
+    } catch (err) {
+      console.error("Error fetching members:", err);
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
+
+  const handleMakeLeader = async (groupId, userId) => {
+    try {
+      const token = localStorage.getItem("token");
+      await fetch(`${API_BASE}/groups/${groupId}/members/${userId}/role`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ role: "leader" }),
+      });
+      // Refresh members list
+      handleViewMembers(selectedGroup);
+    } catch (err) {
+      console.error("Error updating role:", err);
+    }
+  };
+
   if (!user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center px-6">
-        <div className="w-full max-w-lg bg-white rounded-3xl shadow-sm border border-gray-200 p-8 text-center">
-          <div className="text-5xl mb-4">🧳</div>
-          <p className="text-gray-700 font-medium">You are not logged in.</p>
-          <p className="text-gray-500 text-sm mt-1">
-            Log in to view your trips and bookings.
-          </p>
-
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        <div className="w-full text-center max-w-7xl mx-auto px-6 py-8">
+          <p className="text-black-600 mb-4">You are not logged in.</p>
           <button
             onClick={() => navigate("/login")}
             className="mt-6 w-full bg-black text-white px-6 py-3 rounded-xl font-semibold hover:bg-black/90 transition"
@@ -44,184 +150,244 @@ function Dashboard() {
   const displayName = user?.username || user?.name || "Traveler";
 
   return (
-    <div className="min-h-screen w-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-gray-100">
+    <div className="min-h-screen w-screen flex flex-col bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar_Dashboard />
 
       <div className="w-full max-w-7xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
-          <div>
-            {/* <p className="text-sm text-gray-500">Dashboard</p> */}
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
-              Welcome back, {displayName} 
-            </h1>
-            <p className="text-gray-600 mt-1">
-              Keep your plans in one place — trips, bookings, and next steps.
-            </p>
-          </div>
-
-          {/* Quick actions */}
-          <div className="flex gap-3">
-            <button
-              onClick={() => navigate("/trip/new")}
-              className="px-5 py-2.5 rounded-xl bg-black text-white font-semibold hover:bg-black/90 transition"
-            >
-              + Create Trip
-            </button>
-            <button
-              onClick={() => navigate("/booking/new")}
-              className="px-5 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-800 font-semibold hover:bg-gray-50 transition"
-            >
-              + Add Booking
-            </button>
-          </div>
-        </div>
-
-        {/* TOP ROW */}
+        {/* TOP ROW: Profile Photo + Your Trips */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* LEFT: Profile / Image Upload Card */}
-          <div className="lg:col-span-1 bg-white rounded-3xl shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">Profile</h2>
-              <div className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center font-bold">
-                {getInitials(displayName)}
-              </div>
+          <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex justify-center">
+              <ImageUpload onUploadSuccess={() => console.log("Image uploaded successfully!")} />
             </div>
-
-            <p className="text-sm text-gray-500 mt-2">
-              Add a photo so your travel group can recognize you.
+            <p className="text-sm text-gray-500 mt-4 text-center">
+              Upload a photo to personalize your account.
             </p>
-
-            <div className="mt-6 flex justify-center">
-              <ImageUpload
-                onUploadSuccess={() =>
-                  console.log("Image uploaded successfully!")
-                }
-              />
-            </div>
-
-            <div className="mt-6 rounded-2xl bg-gray-50 border border-gray-200 p-4">
-              <p className="text-sm font-semibold text-gray-900">Tip</p>
-              <p className="text-sm text-gray-600 mt-1">
-                Planning with friends is easier when everyone has a profile photo.
-              </p>
-            </div>
           </div>
 
           {/* RIGHT: Your Trips Card */}
-          <div className="lg:col-span-2 bg-white rounded-3xl shadow-sm border border-gray-200 p-6 overflow-hidden relative">
-            {/* subtle travel gradient accent */}
-            <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full bg-black/5 blur-2xl" />
-
-            <div className="relative">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">Your Trips</h2>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Create a trip, invite friends, and build your itinerary.
-                  </p>
-                </div>
-                <span className="text-2xl">🗺️</span>
-              </div>
-
-              {/* Empty state (replace later with real trips list) */}
-              <div className="mt-6 rounded-3xl border border-gray-200 bg-gray-50 p-8 text-center">
-                <div className="text-5xl mb-3">🌴</div>
-                <p className="text-gray-800 font-semibold">No trips yet</p>
-                <p className="text-gray-500 text-sm mt-1">
-                  Start planning your first adventure and keep everything organized.
-                </p>
-
-                <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
-                  <button
-                    onClick={() => navigate("/trip/new")}
-                    className="bg-black text-white px-6 py-3 rounded-xl font-semibold hover:bg-black/90 transition"
-                  >
-                    Create Trip
-                  </button>
-                  <button
-                    onClick={() => navigate("/explore")}
-                    className="px-6 py-3 rounded-xl font-semibold border border-gray-200 text-gray-800 hover:bg-white transition"
-                  >
-                    Explore Ideas
-                  </button>
-                </div>
-              </div>
+          <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-800">Your Trips</h2>
+              <button
+                onClick={() => { setShowCreateModal(true); setCreateError(""); }}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium transition text-sm"
+              >
+                + Create Trip
+              </button>
             </div>
+
+            {loadingTrips ? (
+              <div className="py-8 text-center text-gray-400 text-sm">Loading trips...</div>
+            ) : trips.length === 0 ? (
+              <div className="py-6 text-center">
+                <div className="text-4xl mb-3">🌴</div>
+                <p className="text-gray-600">No trips yet</p>
+                <p className="text-gray-400 text-sm mt-1">Start planning your first adventure!</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-72 overflow-y-auto">
+                {trips.map((trip) => (
+                  <div
+                    key={trip.id}
+                    className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:bg-blue-50 transition"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="font-semibold text-gray-900">{trip.name}</h3>
+                        {trip.description && (
+                          <p className="text-sm text-gray-500 mt-0.5">{trip.description}</p>
+                        )}
+                        <div className="flex items-center gap-2 mt-2">
+                          <span
+                            className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                              trip.my_role === "leader"
+                                ? "bg-yellow-100 text-yellow-700"
+                                : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {trip.my_role === "leader" ? "👑 Leader" : "Member"}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleViewMembers(trip)}
+                        className="text-xs text-blue-600 hover:text-blue-700 font-medium px-3 py-1 rounded-lg border border-blue-200 hover:bg-blue-50 transition"
+                      >
+                        Members
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
         {/* SECOND ROW: Bookings */}
-        <div className="mt-6 bg-white rounded-3xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-start justify-between">
+        <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-start justify-between mb-3">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Bookings</h3>
+              <h3 className="text-lg font-semibold text-gray-800">Bookings</h3>
               <p className="text-sm text-gray-500 mt-1">
-                Flights, hotels, and transportation — all in one place.
+                Flights, hotels, and transportation in one place.
               </p>
             </div>
             <span className="text-2xl">✈️</span>
           </div>
 
-          <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+          <div className="mt-5 grid grid-cols-3 gap-3">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-center">
               <p className="text-xs text-gray-500">Flights</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">0</p>
-              <p className="text-xs text-gray-500 mt-2">Add your flight details</p>
+              <p className="text-sm font-semibold text-gray-800">0</p>
             </div>
-
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-center">
               <p className="text-xs text-gray-500">Hotels</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">0</p>
-              <p className="text-xs text-gray-500 mt-2">Keep stays organized</p>
+              <p className="text-sm font-semibold text-gray-800">0</p>
             </div>
-
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-center">
               <p className="text-xs text-gray-500">Rides</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">0</p>
-              <p className="text-xs text-gray-500 mt-2">Car / train / bus</p>
+              <p className="text-sm font-semibold text-gray-800">0</p>
             </div>
-          </div>
-
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-3">
-            <button
-              onClick={() => navigate("/booking")}
-              className="w-full bg-black text-white py-3 rounded-xl font-semibold hover:bg-black/90 transition"
-            >
-              Go to Bookings
-            </button>
-
-            <button
-              onClick={() => navigate("/booking/new")}
-              className="w-full py-3 rounded-xl font-semibold border border-gray-200 text-gray-800 hover:bg-gray-50 transition"
-            >
-              Add Booking
-            </button>
-          </div>
-        </div>
-
-        {/* Optional: small “inspiration” footer section */}
-        <div className="mt-6 rounded-3xl bg-black text-white p-8 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-          <div>
-            <p className="text-white/70 text-sm uppercase tracking-wide">
-              Travel reminder
-            </p>
-            <p className="mt-2 text-xl md:text-2xl font-bold">
-              “Collect moments, not things.”
-            </p>
-            <p className="text-white/75 mt-2">
-              Start a trip and let the planning be the easy part.
-            </p>
           </div>
 
           <button
-            onClick={() => navigate("/trip/new")}
-            className="px-6 py-3 rounded-xl bg-white text-black font-semibold hover:bg-white/90 transition"
+            onClick={() => navigate("/booking")}
+            className="mt-6 w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition"
           >
-            Plan a Trip
+            Go to Bookings
+          </button>
+
+          <button
+            onClick={() => navigate("/booking/new")}
+            className="mt-3 w-full py-2.5 rounded-lg font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+          >
+            Add Booking
           </button>
         </div>
       </div>
+
+      {/* Create Trip Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Create New Trip</h3>
+            <form onSubmit={handleCreateTrip} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Trip Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newTripName}
+                  onChange={(e) => setNewTripName(e.target.value)}
+                  placeholder="e.g., Europe Summer 2025"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <textarea
+                  value={newTripDescription}
+                  onChange={(e) => setNewTripDescription(e.target.value)}
+                  placeholder="Where are you going and with who?"
+                  rows={2}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+                />
+              </div>
+              {createError && (
+                <p className="text-sm text-red-600">{createError}</p>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={creating}
+                  className="flex-1 bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 font-medium transition disabled:bg-gray-400"
+                >
+                  {creating ? "Creating..." : "Create Trip"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  disabled={creating}
+                  className="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-lg hover:bg-gray-200 font-medium transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Members Modal */}
+      {showMembersModal && selectedGroup && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">{selectedGroup.name} — Members</h3>
+              <button
+                onClick={() => setShowMembersModal(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+
+            {loadingMembers ? (
+              <p className="text-sm text-gray-400 py-4 text-center">Loading members...</p>
+            ) : members.length === 0 ? (
+              <p className="text-sm text-gray-400 py-4 text-center">No members found.</p>
+            ) : (
+              <div className="space-y-3 max-h-64 overflow-y-auto">
+                {members.map((member) => (
+                  <div
+                    key={member.user_id}
+                    className="flex items-center justify-between p-3 border border-gray-200 rounded-lg"
+                  >
+                    <div>
+                      <p className="font-medium text-gray-900 text-sm">
+                        {member.username || member.email || member.user_id}
+                      </p>
+                      <span
+                        className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          member.role === "leader"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        {member.role === "leader" ? "👑 Leader" : "Member"}
+                      </span>
+                    </div>
+                    {selectedGroup.my_role === "leader" &&
+                      member.role !== "leader" &&
+                      member.user_id !== user?.id && (
+                        <button
+                          onClick={() => handleMakeLeader(selectedGroup.group_id, member.user_id)}
+                          className="text-xs text-blue-600 hover:text-blue-700 font-medium px-3 py-1 border border-blue-200 rounded-lg hover:bg-blue-50 transition"
+                        >
+                          Make Leader
+                        </button>
+                      )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={() => setShowMembersModal(false)}
+              className="mt-4 w-full py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 font-medium transition text-sm"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
