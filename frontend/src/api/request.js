@@ -27,6 +27,12 @@ export async function request(url, options = {}) {
   const response = await fetch(`${API_BASE}${url}`, config);
 
   if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      window.location.href = "/login";
+      throw new Error("Session expired. Please log in again.");
+    }
     let errorMessage = "Request failed";
     try {
       const err = await response.json();
