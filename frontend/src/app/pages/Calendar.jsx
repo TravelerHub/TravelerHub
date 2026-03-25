@@ -15,16 +15,7 @@ import {
   XMarkIcon,
   ChevronRightIcon,
 } from '@heroicons/react/24/outline';
-
-// ── Sidebar (mirrors Dashboard exactly) ──────────────────────────────────────
-const SIDEBAR_ITEMS = [
-  { label: "Dashboard", path: "/dashboard" },
-  { label: "Chat",      path: "/message"   },
-  { label: "Planning",  path: null         },
-  { label: "Booking",   path: "/booking"   },
-  { label: "Calendar",  path: "/calendar"  },
-  { label: "Wallet",    path: null         },
-];
+import { SIDEBAR_ITEMS } from '../../constants/sidebarItems.js';
 
 // ── Event type config ─────────────────────────────────────────────────────────
 const TYPE_CONFIG = {
