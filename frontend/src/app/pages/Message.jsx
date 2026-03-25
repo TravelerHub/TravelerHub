@@ -4,16 +4,7 @@ import { chatApi } from "../../components/chatbox/chatAPI";
 import ChatLayout from "../../components/chatbox/chatLayout";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import { XMarkIcon, CheckIcon } from "@heroicons/react/24/outline";
-
-// ── Sidebar (mirrors Dashboard / Calendar) ────────────────────────────────────
-const SIDEBAR_ITEMS = [
-  { label: "Dashboard", path: "/dashboard" },
-  { label: "Chat",      path: "/message"   },
-  { label: "Planning",  path: null         },
-  { label: "Booking",   path: "/booking"   },
-  { label: "Calendar",  path: "/calendar"  },
-  { label: "Wallet",    path: null         },
-];
+import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
 
 export default function Message() {
   const navigate = useNavigate();
