@@ -9,8 +9,8 @@ class SignupRequest(BaseModel):
     street: str | None = None
     city: str | None = None
     state: str | None = None
-    zip_code: str | None = None              
-    
+    zip_code: str | None = None
+
 
 class LoginRequest(BaseModel):
     username: str
@@ -21,12 +21,12 @@ class LoginRequest(BaseModel):
 class UserCreate(BaseModel):
     email: EmailStr
     username: str
-    password: str  
+    password: str
     street: str | None = None
     city: str | None = None
     state: str | None = None
-    zip_code: str | None = None              
-    
+    zip_code: str | None = None
+
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -66,10 +66,12 @@ class PasswordChange(BaseModel):
 
 # ---- Chat Schemas ----
 class MessageCreate(BaseModel):
-    content: str
+    """Create encrypted message"""
+    content: str  # base64-encoded encrypted content
     sent_datetime: datetime
     from_user: Optional[str] = None
     conversation_id: Optional[str] = None
+    is_encrypted: bool = True
 
 class MessageOut(BaseModel):
     message_id: str
@@ -101,21 +103,20 @@ class GroupMemberOut(BaseModel):
 
 # ---- Encryption Schemas ----
 class UserKeypair(BaseModel):
-    """Store user's public/private keypair"""
+    """Client uploads only the public key — private key never leaves the browser."""
+    public_key: str  # base64-encoded public key generated client-side
+
+class SessionKeyEntry(BaseModel):
+    """One encrypted session key blob for a single user."""
     user_id: str
-    public_key: str  # base64-encoded
-    private_key: str  # base64-encoded (should be stored securely)
+    encrypted_key: str  # session key encrypted with that user's public key (client-side)
+
+class ConversationSessionKeyBulk(BaseModel):
+    """Client sends pre-encrypted session key blobs for all members at once."""
+    keys: List[SessionKeyEntry]
 
 class ConversationSessionKey(BaseModel):
-    """Store encrypted session keys for each user in a conversation"""
+    """Legacy: individual session key record shape returned from DB."""
     conversation_id: str
     user_id: str
-    encrypted_key: str  # base64-encoded session key encrypted with user's public key
-
-class MessageCreate(BaseModel):
-    """Create encrypted message"""
-    content: str  # base64-encoded encrypted content
-    sent_datetime: datetime
-    from_user: Optional[str] = None
-    conversation_id: Optional[str] = None
-    is_encrypted: bool = True
+    encrypted_key: str
