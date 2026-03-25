@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE } from "../../config";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
+import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
 
 // ── Color palette ─────────────────────────────────────────────────────────────
 // #160f29  deep dark   (sidebar, widget backgrounds)
@@ -14,22 +15,13 @@ const FEATURES = [
   { icon: "🗺️", label: "Navigation", sub: "Maps & routes",   path: "/navigation", accent: "#183a37" },
   { icon: "💬", label: "Chat",        sub: "Group messages",  path: "/message",    accent: "#160f29" },
   { icon: "🏨", label: "Booking",     sub: "Flights & hotels",path: "/booking",    accent: "#1e3a5f" },
-  { icon: "💰", label: "Finance",     sub: "Expenses & splits",path: "/finance",   accent: "#3b2f00" },
+  { icon: "💰", label: "Wallet",     sub: "Expenses & splits",path: "/finance",   accent: "#3b2f00" },
   { icon: "🧾", label: "Scanner",     sub: "Scan receipts",   path: "/expenses",   accent: "#2d1b4e" },
   { icon: "📅", label: "Calendar",    sub: "Trip timeline",   path: "/calendar",   accent: "#1a3320" },
   { icon: "👥", label: "Group Vote",  sub: "Decide together", path: null,          accent: "#3b1f1f" },
   { icon: "✦",  label: "Coming Soon", sub: "Stay tuned",      path: null,          accent: null      },
 ];
 
-// ── Sidebar nav ───────────────────────────────────────────────────────────────
-const SIDEBAR_ITEMS = [
-  { label: "Dashboard", path: "/dashboard" },
-  { label: "Chat",      path: "/message"   },
-  { label: "Planning",  path: null         },
-  { label: "Booking",   path: "/booking"   },
-  { label: "Calendar",  path: "/calendar"  },
-  { label: "Wallet",    path: null         },
-];
 
 // ── Mini calendar helpers ─────────────────────────────────────────────────────
 const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
