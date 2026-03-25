@@ -3,6 +3,7 @@ import { Avatar, EmptyState } from "./ui";
 import MessageList from "./MessagerList";
 import { chatApi } from "./chatAPI";
 import { encryptionUtils } from "../../lib/encryption";
+import { PaperAirplaneIcon } from "@heroicons/react/24/outline";
 
 export default function ChatWindow({
   loading,
@@ -11,85 +12,146 @@ export default function ChatWindow({
   members,
   messages,
   error,
-  conversationID
+  conversationID,
 }) {
   const listRef = useRef(null);
-  const [text, setText] = useState("");
-  const [localMessages, setLocalMessages] = useState(messages || []);
+  const inputRef = useRef(null);
+  const [text,            setText]            = useState("");
+  const [localMessages,   setLocalMessages]   = useState(messages || []);
   const [encryptionError, setEncryptionError] = useState(null);
+  const [sending,         setSending]         = useState(false);
+  const retryRef = useRef(null);
 
   const sendMessage = async () => {
-    if (!text.trim()) return;
-
+    const trimmed = text.trim();
+    if (!trimmed || sending) return;
+    setSending(true);
     try {
       setEncryptionError(null);
-      const sessionKey = encryptionUtils.getStableConversationKey(conversationID);
-      
-      // Final validation
-      if (typeof sessionKey !== "string" || sessionKey.length < 10) {
-        throw new Error(`Invalid session key: ${typeof sessionKey}, length: ${sessionKey?.length || 0}`);
-      }
-      
-      await chatApi.sendMessage(conversationID, text);
+      await chatApi.sendMessage(conversationID, trimmed);
       setText("");
+      inputRef.current?.focus();
     } catch (err) {
       console.error("Send error:", err);
-      const errorMsg = err.message || "Failed to send message";
-      setEncryptionError(errorMsg);
-      alert(`Send Error: ${errorMsg}`);
+      setEncryptionError(err.message || "Failed to send");
+    } finally {
+      setSending(false);
     }
   };
 
-  useEffect(() => {
-    setLocalMessages(messages || []);
-  }, [messages, conversationID]);
+  useEffect(() => { setLocalMessages(messages || []); }, [messages, conversationID]);
 
-  // Initialize encryption key for this conversation
+  // Stop any pending key-wait retry when conversation changes
   useEffect(() => {
-    if (!conversationID) return;
-
-    try {
-      encryptionUtils.getStableConversationKey(conversationID);
-      setEncryptionError(null);
-    } catch (err) {
-      console.error("Encryption initialization error:", err);
-    }
+    return () => {
+      if (retryRef.current) { clearInterval(retryRef.current); retryRef.current = null; }
+    };
   }, [conversationID]);
 
-  // WebSocket for real-time updates
+  // Fetch + decrypt the session key once when the conversation opens.
+  // If no key exists yet (e.g. conversations created before the migration),
+  // generate one and distribute it to all current members right away.
   useEffect(() => {
     if (!conversationID) return;
 
-    const ws = new WebSocket(`ws://127.0.0.1:8000/api/ws/conversations/${conversationID}`);
+    const initSessionKey = async () => {
+      const memberIds = (members || []).map((m) => m.id).filter(Boolean);
 
+      // Already cached — still try to distribute to any members added since last open
+      const cached = encryptionUtils.getCachedSessionKey(conversationID);
+      if (cached) {
+        setEncryptionError(null);
+        if (retryRef.current) { clearInterval(retryRef.current); retryRef.current = null; }
+        if (memberIds.length > 0) {
+          chatApi.distributeToMissingMembers(conversationID, cached, memberIds).catch(() => {});
+        }
+        return;
+      }
+
+      try {
+        // Try to fetch existing key from server and decrypt client-side
+        const sessionKey = await chatApi.fetchAndDecryptSessionKey(conversationID);
+        if (sessionKey) {
+          encryptionUtils.cacheSessionKey(conversationID, sessionKey);
+          setEncryptionError(null);
+          if (retryRef.current) { clearInterval(retryRef.current); retryRef.current = null; }
+          if (memberIds.length > 0) {
+            chatApi.distributeToMissingMembers(conversationID, sessionKey, memberIds).catch(() => {});
+          }
+          return;
+        }
+
+        // No key on server for this user — generate one and distribute.
+        // If members haven't loaded yet, return silently; effect re-runs when they do.
+        if (memberIds.length === 0) return;
+
+        await chatApi.setupConversationEncryption(conversationID, memberIds);
+        setEncryptionError(null);
+      } catch (err) {
+        if (err.message?.includes("Failed to decrypt session key")) {
+          // Private key mismatch — rotate keypair WITHOUT changing the session key.
+          // Deleting our server entry makes us appear "missing" to other members.
+          // When any member opens the chat, distributeToMissingMembers re-encrypts
+          // the SAME session key with our new public key → old messages stay readable.
+          console.warn("Session key mismatch — rotating keypair, waiting for peer redistribution");
+          try {
+            await chatApi.rotateKeypair(conversationID);
+            setEncryptionError("Waiting for key — ask another member to open the chat");
+
+            // Retry every 5 s (up to 24 attempts = 2 min) until a member redistributes
+            let attempts = 0;
+            if (retryRef.current) clearInterval(retryRef.current);
+            retryRef.current = setInterval(async () => {
+              attempts++;
+              try {
+                const key = await chatApi.fetchAndDecryptSessionKey(conversationID);
+                if (key) {
+                  encryptionUtils.cacheSessionKey(conversationID, key);
+                  setEncryptionError(null);
+                  clearInterval(retryRef.current);
+                  retryRef.current = null;
+                }
+              } catch { /* still waiting */ }
+              if (attempts >= 24) {
+                clearInterval(retryRef.current);
+                retryRef.current = null;
+                setEncryptionError("Could not recover key — refresh when another member is online");
+              }
+            }, 5000);
+          } catch (rotateErr) {
+            console.error("Key rotation failed:", rotateErr);
+            setEncryptionError("Could not load encryption key");
+          }
+        } else {
+          console.error("Session key init error:", err);
+          setEncryptionError("Could not load encryption key");
+        }
+      }
+    };
+
+    initSessionKey();
+  }, [conversationID, members]);
+
+  // WebSocket real-time updates
+  useEffect(() => {
+    if (!conversationID) return;
+    let isActive = true;
+    const ws = new WebSocket(`ws://127.0.0.1:8000/api/ws/conversations/${conversationID}`);
     ws.onmessage = (event) => {
+      if (!isActive) return;
       const msg = JSON.parse(event.data);
       setLocalMessages((prev) => {
         if (prev.some((m) => m.message_id === msg.message_id)) return prev;
         return [...prev, msg];
       });
     };
-
-    ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
-    };
-
-    ws.onclose = () => {
-      console.log("WebSocket closed");
-    };
-
-    // optional keepalive (your backend waits for receive_text)
-    const ping = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) ws.send("ping");
-    }, 25000);
-
-    return () => {
-      clearInterval(ping);
-      ws.close();
-    };
+    ws.onerror  = (e) => { if (isActive) console.error("WebSocket error:", e); };
+    ws.onclose  = ()  => { if (isActive) console.log("WebSocket closed"); };
+    const ping  = setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send("ping"); }, 25000);
+    return () => { isActive = false; clearInterval(ping); ws.close(); };
   }, [conversationID]);
 
-  // scroll to bottom on new messages
+  // Scroll to bottom on new messages
   useEffect(() => {
     if (!listRef.current) return;
     listRef.current.scrollTop = listRef.current.scrollHeight;
@@ -97,63 +159,109 @@ export default function ChatWindow({
 
   const subtitle = useMemo(() => {
     const others = (members || []).filter((u) => u.id !== currentUserId);
-    if (!others.length) return "Members loading…";
-    return `${others.length + 1} member(s)`;
+    if (!others.length) return "Loading members…";
+    return `${others.length + 1} members`;
   }, [members, currentUserId]);
 
   return (
-    <>
-      {/* Header */}
-      <div className="p-3 border-b border-gray-200 flex items-center gap-3">
+    <div className="flex flex-col h-full">
+
+      {/* ── Chat header ─────────────────────────────────────────────── */}
+      <div
+        className="shrink-0 flex items-center gap-3 px-4 py-3"
+        style={{ borderBottom: "1px solid #ebebeb" }}
+      >
         <Avatar name={title} size="md" />
-        <div className="min-w-0">
-          <div className="font-semibold text-gray-800 truncate">{title}</div>
-          <div className="text-xs text-gray-500">{subtitle}</div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold truncate leading-tight" style={{ color: "#160f29" }}>
+            {title || "Conversation"}
+          </p>
+          <p className="text-[11px] mt-0.5" style={{ color: "#9ca3af" }}>
+            {subtitle}
+          </p>
         </div>
+
+        {/* Encryption status dot */}
+        <span
+          className="shrink-0 flex items-center gap-1.5 text-[10px] font-medium px-2.5 py-1 rounded-full"
+          style={{
+            background: encryptionError ? "#fef2f2" : "rgba(24,58,55,0.08)",
+            color: encryptionError ? "#dc2626" : "#183a37",
+          }}
+        >
+          <span
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ background: encryptionError ? "#dc2626" : "#16a34a" }}
+          />
+          {encryptionError ? "Encryption issue" : "Encrypted"}
+        </span>
       </div>
 
-      {/* Encryption Status */}
-      {encryptionError && (
-        <div className="p-2 bg-yellow-50 border-b border-yellow-200 text-sm text-yellow-800">
-          ⚠️ {encryptionError}
-        </div>
-      )}
-
-      {/* Body */}
-      <div ref={listRef} className="flex-1 overflow-auto p-3 bg-gray-50">
+      {/* ── Message body ─────────────────────────────────────────────── */}
+      <div
+        ref={listRef}
+        className="flex-1 overflow-y-auto px-4 py-4"
+        style={{ background: "#f9fafb" }}
+      >
         {loading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 10 }).map((_, i) => (
-              <div key={i} className="h-10 rounded-lg bg-gray-100 animate-pulse" />
+          <div className="space-y-3">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div
+                key={i}
+                className={`h-9 rounded-2xl animate-pulse ${i % 3 === 0 ? "ml-auto w-2/3" : "w-1/2"}`}
+                style={{ background: "#e5e7eb" }}
+              />
             ))}
           </div>
         ) : error ? (
           <EmptyState title="Could not load messages" subtitle={error} />
         ) : (
-          <MessageList 
-            messages={localMessages} 
+          <MessageList
+            messages={localMessages}
             currentUserId={currentUserId}
             conversationId={conversationID}
           />
         )}
       </div>
 
-      {/* Footer */}
-      <div>
-        <footer style={{ padding: 12, borderTop: "1px solid #e6edf3", display: "flex", gap: 8 }}>
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") sendMessage(); }}
-            placeholder="Type a message..."
-            style={{ flex: 1, padding: 10, borderRadius: 8, border: "1px solid #d1d5db" }}
-          />
-          <button onClick={sendMessage} style={{ padding: "8px 12px", borderRadius: 8, background: "#2563eb", color: "white", border: "none" }}>
-            Send
-          </button>
-        </footer>
+      {/* ── Input bar ───────────────────────────────────────────────── */}
+      <div
+        className="shrink-0 px-4 py-3 flex items-end gap-2"
+        style={{ borderTop: "1px solid #ebebeb", background: "#ffffff" }}
+      >
+        <textarea
+          ref={inputRef}
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            // Auto-grow up to ~4 lines
+            e.target.style.height = "auto";
+            e.target.style.height = Math.min(e.target.scrollHeight, 104) + "px";
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+          }}
+          placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
+          rows={1}
+          className="flex-1 resize-none rounded-xl px-4 py-2.5 text-sm outline-none transition focus:ring-2 leading-relaxed"
+          style={{
+            background: "#f3f4f6",
+            border: "1px solid #e5e7eb",
+            color: "#160f29",
+            "--tw-ring-color": "#183a37",
+            minHeight: "40px",
+            maxHeight: "104px",
+          }}
+        />
+        <button
+          onClick={sendMessage}
+          disabled={!text.trim() || sending}
+          className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl transition active:scale-95 disabled:opacity-40"
+          style={{ background: "#000000" }}
+        >
+          <PaperAirplaneIcon className="w-4 h-4 text-white" />
+        </button>
       </div>
-
-    </>
+    </div>
   );
 }

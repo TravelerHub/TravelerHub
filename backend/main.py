@@ -9,6 +9,7 @@ from routers import vision
 from routers import preferences
 from routers import favorites
 from routers import booking
+from routers import bookings as bookings_search
 
 from routers import chatbox
 from routers import groups
@@ -40,7 +41,8 @@ app.include_router(vision.router)         # /vision
 app.include_router(preferences.router)    # /preferences
 app.include_router(favorites.router)      # /favorites
 app.include_router(chatbox.router)        # /api (chatbox routes)
-app.include_router(booking.router)        # /bookings
+app.include_router(bookings_search.router)  # /api/bookings/hotels|cars|attractions (Booking.com API — must be before booking.router)
+app.include_router(booking.router)        # /api/bookings (CRUD)
 app.include_router(groups.router)         # /groups
 app.include_router(navigation.router)     # /navigation
 app.include_router(checklists.router)    # /checklists
