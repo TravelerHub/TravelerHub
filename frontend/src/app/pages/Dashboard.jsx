@@ -4,184 +4,56 @@ import { API_BASE } from "../../config";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
 
+// ── Dashboard widgets ─────────────────────────────────────────────────────────
+import Widget              from "../../components/dashboard/Widget.jsx";
+import WeatherWidget       from "../../components/dashboard/WeatherWidget.jsx";
+import MapSnapshot         from "../../components/dashboard/MapSnapshot.jsx";
+import TodoWidget          from "../../components/dashboard/TodoWidget.jsx";
+import MiniCalendar        from "../../components/dashboard/MiniCalendar.jsx";
+import LocalInfoWidget     from "../../components/dashboard/LocalInfoWidget.jsx";
+import BookingSummaryWidget from "../../components/dashboard/BookingSummaryWidget.jsx";
+
 // ── Color palette ─────────────────────────────────────────────────────────────
 // #160f29  deep dark   (sidebar, widget backgrounds)
 // #fbfbf2  off-white   (page background, light text)
 // #5c6b73  slate-gray  (secondary text, muted elements)
 // #183a37  dark teal   (active accent, profile avatar)
 
-// ── Feature tiles ────────────────────────────────────────────────────────────
+// ── Quick Access feature tiles ────────────────────────────────────────────────
 const FEATURES = [
-  { icon: "🗺️", label: "Navigation", sub: "Maps & routes",   path: "/navigation", accent: "#183a37" },
-  { icon: "💬", label: "Chat",        sub: "Group messages",  path: "/message",    accent: "#160f29" },
-  { icon: "🏨", label: "Booking",     sub: "Flights & hotels",path: "/booking",    accent: "#1e3a5f" },
-  { icon: "💰", label: "Wallet",     sub: "Expenses & splits",path: "/finance",   accent: "#3b2f00" },
-  { icon: "🧾", label: "Scanner",     sub: "Scan receipts",   path: "/expenses",   accent: "#2d1b4e" },
-  { icon: "📅", label: "Calendar",    sub: "Trip timeline",   path: "/calendar",   accent: "#1a3320" },
-  { icon: "👥", label: "Group Vote",  sub: "Decide together", path: "/vote",        accent: "#3b1f1f" },
-  { icon: "✦",  label: "Coming Soon", sub: "Stay tuned",      path: null,          accent: null      },
+  { icon: "🗺️", label: "Navigation",  sub: "Maps & routes",    path: "/navigation",  accent: "#183a37" },
+  { icon: "💬", label: "Chat",         sub: "Group messages",   path: "/message",     accent: "#160f29" },
+  { icon: "🏨", label: "Booking",      sub: "Flights & hotels", path: "/booking",     accent: "#1e3a5f" },
+  { icon: "💰", label: "Wallet",       sub: "Expenses & splits",path: "/finance",     accent: "#3b2f00" },
+  { icon: "🧾", label: "Scanner",      sub: "Scan receipts",    path: "/expenses",    accent: "#2d1b4e" },
+  { icon: "📅", label: "Calendar",     sub: "Trip timeline",    path: "/calendar",    accent: "#1a3320" },
+  { icon: "👥", label: "Group Vote",   sub: "Decide together",  path: "/vote",        accent: "#3b1f1f" },
+  { icon: "🌍", label: "Suggestions",  sub: "Travel ideas",     path: "/suggestions", accent: "#183a37" },
 ];
-
-
-// ── Mini calendar helpers ─────────────────────────────────────────────────────
-const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-const MONTHS = [
-  "January","February","March","April","May","June",
-  "July","August","September","October","November","December",
-];
-
-
-
-const COLOR ={
-  primary: "#160f29",
-  secondary: "#5c6b73",
-  accent: "#183a37",
-}
-function MiniCalendar({ events = [] }) {
-  const today = new Date();
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth());
-
-  const firstDow = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  const prev = () => {
-    if (month === 0) { setMonth(11); setYear((y) => y - 1); }
-    else setMonth((m) => m - 1);
-  };
-  const next = () => {
-    if (month === 11) { setMonth(0); setYear((y) => y + 1); }
-    else setMonth((m) => m + 1);
-  };
-
-  const cells = [
-    ...Array(firstDow).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ];
-
-  const isToday = (d) =>
-    d === today.getDate() &&
-    month === today.getMonth() &&
-    year === today.getFullYear();
-
-  const hasEvent = (d) =>
-    events.some((e) => {
-      const ed = new Date(e.date || e.start_date || e.check_in);
-      return (
-        ed.getDate() === d &&
-        ed.getMonth() === month &&
-        ed.getFullYear() === year
-      );
-    });
-
-  return (
-    <div className="h-full flex flex-col select-none">
-      {/* Month navigation */}
-      <div className="flex items-center justify-between mb-3">
-        <button
-          onClick={prev}
-          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-black/10 transition text-gray-400 hover:text-gray-700 text-lg leading-none"
-        >
-          ‹
-        </button>
-        <span className="font-semibold text-sm tracking-wide" style={{ color: "#160f29" }}>
-          {MONTHS[month]} {year}
-        </span>
-        <button
-          onClick={next}
-          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-black/10 transition text-gray-400 hover:text-gray-700 text-lg leading-none"
-        >
-          ›
-        </button>
-      </div>
-
-      {/* Day-of-week headers */}
-      <div className="grid grid-cols-7 mb-1">
-        {DAYS.map((d) => (
-          <div key={d} className="text-center text-gray-300 text-xs py-1 font-medium">
-            {d}
-          </div>
-        ))}
-      </div>
-
-      {/* Day cells */}
-      <div className="grid grid-cols-7 gap-y-0.5 flex-1 content-start">
-        {cells.map((d, i) => (
-          <div
-            key={i}
-            className={`
-              text-center text-xs py-1.5 rounded-md transition
-              ${d === null ? "" :
-                isToday(d)
-                  ? "font-bold"
-                  : hasEvent(d)
-                  ? "font-semibold text-gray-800 underline decoration-dotted"
-                  : "text-gray-500 hover:text-gray-800 hover:bg-black/5 cursor-default"
-              }
-            `}
-            style={d && isToday(d) ? { background: "#000000", color: "#ffffff" } : {}}
-          >
-            {d ?? ""}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Widget card wrapper ───────────────────────────────────────────────────────
-function Widget({ title, children, className = "" }) {
-  return (
-    <div
-      className={`rounded-2xl flex flex-col overflow-hidden ${className}`}
-      style={{ background: "#fff" }}
-    >
-      {title && (
-        <div
-          className="px-5 py-3 shrink-0 border-b"
-          style={{ borderColor: "#374151" }}
-        >
-          <p
-            className="text-xs font-semibold uppercase tracking-widest"
-            style={{ color: "#374151" }}
-          >
-            {title}
-          </p>
-        </div>
-      )}
-      <div className="flex-1 min-h-0">{children}</div>
-    </div>
-  );
-}
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
-function Dashboard() {
+export default function Dashboard() {
   const navigate = useNavigate();
 
-  const getStoredUser = () => {
+  const user = (() => {
     const s = localStorage.getItem("user");
     return s ? JSON.parse(s) : null;
-  };
-  const user = getStoredUser();
+  })();
 
-  // ── Create trip modal
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newTripName, setNewTripName] = useState("");
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [showCreateModal,    setShowCreateModal]    = useState(false);
+  const [newTripName,        setNewTripName]        = useState("");
   const [newTripDescription, setNewTripDescription] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState("");
+  const [creating,           setCreating]           = useState(false);
+  const [createError,        setCreateError]        = useState("");
 
-  // Members modal
   const [showMembersModal, setShowMembersModal] = useState(false);
-  const [selectedGroup, setSelectedGroup] = useState(null);
-  const [members, setMembers] = useState([]);
-  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [selectedGroup,    setSelectedGroup]    = useState(null);
+  const [members,          setMembers]          = useState([]);
+  const [loadingMembers,   setLoadingMembers]   = useState(false);
 
-  // ── Latest chat ───────────────────────────────────────────────────────────
   const [latestConversations, setLatestConversations] = useState([]);
-
-  // ── Upcoming bookings ─────────────────────────────────────────────────────
-  const [upcomingBookings, setUpcomingBookings] = useState([]);
+  const [upcomingBookings,    setUpcomingBookings]    = useState([]);
 
   useEffect(() => {
     if (!user) return;
@@ -190,6 +62,7 @@ function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Data fetching ──────────────────────────────────────────────────────────
   const fetchLatestChat = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -210,7 +83,6 @@ function Dashboard() {
     try {
       const token = localStorage.getItem("token");
       if (!token) return;
-      // Bookings endpoint requires a trip_id; we'll grab first trip's bookings
       const tripsRes = await fetch(`${API_BASE}/groups/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -243,7 +115,7 @@ function Dashboard() {
     }
   };
 
-  // ── Create trip ───────────────────────────────────────────────────────────
+  // ── Create trip ────────────────────────────────────────────────────────────
   const handleCreateTrip = async (e) => {
     e.preventDefault();
     if (!newTripName.trim()) { setCreateError("Trip name is required."); return; }
@@ -272,7 +144,7 @@ function Dashboard() {
     }
   };
 
-  // ── View members ──────────────────────────────────────────────────────────
+  // ── Group members ──────────────────────────────────────────────────────────
   const handleViewMembers = async (trip) => {
     setSelectedGroup(trip);
     setShowMembersModal(true);
@@ -304,7 +176,7 @@ function Dashboard() {
     }
   };
 
-  // ── Not logged in ─────────────────────────────────────────────────────────
+  // ── Guard ──────────────────────────────────────────────────────────────────
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: "#fbfbf2" }}>
@@ -322,59 +194,37 @@ function Dashboard() {
     );
   }
 
-  const displayName = user?.username || user?.name || "Traveler";
-
-  // Calendar events from bookings
+  const displayName    = user?.username || user?.name || "Traveler";
   const calendarEvents = upcomingBookings.map((b) => ({
     date: b.check_in || b.pickup_datetime || b.start_date,
   }));
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div
-      className="flex h-screen overflow-hidden"
-      style={{ background: "#f3f4f6" }}
-    >
+    <div className="flex h-screen overflow-hidden" style={{ background: "#f3f4f6" }}>
+
       {/* ══ SIDEBAR ══════════════════════════════════════════════════════════ */}
-      <aside
-        className="w-52 shrink-0 flex flex-col"
-        style={{ background: "#000000" }}
-      >
-        {/* Greeting */}
-        <div
-          className="px-5 pt-6 pb-5 border-b shrink-0"
-          style={{ borderColor: "#374151" }}
-        >
-          <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: "#6b7280" }}>
-            Hi,
-          </p>
-          <p className="font-bold text-lg leading-tight truncate" style={{ color: "#f9fafb" }}>
-            {displayName}
-          </p>
+      <aside className="w-52 shrink-0 flex flex-col" style={{ background: "#000000" }}>
+        <div className="px-5 pt-6 pb-5 border-b shrink-0" style={{ borderColor: "#374151" }}>
+          <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: "#6b7280" }}>Hi,</p>
+          <p className="font-bold text-lg leading-tight truncate" style={{ color: "#f9fafb" }}>{displayName}</p>
         </div>
 
-        {/* Nav items */}
         <nav className="flex flex-col gap-1 px-3 py-4 flex-1">
           {SIDEBAR_ITEMS.map((item) => {
-            const isActive = item.path === "/dashboard";
+            const isActive   = item.path === "/dashboard";
             const isDisabled = !item.path;
             return (
               <button
                 key={item.label}
                 onClick={() => item.path && navigate(item.path)}
                 disabled={isDisabled}
-                className={`
-                  w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition
-                  ${isActive
-                    ? "font-bold"
-                    : isDisabled
-                    ? "cursor-not-allowed"
-                    : "hover:bg-white/10"
-                  }
-                `}
+                className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition ${
+                  isActive ? "font-bold" : isDisabled ? "cursor-not-allowed" : "hover:bg-white/10"
+                }`}
                 style={{
                   background: isActive ? "#ffffff" : "transparent",
-                  color: isActive ? "#000000" : isDisabled ? "#4b5563" : "#9ca3af",
+                  color:      isActive ? "#000000" : isDisabled ? "#4b5563" : "#9ca3af",
                 }}
               >
                 {item.label}
@@ -383,7 +233,6 @@ function Dashboard() {
           })}
         </nav>
 
-        {/* New trip button at bottom */}
         <div className="px-3 pb-5">
           <button
             onClick={() => { setShowCreateModal(true); setCreateError(""); }}
@@ -396,246 +245,191 @@ function Dashboard() {
       </aside>
 
       {/* ══ MAIN ═════════════════════════════════════════════════════════════ */}
-      <div className="flex-1 flex flex-col min-w-0">
-
-        {/* Top navbar */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Navbar_Dashboard />
 
-        {/* ── Content grid ─────────────────────────────────────────────────── */}
-        <main
-          className="flex-1 overflow-hidden p-4 grid gap-4"
-          style={{
-            gridTemplateColumns: "1fr 1.4fr 1fr",
-            gridTemplateRows: "1fr 1fr",
-            background: "#f3f4f6",
-          }}
-        >
-          {/* ── MESSAGE widget ─── col1 row1 ── */}
-          <Widget title="Message">
-            <div className="h-full flex flex-col gap-2 p-4 overflow-y-auto">
-              {latestConversations.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="#9ca3af" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.77 9.77 0 01-4-.84L3 20l1.09-3.27A7.958 7.958 0 013 12C3 7.582 7.03 4 12 4s9 3.582 9 8z" />
-                  </svg>
-                  <p className="text-xs text-center" style={{ color: "#6b7280" }}>No recent messages</p>
-                  <button
-                    onClick={() => navigate("/message")}
-                    className="mt-1 px-4 py-1.5 rounded-lg text-xs font-semibold transition hover:bg-gray-700"
-                    style={{ background: "#000000", color: "#f9fafb" }}
-                  >
-                    Open Chat
-                  </button>
-                </div>
-              ) : (
-                <>
-                  {latestConversations.map((conv) => (
+        <main className="flex-1 overflow-y-auto p-4" style={{ background: "#f3f4f6" }}>
+          <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1.4fr 1fr" }}>
+
+            {/* ── ROW 1 · Weather (col 1-2) + Map Snapshot (col 3) ────────── */}
+            <Widget title="Weather" className="col-span-2" style={{ minHeight: "88px" }}>
+              <WeatherWidget />
+            </Widget>
+
+            <Widget title="Map Snapshot" style={{ minHeight: "88px" }}>
+              <MapSnapshot />
+            </Widget>
+
+            {/* ── ROW 2 · Message + Upcoming Event + Quick Access ──────────── */}
+            <Widget title="Message" style={{ minHeight: "220px" }}>
+              <div className="h-full flex flex-col gap-2 p-4 overflow-y-auto">
+                {latestConversations.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="#9ca3af" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.77 9.77 0 01-4-.84L3 20l1.09-3.27A7.958 7.958 0 013 12C3 7.582 7.03 4 12 4s9 3.582 9 8z" />
+                    </svg>
+                    <p className="text-xs text-center" style={{ color: "#6b7280" }}>No recent messages</p>
                     <button
-                      key={conv.id || conv.conversation_id}
                       onClick={() => navigate("/message")}
-                      className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-black/5 transition"
-                      style={{ border: "1px solid rgba(0,0,0,0.08)" }}
+                      className="mt-1 px-4 py-1.5 rounded-lg text-xs font-semibold transition hover:bg-gray-700"
+                      style={{ background: "#000000", color: "#f9fafb" }}
                     >
-                      <p className="text-sm font-medium truncate" style={{ color: "#000000" }}>
-                        {conv.name || conv.conversation_name || "Conversation"}
-                      </p>
-                      <p className="text-xs mt-0.5 truncate" style={{ color: "#6b7280" }}>
-                        {conv.last_message || "Tap to open"}
-                      </p>
+                      Open Chat
                     </button>
-                  ))}
-                  <button
-                    onClick={() => navigate("/message")}
-                    className="mt-auto text-xs font-medium hover:underline"
-                    style={{ color: "#374151" }}
-                  >
-                    View all →
-                  </button>
-                </>
-              )}
-            </div>
-          </Widget>
-
-          {/* ── UPCOMING EVENT widget ─── col2 row1 ── */}
-          <Widget title="Upcoming Event">
-            <div className="h-full flex flex-col gap-2 p-4 overflow-y-auto">
-              {upcomingBookings.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="#9ca3af" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  <p className="text-xs text-center" style={{ color: "#6b7280" }}>No upcoming events</p>
-                  <button
-                    onClick={() => navigate("/booking")}
-                    className="mt-1 px-4 py-1.5 rounded-lg text-xs font-semibold transition hover:bg-gray-700"
-                    style={{ background: "#000000", color: "#f9fafb" }}
-                  >
-                    Add Booking
-                  </button>
-                </div>
-              ) : (
-                <>
-                  {upcomingBookings.map((b, i) => {
-                    const typeIcon = { hotel: "🏨", car_rental: "🚗", attraction: "🎡", flight: "✈️" }[b.type] || "📋";
-                    const dateStr = b.check_in || b.pickup_datetime || b.start_date;
-                    const date = dateStr ? new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
-                    return (
-                      <div
-                        key={b.id || i}
-                        className="flex items-start gap-3 px-3 py-3 rounded-xl"
-                        style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}
+                  </div>
+                ) : (
+                  <>
+                    {latestConversations.map((conv) => (
+                      <button
+                        key={conv.id || conv.conversation_id}
+                        onClick={() => navigate("/message")}
+                        className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-black/5 transition"
+                        style={{ border: "1px solid rgba(0,0,0,0.08)" }}
                       >
-                        <span className="text-lg shrink-0 mt-0.5">{typeIcon}</span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate" style={{ color: "#000000" }}>
-                            {b.vendor || b.hotel_name || b.name || "Booking"}
-                          </p>
-                          <p className="text-xs mt-0.5" style={{ color: "#6b7280" }}>
-                            {[b.type?.replace("_", " "), date].filter(Boolean).join(" · ")}
-                          </p>
-                        </div>
-                        <span
-                          className="text-xs px-2 py-0.5 rounded-full shrink-0"
-                          style={{
-                            background: b.status === "confirmed" ? "#000000" : "#f3f4f6",
-                            color: b.status === "confirmed" ? "#f9fafb" : "#6b7280",
-                          }}
-                        >
-                          {b.status || "pending"}
-                        </span>
-                      </div>
-                    );
-                  })}
-                  <button
-                    onClick={() => navigate("/booking")}
-                    className="mt-auto text-xs font-medium hover:underline"
-                    style={{ color: "#374151" }}
-                  >
-                    View all bookings →
-                  </button>
-                </>
-              )}
-            </div>
-          </Widget>
+                        <p className="text-sm font-medium truncate" style={{ color: "#000000" }}>
+                          {conv.name || conv.conversation_name || "Conversation"}
+                        </p>
+                        <p className="text-xs mt-0.5 truncate" style={{ color: "#6b7280" }}>
+                          {conv.last_message || "Tap to open"}
+                        </p>
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => navigate("/message")}
+                      className="mt-auto text-xs font-medium hover:underline"
+                      style={{ color: "#374151" }}
+                    >
+                      View all →
+                    </button>
+                  </>
+                )}
+              </div>
+            </Widget>
 
-          {/* ── FEATURE GRID ─── col3 row1 ── */}
-          <Widget title="Quick Access">
-            <div className="h-full p-3 overflow-y-auto">
-              <div className="grid grid-cols-2 gap-2">
-                {FEATURES.map((f, i) => {
-                  const isLocked = !f.path;
-                  return (
+            <Widget title="Upcoming Event" style={{ minHeight: "220px" }}>
+              <div className="h-full flex flex-col gap-2 p-4 overflow-y-auto">
+                {upcomingBookings.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="#9ca3af" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <p className="text-xs text-center" style={{ color: "#6b7280" }}>No upcoming events</p>
+                    <button
+                      onClick={() => navigate("/booking")}
+                      className="mt-1 px-4 py-1.5 rounded-lg text-xs font-semibold transition hover:bg-gray-700"
+                      style={{ background: "#000000", color: "#f9fafb" }}
+                    >
+                      Add Booking
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {upcomingBookings.map((b, i) => {
+                      const typeIcon = { hotel: "🏨", car_rental: "🚗", attraction: "🎡", flight: "✈️" }[b.type] || "📋";
+                      const dateRaw  = b.check_in || b.pickup_datetime || b.start_date;
+                      const date     = dateRaw
+                        ? new Date(dateRaw).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                        : "";
+                      return (
+                        <div
+                          key={b.id || i}
+                          className="flex items-start gap-3 px-3 py-3 rounded-xl"
+                          style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}
+                        >
+                          <span className="text-lg shrink-0 mt-0.5">{typeIcon}</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium truncate" style={{ color: "#000000" }}>
+                              {b.vendor || b.hotel_name || b.name || "Booking"}
+                            </p>
+                            <p className="text-xs mt-0.5" style={{ color: "#6b7280" }}>
+                              {[b.type?.replace("_", " "), date].filter(Boolean).join(" · ")}
+                            </p>
+                          </div>
+                          <span
+                            className="text-xs px-2 py-0.5 rounded-full shrink-0"
+                            style={{
+                              background: b.status === "confirmed" ? "#000000" : "#f3f4f6",
+                              color:      b.status === "confirmed" ? "#f9fafb"  : "#6b7280",
+                            }}
+                          >
+                            {b.status || "pending"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    <button
+                      onClick={() => navigate("/booking")}
+                      className="mt-auto text-xs font-medium hover:underline"
+                      style={{ color: "#374151" }}
+                    >
+                      View all bookings →
+                    </button>
+                  </>
+                )}
+              </div>
+            </Widget>
+
+            <Widget title="Quick Access" style={{ minHeight: "220px" }}>
+              <div className="h-full p-3 overflow-y-auto">
+                <div className="grid grid-cols-2 gap-2">
+                  {FEATURES.map((f, i) => (
                     <button
                       key={i}
                       onClick={() => f.path && navigate(f.path)}
-                      disabled={isLocked}
-                      className={`
-                        group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-left
-                        transition-all duration-150
-                        ${isLocked
-                          ? "opacity-40 cursor-not-allowed"
-                          : "hover:scale-[1.02] active:scale-[0.98] cursor-pointer hover:shadow-sm"
-                        }
-                      `}
-                      style={{
-                        background: isLocked
-                          ? "rgba(0,0,0,0.04)"
-                          : "rgba(0,0,0,0.035)",
-                        border: `1px solid ${isLocked ? "rgba(0,0,0,0.06)" : "rgba(0,0,0,0.08)"}`,
-                      }}
+                      className="group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150 hover:scale-[1.02] active:scale-[0.98] cursor-pointer hover:shadow-sm"
+                      style={{ background: "rgba(0,0,0,0.035)", border: "1px solid rgba(0,0,0,0.08)" }}
                     >
-                      {/* icon pill */}
                       <span
                         className="shrink-0 w-9 h-9 rounded-xl flex items-center justify-center text-lg"
-                        style={{
-                          background: f.accent ?? "rgba(0,0,0,0.12)",
-                        }}
+                        style={{ background: f.accent ?? "rgba(0,0,0,0.12)" }}
                       >
                         {f.icon}
                       </span>
-
-                      {/* labels */}
                       <div className="min-w-0 flex-1">
-                        <p
-                          className="text-xs font-semibold leading-tight truncate"
-                          style={{ color: "#111827" }}
-                        >
+                        <p className="text-xs font-semibold leading-tight truncate" style={{ color: "#111827" }}>
                           {f.label}
                         </p>
-                        <p
-                          className="text-[10px] leading-tight truncate mt-0.5"
-                          style={{ color: "#6b7280" }}
-                        >
+                        <p className="text-[10px] leading-tight truncate mt-0.5" style={{ color: "#6b7280" }}>
                           {f.sub}
                         </p>
                       </div>
-
-                      {/* coming-soon badge */}
-                      {isLocked && f.label === "Coming Soon" && (
-                        <span
-                          className="absolute top-1.5 right-1.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full"
-                          style={{ background: "#f3f4f6", color: "#9ca3af" }}
-                        >
-                          Soon
-                        </span>
-                      )}
-
-                      {/* arrow hint on hover */}
-                      {!isLocked && (
-                        <span
-                          className="shrink-0 text-[10px] opacity-0 group-hover:opacity-60 transition-opacity"
-                          style={{ color: "#374151" }}
-                        >
-                          →
-                        </span>
-                      )}
+                      <span
+                        className="shrink-0 text-[10px] opacity-0 group-hover:opacity-60 transition-opacity"
+                        style={{ color: "#374151" }}
+                      >
+                        →
+                      </span>
                     </button>
-                  );
-                })}
-              </div>
-            </div>
-          </Widget>
-
-          {/* ── TRAVEL SUGGESTION ─── col1 row2 ── */}
-          <Widget title="Travel Suggestion">
-            <div className="h-full flex flex-col gap-3 p-4 overflow-y-auto">
-              {/* Placeholder cards */}
-              {[
-                { emoji: "🌸", title: "Spring in Kyoto", sub: "Cherry blossom season • Mar–Apr" },
-                { emoji: "🏔️", title: "Patagonia Trails", sub: "Best trekking • Nov–Feb" },
-                { emoji: "🌊", title: "Maldives Escape", sub: "Dry season • Dec–Apr" },
-              ].map((s, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
-                  style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.06)" }}
-                >
-                  <span className="text-xl shrink-0">{s.emoji}</span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate" style={{ color: "#000000" }}>{s.title}</p>
-                    <p className="text-xs mt-0.5 truncate" style={{ color: "#6b7280" }}>{s.sub}</p>
-                  </div>
+                  ))}
                 </div>
-              ))}
-              <p className="text-xs mt-auto" style={{ color: "#9ca3af" }}>
-                Personalized suggestions coming soon
-              </p>
-            </div>
-          </Widget>
+              </div>
+            </Widget>
 
-          {/* ── CALENDAR ─── col2-3 row2 ── */}
-          <Widget
-            title="Calendar"
-            className="col-span-2"
-          >
-            <div className="h-full p-4">
-              <MiniCalendar events={calendarEvents} />
-            </div>
-          </Widget>
+            {/* ── ROW 3 · To-Do (col 1) + Calendar (col 2-3) ──────────────── */}
+            <Widget title="To-Do" style={{ minHeight: "220px" }}>
+              <TodoWidget />
+            </Widget>
+
+            <Widget title="Calendar" className="col-span-2" style={{ minHeight: "220px" }}>
+              <div className="h-full p-4">
+                <MiniCalendar events={calendarEvents} />
+              </div>
+            </Widget>
+
+            {/* ── ROW 4 · Local Info (col 1) + Booking Summary (col 2-3) ──── */}
+            <Widget title="Local Info" style={{ minHeight: "260px" }}>
+              <LocalInfoWidget />
+            </Widget>
+
+            <Widget title="Booking Summary" className="col-span-2" style={{ minHeight: "260px" }}>
+              <BookingSummaryWidget bookings={upcomingBookings} />
+            </Widget>
+
+          </div>
         </main>
       </div>
 
-      {/* ══ CREATE TRIP MODAL ═════════════════════════════════════════════════ */}
+      {/* ══ CREATE TRIP MODAL ════════════════════════════════════════════════ */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
           <div className="rounded-2xl shadow-2xl max-w-md w-full p-6" style={{ background: "#fbfbf2" }}>
@@ -697,7 +491,7 @@ function Dashboard() {
         </div>
       )}
 
-      {/* ══ MEMBERS MODAL ═════════════════════════════════════════════════════ */}
+      {/* ══ MEMBERS MODAL ════════════════════════════════════════════════════ */}
       {showMembersModal && selectedGroup && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
           <div className="rounded-2xl shadow-2xl max-w-md w-full p-6" style={{ background: "#fbfbf2" }}>
@@ -742,7 +536,7 @@ function Dashboard() {
                           className="text-xs font-medium px-1.5 py-0.5 rounded-full"
                           style={{
                             background: member.role === "leader" ? "rgba(163,230,53,0.15)" : "#e8e8e0",
-                            color: member.role === "leader" ? "#183a37" : "#5c6b73",
+                            color:      member.role === "leader" ? "#183a37"               : "#5c6b73",
                           }}
                         >
                           {member.role === "leader" ? "👑 Leader" : "Member"}
@@ -778,5 +572,3 @@ function Dashboard() {
     </div>
   );
 }
-
-export default Dashboard;

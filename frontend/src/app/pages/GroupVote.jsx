@@ -27,6 +27,12 @@ const POLL_TYPES = [
     icon: "🎡",
     desc: "What should the group do?",
   },
+  {
+    key: "other",
+    label: "Other",
+    icon: "❓",
+    desc: "Any other question for the group?",
+  }
 ];
 
 const TYPE_META = Object.fromEntries(POLL_TYPES.map((t) => [t.key, t]));
