@@ -95,6 +95,31 @@ button:focus-visible {
   50%       { transform: translateY(7px); opacity: 0.85; }
 }
 
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes tealPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(24,58,55,0); }
+  50%       { box-shadow: 0 0 28px 6px rgba(24,58,55,0.35); }
+}
+
+@keyframes fadeInLeft {
+  from { opacity: 0; transform: translateX(-32px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes stepLine {
+  from { transform: scaleX(0); transform-origin: left; }
+  to   { transform: scaleX(1); transform-origin: left; }
+}
+
 
 .footer-btn {
   display: inline-flex;
