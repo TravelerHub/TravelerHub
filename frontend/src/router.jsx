@@ -20,6 +20,7 @@ import Booking from "./app/pages/Booking.jsx";
 import Calendar from "./app/pages/Calendar.jsx";
 
 import Finance from "./app/pages/Finance.jsx";
+import GroupVote from "./app/pages/GroupVote.jsx";
 import WelcomeAfterLogin from "./app/pages/WelcomeAfterLogin.jsx";
 import ChatWidget from "./components/ChatWidget.jsx";
 
@@ -59,6 +60,7 @@ const router = createBrowserRouter([
         { path: "/booking", element: <Booking /> },
         { path: "/calendar", element: <Calendar /> },
         { path: "/finance", element: <Finance /> },
+        { path: "/vote",    element: <GroupVote /> },
         { path: "/welcome", element: <WelcomeAfterLogin /> },
       ],
     },
