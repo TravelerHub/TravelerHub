@@ -69,6 +69,8 @@ def _poll_with_options(poll_id: str, user_id: str) -> dict:
         .execute()
     )
     options = opts_res.data or []
+    for opt in options:
+        opt["label"] = opt.get("text") or opt.get("label", "")
 
     vote_res = (
         supabase.table("poll_votes")
@@ -163,7 +165,7 @@ def _activity_suggestions(trip_name: str) -> list:
 @router.post("/")
 def create_poll(body: PollCreate, current_user=Depends(oauth2.get_current_user)):
     """Create a new poll. Only the trip owner (leader) can create polls."""
-    if body.poll_type not in ("length_of_stay", "location", "activity"):
+    if body.poll_type not in ("length_of_stay", "location", "activity","other"):
         raise HTTPException(status_code=400, detail="Invalid poll_type")
 
     trip = _get_trip(body.trip_id)
@@ -239,7 +241,7 @@ def add_option(
         "id": str(uuid.uuid4()),
         "poll_id": poll_id,
         "created_by": current_user["id"],
-        "label": body.label.strip(),
+        "text": body.label.strip(),
         "value": body.value or {},
         "vote_count": 0,
         "ai_suggested": body.ai_suggested,
@@ -449,7 +451,9 @@ def get_suggestions(poll_id: str, current_user=Depends(oauth2.get_current_user))
         ]
     elif poll_type == "location":
         suggestions = _location_suggestions(trip_name)
-    else:  # activity
+    elif poll_type == "activity":
         suggestions = _activity_suggestions(trip_name)
+    else:  # other
+        suggestions = []
 
     return {"suggestions": suggestions, "poll_type": poll_type}
