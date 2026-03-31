@@ -1,7 +1,12 @@
-import React, { useState, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard";
 import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
+import {
+  createFinanceTransaction,
+  deleteFinanceTransaction,
+  getFinanceTransactions,
+} from "../../services/financeService";
 
 // ── Color palette (matches Dashboard / Booking / Expenses)
 // #160f29  deep dark   (sidebar, headings)
@@ -10,9 +15,11 @@ import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
 // #183a37  dark teal   (accent / income)
 // #f3f4f6  light gray  (page bg)
 
-const CATEGORIES = ["Accommodation", "Transportation", "Dining", "Activities", "Shopping", "Other"];
+const CATEGORIES = ["Expense", "Income", "Accommodation", "Transportation", "Dining", "Activities", "Shopping", "Other"];
 
 const CATEGORY_META = {
+  Expense:       { icon: "💸", color: "#dc2626" },
+  Income:        { icon: "💵", color: "#16a34a" },
   Accommodation: { icon: "🏨", color: "#1e3a5f" },
   Transportation: { icon: "✈️", color: "#160f29" },
   Dining:         { icon: "🍽️", color: "#183a37" },
@@ -21,46 +28,93 @@ const CATEGORY_META = {
   Other:          { icon: "📋", color: "#374151" },
 };
 
-const DEFAULT_FORM = { description: "", amount: "", category: "Other", date: "", type: "expense" };
+const DEFAULT_FORM = { description: "", amount: "", category: "Expense", date: "", type: "expense" };
 
 function fmtDate(v) {
   if (!v) return "—";
   return new Date(v + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+function normalizeTransaction(raw) {
+  const amount = Number.parseFloat(raw?.amount ?? raw?.total ?? 0);
+  const category = CATEGORIES.includes(raw?.category) ? raw.category : "Other";
+  const type = raw?.type === "income" ? "income" : "expense";
+  const fallbackDate = raw?.created_at ? String(raw.created_at).slice(0, 10) : "";
+
+  return {
+    id: raw?.id ?? `${Date.now()}-${Math.random()}`,
+    description: raw?.description || raw?.merchant_name || raw?.place_name || "Untitled transaction",
+    amount: Number.isFinite(amount) ? amount : 0,
+    category,
+    date: raw?.date || fallbackDate,
+    type,
+  };
+}
+
 function Finance() {
   const navigate = useNavigate();
 
-  const [transactions, setTransactions] = useState([
-    { id: 1, description: "Hotel Booking",  amount: 250.0,  category: "Accommodation",  date: "2026-03-01", type: "expense" },
-    { id: 2, description: "Flight Ticket",  amount: 450.0,  category: "Transportation", date: "2026-03-02", type: "expense" },
-    { id: 3, description: "Restaurant",     amount: 65.5,   category: "Dining",         date: "2026-03-03", type: "expense" },
-  ]);
+  const [transactions, setTransactions] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState(DEFAULT_FORM);
-  const [filterCat, setFilterCat] = useState("All");
-  const [filterType, setFilterType] = useState("all"); // all | expense | income
+  const [sortBy, setSortBy] = useState("date");
+  const [sortDir, setSortDir] = useState("desc");
+
+  const loadTransactions = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError("");
+    try {
+      const rows = await getFinanceTransactions();
+      setTransactions(rows.map(normalizeTransaction));
+    } catch (error) {
+      setLoadError(error?.message || "Failed to load transactions");
+      setTransactions([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTransactions();
+  }, [loadTransactions]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleAddTransaction = (e) => {
+  const handleAddTransaction = async (e) => {
     e.preventDefault();
     if (formData.description && formData.amount && formData.date) {
-      setTransactions((prev) => [
-        { id: Date.now(), ...formData, amount: parseFloat(formData.amount) },
-        ...prev,
-      ]);
-      setFormData(DEFAULT_FORM);
-      setShowModal(false);
+      try {
+        const created = await createFinanceTransaction({
+          description: formData.description,
+          amount: parseFloat(formData.amount),
+          category: formData.category,
+          date: formData.date,
+          type: formData.type,
+          currency: "USD",
+        });
+
+        setTransactions((prev) => [normalizeTransaction(created), ...prev]);
+          setFormData(DEFAULT_FORM);
+        setShowModal(false);
+      } catch (error) {
+        setLoadError(error?.message || "Failed to save transaction");
+      }
     }
   };
 
-  const handleDeleteTransaction = (id) => {
-    setTransactions((prev) => prev.filter((t) => t.id !== id));
+  const handleDeleteTransaction = async (id) => {
+    try {
+      await deleteFinanceTransaction(id);
+      setTransactions((prev) => prev.filter((t) => t.id !== id));
+    } catch (error) {
+      setLoadError(error?.message || "Failed to delete transaction");
+    }
   };
 
   // ── Derived values ──────────────────────────────────────────────────────────
@@ -83,13 +137,29 @@ function Finance() {
     return map;
   }, [transactions]);
 
-  const filtered = useMemo(() => {
-    return transactions.filter((t) => {
-      const catOk  = filterCat === "All" || t.category === filterCat;
-      const typeOk = filterType === "all" || t.type === filterType;
-      return catOk && typeOk;
+  const sortedTransactions = useMemo(() => {
+    const list = [...transactions];
+
+    list.sort((a, b) => {
+      let comparison = 0;
+
+      if (sortBy === "description") {
+        comparison = (a.description || "").localeCompare(b.description || "", undefined, { sensitivity: "base" });
+      } else if (sortBy === "category") {
+        comparison = (a.category || "").localeCompare(b.category || "", undefined, { sensitivity: "base" });
+      } else if (sortBy === "amount") {
+        comparison = (a.amount || 0) - (b.amount || 0);
+      } else {
+        const aDate = a.date ? new Date(a.date).getTime() : 0;
+        const bDate = b.date ? new Date(b.date).getTime() : 0;
+        comparison = aDate - bDate;
+      }
+
+      return sortDir === "asc" ? comparison : -comparison;
     });
-  }, [transactions, filterCat, filterType]);
+
+    return list;
+  }, [transactions, sortBy, sortDir]);
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "#f3f4f6" }}>
@@ -292,38 +362,25 @@ function Finance() {
 
           {/* ── Filter row ────────────────────────────────────────────────── */}
           <div className="flex flex-wrap items-center gap-2 mb-4">
-            {/* Category pills */}
-            {["All", ...CATEGORIES].map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setFilterCat(cat)}
-                className="px-3 py-1.5 rounded-full text-xs font-medium transition"
-                style={
-                  filterCat === cat
-                    ? { background: "#160f29", color: "#fbfbf2" }
-                    : { background: "#fff", color: "#5c6b73", border: "1px solid #e5e7eb" }
-                }
-              >
-                {cat === "All" ? "All Categories" : `${CATEGORY_META[cat].icon} ${cat}`}
-              </button>
-            ))}
             <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-              {["all", "expense", "income"].map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setFilterType(t)}
-                  className="px-3 py-1.5 rounded-full text-xs font-medium capitalize transition"
-                  style={
-                    filterType === t
-                      ? { background: t === "expense" ? "#fef2f2" : t === "income" ? "#f0fdf4" : "#160f29",
-                          color:      t === "expense" ? "#dc2626"  : t === "income" ? "#16a34a"  : "#fbfbf2",
-                          border: "none" }
-                      : { background: "#fff", color: "#5c6b73", border: "1px solid #e5e7eb" }
-                  }
-                >
-                  {t === "all" ? "All Types" : t}
-                </button>
-              ))}
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="px-3 py-1.5 rounded-full text-xs font-medium"
+                style={{ background: "#fff", color: "#5c6b73", border: "1px solid #e5e7eb" }}
+              >
+                <option value="description">Sort: Description</option>
+                <option value="category">Sort: Category</option>
+                <option value="date">Sort: Date</option>
+                <option value="amount">Sort: Amount</option>
+              </select>
+              <button
+                onClick={() => setSortDir((prev) => (prev === "asc" ? "desc" : "asc"))}
+                className="px-3 py-1.5 rounded-full text-xs font-medium transition"
+                style={{ background: "#160f29", color: "#fbfbf2" }}
+              >
+                {sortDir === "asc" ? "Ascending" : "Descending"}
+              </button>
             </div>
           </div>
 
@@ -345,18 +402,30 @@ function Finance() {
               <span />
             </div>
 
-            {filtered.length === 0 ? (
+            {isLoading ? (
+              <div className="py-16 text-center">
+                <p className="text-sm font-medium" style={{ color: "#374151" }}>Loading transactions...</p>
+              </div>
+            ) : loadError ? (
+              <div className="py-16 text-center px-6">
+                <p className="text-sm font-medium" style={{ color: "#b91c1c" }}>Could not load transactions</p>
+                <p className="text-xs mt-1" style={{ color: "#9ca3af" }}>{loadError}</p>
+                <button
+                  onClick={loadTransactions}
+                  className="mt-4 px-4 py-2 rounded-lg text-xs font-semibold"
+                  style={{ background: "#160f29", color: "#fbfbf2" }}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : sortedTransactions.length === 0 ? (
               <div className="py-16 text-center">
                 <p className="text-3xl mb-3">💳</p>
                 <p className="text-sm font-medium" style={{ color: "#374151" }}>No transactions</p>
-                <p className="text-xs mt-1" style={{ color: "#9ca3af" }}>
-                  {filterCat !== "All" || filterType !== "all"
-                    ? "Try adjusting your filters"
-                    : "Add your first transaction to get started"}
-                </p>
+                <p className="text-xs mt-1" style={{ color: "#9ca3af" }}>Add your first transaction to get started</p>
               </div>
             ) : (
-              filtered.map((t, idx) => {
+              sortedTransactions.map((t, idx) => {
                 const meta = CATEGORY_META[t.category] || CATEGORY_META.Other;
                 return (
                   <div
@@ -478,7 +547,13 @@ function Finance() {
                 <button
                   key={t}
                   type="button"
-                  onClick={() => setFormData((prev) => ({ ...prev, type: t }))}
+                  onClick={() =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      type: t,
+                      category: t === "expense" ? "Expense" : "Income",
+                    }))
+                  }
                   className="flex-1 py-2.5 rounded-xl text-sm font-semibold capitalize transition"
                   style={
                     formData.type === t
@@ -547,10 +622,27 @@ function Finance() {
 
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
-                  Category
+                  Category (optional)
                 </label>
                 <div className="flex flex-wrap gap-2">
-                  {CATEGORIES.map((cat) => (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        category: prev.type === "expense" ? "Expense" : "Income",
+                      }))
+                    }
+                    className="px-3 py-1.5 rounded-full text-xs font-medium transition"
+                    style={
+                      formData.category === (formData.type === "expense" ? "Expense" : "Income")
+                        ? { background: "#160f29", color: "#fbfbf2" }
+                        : { background: "#f3f4f6", color: "#374151" }
+                    }
+                  >
+                    {formData.type === "expense" ? "💸 Expense (Default)" : "💵 Income (Default)"}
+                  </button>
+                  {CATEGORIES.filter((cat) => cat !== "Expense" && cat !== "Income").map((cat) => (
                     <button
                       key={cat}
                       type="button"
