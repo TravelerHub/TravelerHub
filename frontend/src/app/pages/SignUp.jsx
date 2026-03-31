@@ -49,6 +49,9 @@ function SignUp() {
       // Store the token for authenticated requests
         localStorage.setItem("token", data.access_token);
         localStorage.setItem("user", JSON.stringify(data.user));
+        if (data.symmetric_key) {
+          localStorage.setItem("card_symmetric_key", data.symmetric_key);
+        }
       // Redirect to Dashboard
         navigate("/dashboard");
       }

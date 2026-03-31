@@ -5,10 +5,37 @@ from schemas import SignupRequest, LoginRequest, OtpRequest, OtpVerifyRequest
 
 # hasing: hash_password, verify_password; oauth2: create_access_token
 from utils import hasing, oauth2, otp
+from utils.encryption import generate_conversation_key
 
 router = APIRouter(
     tags=["auth"]
 )
+
+
+def _get_or_create_user_symmetric_key(user_id: str) -> str:
+    """Return the user's symmetric key, creating one on first signup/login."""
+    existing = (
+        supabase
+        .table("user_security_keys")
+        .select("symmetric_key")
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+
+    if existing.data and len(existing.data) > 0:
+        return existing.data[0]["symmetric_key"]
+
+    symmetric_key = generate_conversation_key()
+
+    supabase.table("user_security_keys").insert(
+        {
+            "user_id": user_id,
+            "symmetric_key": symmetric_key,
+        }
+    ).execute()
+
+    return symmetric_key
 
 # sign up for the new user
 
@@ -64,6 +91,8 @@ def signup(data: SignupRequest):
 
     new_user = res.data[0]
 
+    symmetric_key = _get_or_create_user_symmetric_key(new_user["id"])
+
 
     # auto-login after signup (issue token)
     access_token = oauth2.create_access_token(data={"user_id": new_user["id"]})
@@ -71,6 +100,7 @@ def signup(data: SignupRequest):
     return {
         "message": "Signup successful",
         "user": new_user,
+        "symmetric_key": symmetric_key,
         "access_token": access_token,
         "token_type": "bearer",
     }
@@ -113,12 +143,14 @@ def login(data: LoginRequest):
     #Create JWT token
    
     access_token = oauth2.create_access_token(data={"user_id": user["id"]})
+    symmetric_key = _get_or_create_user_symmetric_key(user["id"])
 
     return {
         "message": "Login successful",
         "access_token": access_token,
         "token_type": "bearer",
-        "user": user
+        "user": user,
+        "symmetric_key": symmetric_key,
     }
 
 
