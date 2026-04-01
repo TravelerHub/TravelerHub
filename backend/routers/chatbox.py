@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, Depends
-from typing import Dict, Set
+from typing import Dict, Set, Optional
 import asyncio
 from datetime import datetime
 from supabase_client import supabase
@@ -45,6 +45,33 @@ def ensure_conversation_member(conversation_id: str, user_id: str):
     )
     if not membership.data:
         raise HTTPException(status_code=403, detail="Not a member of this conversation")
+
+
+def ensure_trip_member(trip_id: str, user_id: str):
+    membership = (
+        supabase
+        .from_("group_member")
+        .select("id")
+        .eq("group_id", trip_id)
+        .eq("user_id", user_id)
+        .is_("left_datetime", None)
+        .maybe_single()
+        .execute()
+    )
+    if membership.data:
+        return
+
+    owner = (
+        supabase
+        .from_("trips")
+        .select("id")
+        .eq("id", trip_id)
+        .eq("owner_id", user_id)
+        .maybe_single()
+        .execute()
+    )
+    if not owner.data:
+        raise HTTPException(status_code=403, detail="Not a member of this group")
 
 
 # ── Keypair endpoints ──────────────────────────────────────────────────────────
@@ -182,7 +209,10 @@ def delete_my_session_key(
 # ── Conversation endpoints ─────────────────────────────────────────────────────
 
 @router.get("/conversations")
-def get_conversations(current_user: dict = Depends(oauth2.get_current_user)):
+def get_conversations(
+    trip_id: Optional[str] = Query(None),
+    current_user: dict = Depends(oauth2.get_current_user),
+):
     """
     GET /api/conversations
     Return conversations that the user is a member of.
@@ -197,7 +227,8 @@ def get_conversations(current_user: dict = Depends(oauth2.get_current_user)):
                 left_datetime,
                 conversation:conversation_id (
                   conversation_id,
-                  conversation_name
+                                    conversation_name,
+                                    trip_id
                 )
             """)
             .eq("user_id", current_user["id"])
@@ -212,6 +243,8 @@ def get_conversations(current_user: dict = Depends(oauth2.get_current_user)):
         for row in resp.data:
             convo = row.get("conversation")
             if convo and convo.get("conversation_id"):
+                if trip_id and str(convo.get("trip_id") or "") != str(trip_id):
+                    continue
                 convo_map[convo["conversation_id"]] = convo
 
         return list(convo_map.values())
@@ -231,8 +264,12 @@ def create_conversation(
     Encryption setup (session key distribution) is handled client-side after this call.
     """
     try:
+        if payload.trip_id:
+            ensure_trip_member(payload.trip_id, current_user["id"])
+
         convo_data = {
-            "conversation_name": payload.conversation_name or "New Conversation"
+            "conversation_name": payload.conversation_name or "New Conversation",
+            "trip_id": payload.trip_id,
         }
         res = supabase.from_("conversation").insert(convo_data).execute()
         if not res.data:
@@ -243,6 +280,21 @@ def create_conversation(
 
         member_ids = set(payload.members or [])
         member_ids.add(current_user["id"])
+
+        if payload.trip_id and member_ids:
+            allowed_res = (
+                supabase
+                .from_("group_member")
+                .select("user_id")
+                .eq("group_id", payload.trip_id)
+                .is_("left_datetime", None)
+                .execute()
+            )
+            allowed_ids = {row["user_id"] for row in (allowed_res.data or [])}
+            allowed_ids.add(current_user["id"])
+            invalid = [uid for uid in member_ids if uid not in allowed_ids]
+            if invalid:
+                raise HTTPException(status_code=400, detail="All members must belong to the selected group")
 
         now = datetime.utcnow().isoformat()
         members_to_insert = [

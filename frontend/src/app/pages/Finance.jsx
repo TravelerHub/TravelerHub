@@ -7,6 +7,8 @@ import {
   deleteFinanceTransaction,
   getFinanceTransactions,
 } from "../../services/financeService";
+import { chargeSavedCard, getSavedCards } from "../../services/billingService";
+import { ensureActiveGroupId, getActiveGroupId, getMyGroups, setActiveGroupId } from "../../services/groupService";
 
 // ── Color palette (matches Dashboard / Booking / Expenses)
 // #160f29  deep dark   (sidebar, headings)
@@ -59,15 +61,40 @@ function Finance() {
   const [loadError, setLoadError] = useState("");
 
   const [showModal, setShowModal] = useState(false);
+  const [showChargeModal, setShowChargeModal] = useState(false);
   const [formData, setFormData] = useState(DEFAULT_FORM);
   const [sortBy, setSortBy] = useState("date");
   const [sortDir, setSortDir] = useState("desc");
+  const [savedCards, setSavedCards] = useState([]);
+  const [cardsLoading, setCardsLoading] = useState(false);
+  const [chargeForm, setChargeForm] = useState({ payment_method_id: "", amount: "", description: "" });
+  const [chargeError, setChargeError] = useState("");
+  const [chargeSuccess, setChargeSuccess] = useState("");
+  const [groups, setGroups] = useState([]);
+  const [activeGroupId, setActiveGroupIdState] = useState("");
+
+  const loadGroups = useCallback(async () => {
+    try {
+      const allGroups = await getMyGroups();
+      setGroups(allGroups);
+
+      let groupId = getActiveGroupId();
+      const hasSelected = allGroups.some((g) => String(g.group_id || g.id) === String(groupId));
+      if (!hasSelected) {
+        groupId = await ensureActiveGroupId();
+      }
+      setActiveGroupIdState(groupId || "");
+    } catch {
+      setGroups([]);
+      setActiveGroupIdState("");
+    }
+  }, []);
 
   const loadTransactions = useCallback(async () => {
     setIsLoading(true);
     setLoadError("");
     try {
-      const rows = await getFinanceTransactions();
+      const rows = await getFinanceTransactions(activeGroupId || null);
       setTransactions(rows.map(normalizeTransaction));
     } catch (error) {
       setLoadError(error?.message || "Failed to load transactions");
@@ -75,11 +102,65 @@ function Finance() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [activeGroupId]);
+
+  useEffect(() => {
+    loadGroups();
+  }, [loadGroups]);
 
   useEffect(() => {
     loadTransactions();
   }, [loadTransactions]);
+
+  const openChargeModal = async () => {
+    setChargeError("");
+    setChargeSuccess("");
+    setCardsLoading(true);
+    try {
+      const cards = await getSavedCards();
+      setSavedCards(cards);
+      setChargeForm((prev) => ({
+        ...prev,
+        payment_method_id: cards[0]?.payment_method_id || "",
+      }));
+      setShowChargeModal(true);
+    } catch (error) {
+      setChargeError(error?.message || "Failed to load saved cards");
+      setShowChargeModal(true);
+    } finally {
+      setCardsLoading(false);
+    }
+  };
+
+  const handleChargeCard = async (e) => {
+    e.preventDefault();
+    setChargeError("");
+    setChargeSuccess("");
+
+    const amountNumber = Number.parseFloat(chargeForm.amount);
+    if (!chargeForm.payment_method_id) {
+      setChargeError("Please select a saved card.");
+      return;
+    }
+    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+      setChargeError("Please enter a valid charge amount.");
+      return;
+    }
+
+    try {
+      await chargeSavedCard({
+        payment_method_id: chargeForm.payment_method_id,
+        amount_minor: Math.round(amountNumber * 100),
+        currency: "usd",
+        description: chargeForm.description || "TravelerHub charge",
+      });
+
+      setChargeSuccess("Charge submitted successfully.");
+      setChargeForm({ payment_method_id: chargeForm.payment_method_id, amount: "", description: "" });
+    } catch (error) {
+      setChargeError(error?.message || "Failed to charge card");
+    }
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -97,6 +178,7 @@ function Finance() {
           date: formData.date,
           type: formData.type,
           currency: "USD",
+          trip_id: activeGroupId || null,
         });
 
         setTransactions((prev) => [normalizeTransaction(created), ...prev]);
@@ -239,14 +321,49 @@ function Finance() {
               <p className="text-sm mt-0.5" style={{ color: "#5c6b73" }}>
                 Track travel expenses, income, and your overall trip balance.
               </p>
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-xs font-semibold" style={{ color: "#6b7280" }}>Group</span>
+                <select
+                  value={activeGroupId}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setActiveGroupId(value);
+                    setActiveGroupIdState(value);
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs"
+                  style={{ border: "1px solid #d1d5db", background: "#fff", color: "#111827" }}
+                >
+                  {groups.length === 0 ? (
+                    <option value="">No groups</option>
+                  ) : (
+                    groups.map((group) => {
+                      const gid = group.group_id || group.id;
+                      return (
+                        <option key={gid} value={gid}>
+                          {group.name || "Untitled Group"}
+                        </option>
+                      );
+                    })
+                  )}
+                </select>
+              </div>
             </div>
-            <button
-              onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition"
-              style={{ background: "#160f29", color: "#fbfbf2" }}
-            >
-              + Add Transaction
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={openChargeModal}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition"
+                style={{ background: "#183a37", color: "#fbfbf2" }}
+              >
+                Charge Card
+              </button>
+              <button
+                onClick={() => setShowModal(true)}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition"
+                style={{ background: "#160f29", color: "#fbfbf2" }}
+              >
+                + Add Transaction
+              </button>
+            </div>
           </div>
 
           {/* ── Summary cards ──────────────────────────────────────────────── */}
@@ -675,6 +792,115 @@ function Finance() {
                   style={{ background: "#160f29", color: "#fbfbf2" }}
                 >
                   Add Transaction
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Charge Card Modal ─────────────────────────────────────────────── */}
+      {showChargeModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.4)" }}
+          onClick={() => setShowChargeModal(false)}
+        >
+          <div
+            className="w-full rounded-2xl overflow-hidden"
+            style={{ maxWidth: 520, background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #f3f4f6" }}>
+              <h2 className="text-base font-bold" style={{ color: "#160f29" }}>Charge Saved Card</h2>
+              <button
+                onClick={() => setShowChargeModal(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-sm transition"
+                style={{ color: "#5c6b73" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleChargeCard} className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
+                  Saved Card
+                </label>
+                <select
+                  value={chargeForm.payment_method_id}
+                  onChange={(e) => setChargeForm((prev) => ({ ...prev, payment_method_id: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm"
+                  style={{ border: "1px solid #d1d5db" }}
+                  disabled={cardsLoading || savedCards.length === 0}
+                  required
+                >
+                  {savedCards.length === 0 ? (
+                    <option value="">No saved cards available</option>
+                  ) : (
+                    savedCards.map((card) => (
+                      <option key={card.id || card.payment_method_id} value={card.payment_method_id}>
+                        {(card.brand || "CARD").toUpperCase()} •••• {card.last4 || "----"}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
+                  Amount (USD)
+                </label>
+                <input
+                  type="number"
+                  value={chargeForm.amount}
+                  onChange={(e) => setChargeForm((prev) => ({ ...prev, amount: e.target.value }))}
+                  placeholder="0.00"
+                  step="0.01"
+                  min="0"
+                  required
+                  className="w-full px-3 py-2.5 rounded-xl text-sm"
+                  style={{ border: "1px solid #d1d5db" }}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
+                  Description
+                </label>
+                <input
+                  type="text"
+                  value={chargeForm.description}
+                  onChange={(e) => setChargeForm((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Optional charge description"
+                  className="w-full px-3 py-2.5 rounded-xl text-sm"
+                  style={{ border: "1px solid #d1d5db" }}
+                />
+              </div>
+
+              {chargeError && (
+                <p className="text-xs" style={{ color: "#b91c1c" }}>{chargeError}</p>
+              )}
+              {chargeSuccess && (
+                <p className="text-xs" style={{ color: "#15803d" }}>{chargeSuccess}</p>
+              )}
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowChargeModal(false)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
+                  style={{ background: "#f3f4f6", color: "#5c6b73" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
+                  style={{ background: "#183a37", color: "#fbfbf2" }}
+                  disabled={savedCards.length === 0}
+                >
+                  Charge Card
                 </button>
               </div>
             </form>

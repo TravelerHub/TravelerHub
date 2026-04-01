@@ -4,7 +4,7 @@ import { EmptyState, Panel } from "./ui";
 import ConversationList from "./ConversationList";
 import ChatWindow from "./ChatWindow";
 
-export default function ChatLayout({ currentUser, onNewChat }) {
+export default function ChatLayout({ currentUser, onNewChat, tripId }) {
   const [conversations,         setConversations]         = useState([]);
   const [selectedId,            setSelectedId]            = useState(null);
   const [membersByConversation, setMembersByConversation] = useState({});
@@ -21,7 +21,7 @@ export default function ChatLayout({ currentUser, onNewChat }) {
       try {
         setLoadingLeft(true);
         setError("");
-        const data = await chatApi.getConversations();
+        const data = await chatApi.getConversations(tripId || null);
         if (!alive) return;
         const list = Array.isArray(data) ? data : data.conversations || [];
         setConversations(list);
@@ -33,7 +33,7 @@ export default function ChatLayout({ currentUser, onNewChat }) {
       }
     })();
     return () => { alive = false; };
-  }, [currentUser?.id]);
+  }, [currentUser?.id, tripId]);
 
   // Load members + messages when conversation selected
   useEffect(() => {

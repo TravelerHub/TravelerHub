@@ -5,6 +5,7 @@ import { haversineDistance } from '../../utils/haversine';
 import Map from '../../components/Map';
 import { searchPlaces, getPlaceName } from '../../services/geocodingService';
 import { getOptimizedRoute } from '../../services/routeService';
+import { ensureActiveGroupId, getActiveGroupId, getMyGroups, setActiveGroupId } from '../../services/groupService';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 import {
@@ -100,6 +101,8 @@ function Navigation() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [routeName, setRouteName] = useState('');
   const [savingRoute, setSavingRoute] = useState(false);
+  const [groups, setGroups] = useState([]);
+  const [activeGroupId, setActiveGroupIdState] = useState('');
 
   // Categories for places search
   const categories = [
@@ -145,8 +148,31 @@ function Navigation() {
 
   // Load saved routes on mount
   useEffect(() => {
-    loadSavedRoutes();
+    const boot = async () => {
+      try {
+        const allGroups = await getMyGroups();
+        setGroups(allGroups);
+
+        let groupId = getActiveGroupId();
+        const found = allGroups.some((g) => String(g.group_id || g.id) === String(groupId));
+        if (!found) {
+          groupId = await ensureActiveGroupId();
+        }
+
+        setActiveGroupIdState(groupId || '');
+      } catch (error) {
+        console.error('Failed to initialize groups:', error);
+        setGroups([]);
+      }
+    };
+
+    boot();
   }, []);
+
+  useEffect(() => {
+    loadSavedRoutes();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeGroupId]);
 
   // Add this useEffect near your other useEffects
   useEffect(() => {
@@ -325,7 +351,8 @@ function Navigation() {
       const token = localStorage.getItem('token');
       if (!token) return;
       
-      const response = await fetch(`${API_BASE}/routes/`, {
+      const query = activeGroupId ? `?trip_id=${encodeURIComponent(activeGroupId)}` : '';
+      const response = await fetch(`${API_BASE}/routes/${query}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -781,7 +808,8 @@ function Navigation() {
         })),
         route_data: currentRoute.geometry,
         total_distance: currentRoute.distance,
-        total_duration: currentRoute.duration
+        total_duration: currentRoute.duration,
+        trip_id: activeGroupId || null,
       };
 
       const response = await fetch(`${API_BASE}/routes/`, {
@@ -926,6 +954,31 @@ function Navigation() {
               <ArrowsRightLeftIcon className="w-7 h-7 text-blue-600" />
               Navigation
             </h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-600">Group</span>
+            <select
+              value={activeGroupId}
+              onChange={(e) => {
+                const value = e.target.value;
+                setActiveGroupId(value);
+                setActiveGroupIdState(value);
+              }}
+              className="px-3 py-2 rounded-lg text-sm border border-gray-300 bg-white text-gray-900"
+            >
+              {groups.length === 0 ? (
+                <option value="">No groups</option>
+              ) : (
+                groups.map((group) => {
+                  const gid = group.group_id || group.id;
+                  return (
+                    <option key={gid} value={gid}>
+                      {group.name || 'Untitled Group'}
+                    </option>
+                  );
+                })
+              )}
+            </select>
           </div>
         </div>
       </div>
