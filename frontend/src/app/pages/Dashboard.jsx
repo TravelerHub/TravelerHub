@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { API_BASE } from "../../config";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
+import { setActiveGroupId } from "../../services/groupService";
 
 // ── Dashboard widgets ─────────────────────────────────────────────────────────
 import Widget              from "../../components/dashboard/Widget.jsx";
@@ -46,6 +47,8 @@ export default function Dashboard() {
   const [newTripDescription, setNewTripDescription] = useState("");
   const [creating,           setCreating]           = useState(false);
   const [createError,        setCreateError]        = useState("");
+  const [availableUsers,     setAvailableUsers]     = useState([]);
+  const [selectedInvitees,   setSelectedInvitees]   = useState([]);
 
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [selectedGroup,    setSelectedGroup]    = useState(null);
@@ -59,8 +62,26 @@ export default function Dashboard() {
     if (!user) return;
     fetchLatestChat();
     fetchUpcomingBookings();
+    fetchUsersForInvites();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const fetchUsersForInvites = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+      const res = await fetch(`${API_BASE}/users/`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const users = await res.json();
+      const others = (Array.isArray(users) ? users : []).filter((u) => u.id !== user?.id);
+      setAvailableUsers(others);
+    } catch (err) {
+      console.error("fetchUsersForInvites:", err);
+      setAvailableUsers([]);
+    }
+  };
 
   // ── Data fetching ──────────────────────────────────────────────────────────
   const fetchLatestChat = async () => {
@@ -129,9 +150,29 @@ export default function Dashboard() {
         body: JSON.stringify({ name: newTripName.trim(), description: newTripDescription.trim() || null }),
       });
       if (res.ok) {
+        const created = await res.json();
+        const createdGroupId = created?.group_id || created?.trip?.id;
+
+        if (createdGroupId && selectedInvitees.length > 0) {
+          await Promise.all(
+            selectedInvitees.map((userId) =>
+              fetch(`${API_BASE}/groups/${createdGroupId}/members`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ user_id: userId }),
+              })
+            )
+          );
+        }
+
+        if (createdGroupId) {
+          setActiveGroupId(createdGroupId);
+        }
+
         setShowCreateModal(false);
         setNewTripName("");
         setNewTripDescription("");
+        setSelectedInvitees([]);
       } else {
         const err = await res.json();
         setCreateError(err.detail || "Failed to create trip.");
@@ -249,6 +290,22 @@ export default function Dashboard() {
         <Navbar_Dashboard />
 
         <main className="flex-1 overflow-y-auto p-4" style={{ background: "#f3f4f6" }}>
+          <div className="flex items-center justify-between mb-4 px-1">
+            <div>
+              <h2 className="text-xl font-bold" style={{ color: "#160f29" }}>Your Trip Groups</h2>
+              <p className="text-xs mt-0.5" style={{ color: "#6b7280" }}>
+                Create and manage groups to share chat, finance, and navigation.
+              </p>
+            </div>
+            <button
+              onClick={() => { setShowCreateModal(true); setCreateError(""); }}
+              className="px-4 py-2.5 rounded-xl text-sm font-semibold transition hover:bg-gray-700 active:scale-95"
+              style={{ background: "#000000", color: "#f9fafb" }}
+            >
+              + Create Group
+            </button>
+          </div>
+
           <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1.4fr 1fr" }}>
 
             {/* ── ROW 1 · Weather (col 1-2) + Map Snapshot (col 3) ────────── */}
@@ -465,6 +522,44 @@ export default function Dashboard() {
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: "#000000" }}>
+                  Invite Members <span className="font-normal" style={{ color: "#6b7280" }}>(optional)</span>
+                </label>
+                <div
+                  className="rounded-xl overflow-y-auto"
+                  style={{ border: "1px solid #374151", background: "#f3f4f6", maxHeight: 140 }}
+                >
+                  {availableUsers.length === 0 ? (
+                    <p className="px-3 py-2 text-xs" style={{ color: "#6b7280" }}>No users available</p>
+                  ) : (
+                    availableUsers.map((u) => {
+                      const selected = selectedInvitees.includes(u.id);
+                      return (
+                        <label
+                          key={u.id}
+                          className="flex items-center gap-2 px-3 py-2 text-sm"
+                          style={{ borderBottom: "1px solid #e5e7eb" }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedInvitees((prev) => [...prev, u.id]);
+                              } else {
+                                setSelectedInvitees((prev) => prev.filter((id) => id !== u.id));
+                              }
+                            }}
+                          />
+                          <span style={{ color: "#111827" }}>{u.username || u.email}</span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
               {createError && <p className="text-sm text-red-500">{createError}</p>}
 
               <div className="flex gap-3 pt-1">
@@ -478,7 +573,10 @@ export default function Dashboard() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    setSelectedInvitees([]);
+                  }}
                   disabled={creating}
                   className="flex-1 py-2.5 rounded-xl font-semibold text-sm transition hover:bg-gray-200"
                   style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #374151" }}

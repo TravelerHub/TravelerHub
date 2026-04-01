@@ -24,20 +24,79 @@ class RoleUpdate(BaseModel):
 
 # ---- Helpers ----
 
+def _get_trip_members(group_id: str) -> List[dict]:
+    """Read group membership rows from trip_members first, then legacy group_member."""
+    try:
+        res = (
+            supabase.table("trip_members")
+            .select("user_id, role, joined_at")
+            .eq("trip_id", group_id)
+            .is_("left_at", None)
+            .execute()
+        )
+        return res.data or []
+    except Exception:
+        pass
+
+    try:
+        res = (
+            supabase.table("group_member")
+            .select("user_id, role, join_datetime")
+            .eq("group_id", group_id)
+            .is_("left_datetime", None)
+            .execute()
+        )
+        rows = res.data or []
+        return [{
+            "user_id": r.get("user_id"),
+            "role": r.get("role", "member"),
+            "joined_at": r.get("join_datetime"),
+        } for r in rows]
+    except Exception:
+        return []
+
+
+def _is_trip_member(group_id: str, user_id: str) -> bool:
+    members = _get_trip_members(group_id)
+    return any(m.get("user_id") == user_id for m in members)
+
+
+def _is_trip_leader(group_id: str, user_id: str) -> bool:
+    members = _get_trip_members(group_id)
+    return any(m.get("user_id") == user_id and m.get("role") == "leader" for m in members)
+
+
+def _insert_trip_member(group_id: str, user_id: str, role: str) -> bool:
+    """Insert membership into trip_members first; fallback to legacy group_member."""
+    now_iso = datetime.utcnow().isoformat()
+
+    try:
+        supabase.table("trip_members").insert({
+            "trip_id": group_id,
+            "user_id": user_id,
+            "role": role,
+            "joined_at": now_iso,
+            "left_at": None,
+        }).execute()
+        return True
+    except Exception:
+        pass
+
+    try:
+        supabase.table("group_member").insert({
+            "group_id": group_id,
+            "user_id": user_id,
+            "role": role,
+            "join_datetime": now_iso,
+            "left_datetime": None,
+        }).execute()
+        return True
+    except Exception:
+        return False
+
 def require_leader(group_id: str, user_id: str) -> None:
     """Raise 403 if the user is not leader of the group."""
-    membership = (
-        supabase.table("group_member")
-        .select("id")
-        .eq("group_id", group_id)
-        .eq("user_id", user_id)
-        .eq("role", "leader")
-        .is_("left_datetime", None)
-        .maybe_single()
-        .execute()
-    )
-
-    if membership.data:
+    if _is_trip_leader(group_id, user_id):
         return
 
     # Backward-compatible fallback for old trips without group_member rows.
@@ -58,16 +117,7 @@ def require_leader(group_id: str, user_id: str) -> None:
 
 def require_group_member(group_id: str, user_id: str) -> None:
     """Raise 403 if user is not an active member of this group."""
-    membership = (
-        supabase.table("group_member")
-        .select("id")
-        .eq("group_id", group_id)
-        .eq("user_id", user_id)
-        .is_("left_datetime", None)
-        .maybe_single()
-        .execute()
-    )
-    if membership.data:
+    if _is_trip_member(group_id, user_id):
         return
 
     # Backward-compatible fallback for old owner-only trips.
@@ -95,25 +145,37 @@ def create_group(
     Returns the created trip and group_id.
     """
     try:
-        # Create the trip
-        trip_res = supabase.table("trips").insert({
+        # Create the trip. Try storing description if the column exists.
+        trip_payload = {
             "name": body.name,
             "owner_id": current_user["id"],
-        }).execute()
+        }
+        if body.description:
+            trip_payload["description"] = body.description
+
+        try:
+            trip_res = supabase.table("trips").insert(trip_payload).execute()
+        except Exception:
+            # Fallback for deployments where trips.description is not present.
+            trip_res = supabase.table("trips").insert({
+                "name": body.name,
+                "owner_id": current_user["id"],
+            }).execute()
 
         if not trip_res.data:
             raise HTTPException(status_code=500, detail="Failed to create trip")
 
         trip = trip_res.data[0]
 
-        # Ensure creator is represented as an active group leader.
-        supabase.table("group_member").upsert({
-            "group_id": trip["id"],
-            "user_id": current_user["id"],
-            "role": "leader",
-            "join_datetime": datetime.utcnow().isoformat(),
-            "left_datetime": None,
-        }).execute()
+        # Ensure creator is represented as an active group leader when schema supports it.
+        try:
+            if not _is_trip_member(trip["id"], current_user["id"]):
+                ok = _insert_trip_member(trip["id"], current_user["id"], "leader")
+                if not ok:
+                    print("Group membership bootstrap skipped: no supported membership table")
+        except Exception as member_err:
+            # Don't block group creation on legacy schemas.
+            print(f"Group membership bootstrap skipped: {member_err}")
 
         return {
             "trip": trip,
@@ -134,16 +196,30 @@ def get_my_groups(current_user=Depends(oauth2.get_current_user)):
     List all groups where current user is an active member.
     """
     try:
-        memberships_res = (
-            supabase.table("group_member")
-            .select("group_id, role")
-            .eq("user_id", current_user["id"])
-            .is_("left_datetime", None)
-            .execute()
-        )
-
-        membership_rows = memberships_res.data or []
-        membership_map = {m["group_id"]: m.get("role", "member") for m in membership_rows if m.get("group_id")}
+        membership_map = {}
+        try:
+            memberships_res = (
+                supabase.table("trip_members")
+                .select("trip_id, role")
+                .eq("user_id", current_user["id"])
+                .is_("left_at", None)
+                .execute()
+            )
+            membership_rows = memberships_res.data or []
+            membership_map = {m["trip_id"]: m.get("role", "member") for m in membership_rows if m.get("trip_id")}
+        except Exception:
+            try:
+                memberships_res = (
+                    supabase.table("group_member")
+                    .select("group_id, role")
+                    .eq("user_id", current_user["id"])
+                    .is_("left_datetime", None)
+                    .execute()
+                )
+                membership_rows = memberships_res.data or []
+                membership_map = {m["group_id"]: m.get("role", "member") for m in membership_rows if m.get("group_id")}
+            except Exception:
+                membership_map = {}
 
         # Backfill older data where creator has no explicit membership row yet.
         owner_trips_res = (
@@ -190,15 +266,14 @@ def get_group_members(
     try:
         require_group_member(group_id, current_user["id"])
 
-        members_res = (
-            supabase.table("group_member")
-            .select("user_id, role, join_datetime")
-            .eq("group_id", group_id)
-            .is_("left_datetime", None)
-            .execute()
-        )
+        members = _get_trip_members(group_id)
+        if not members:
+            members = [{
+                "user_id": current_user["id"],
+                "role": "leader",
+                "joined_at": None,
+            }]
 
-        members = members_res.data or []
         user_ids = [m["user_id"] for m in members if m.get("user_id")]
         users_res = (
             supabase.table("users")
@@ -213,7 +288,7 @@ def get_group_members(
             "username": user_map.get(m.get("user_id"), {}).get("username"),
             "email": user_map.get(m.get("user_id"), {}).get("email"),
             "role": m.get("role", "member"),
-            "join_datetime": m.get("join_datetime"),
+            "join_datetime": m.get("joined_at"),
         } for m in members]
 
     except HTTPException:
@@ -274,24 +349,15 @@ def add_group_member(
         if not target_user.data:
             raise HTTPException(status_code=404, detail="User not found")
 
-        existing = (
-            supabase.table("group_member")
-            .select("id")
-            .eq("group_id", group_id)
-            .eq("user_id", new_user_id)
-            .is_("left_datetime", None)
-            .maybe_single()
-            .execute()
-        )
-        if existing.data:
+        if _is_trip_member(group_id, new_user_id):
             return {"success": True, "message": "User is already a member"}
 
-        supabase.table("group_member").insert({
-            "group_id": group_id,
-            "user_id": new_user_id,
-            "role": "member",
-            "join_datetime": datetime.utcnow().isoformat(),
-        }).execute()
+        ok = _insert_trip_member(group_id, new_user_id, "member")
+        if not ok:
+            raise HTTPException(
+                status_code=500,
+                detail="Group membership schema not ready. Run migration 012_trip_members.sql"
+            )
 
         return {"success": True, "message": "Member added"}
 
