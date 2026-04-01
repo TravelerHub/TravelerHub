@@ -7,6 +7,56 @@ from supabase_client import supabase
 
 router = APIRouter(prefix="/routes", tags=["Routes"])
 
+
+def _ensure_trip_member(trip_id: str, user_id: str) -> None:
+    member = (
+        supabase.table("group_member")
+        .select("id")
+        .eq("group_id", trip_id)
+        .eq("user_id", user_id)
+        .is_("left_datetime", None)
+        .maybe_single()
+        .execute()
+    )
+    if member.data:
+        return
+
+    owner = (
+        supabase.table("trips")
+        .select("id")
+        .eq("id", trip_id)
+        .eq("owner_id", user_id)
+        .maybe_single()
+        .execute()
+    )
+    if not owner.data:
+        raise HTTPException(status_code=403, detail="Not a member of this group")
+
+
+def _is_trip_leader(trip_id: str, user_id: str) -> bool:
+    member = (
+        supabase.table("group_member")
+        .select("id")
+        .eq("group_id", trip_id)
+        .eq("user_id", user_id)
+        .eq("role", "leader")
+        .is_("left_datetime", None)
+        .maybe_single()
+        .execute()
+    )
+    if member.data:
+        return True
+
+    owner = (
+        supabase.table("trips")
+        .select("id")
+        .eq("id", trip_id)
+        .eq("owner_id", user_id)
+        .maybe_single()
+        .execute()
+    )
+    return bool(owner.data)
+
 class LocationPoint(BaseModel):
     name: str
     address: str
@@ -36,6 +86,9 @@ async def save_route(
     current_user=Depends(oauth2.get_current_user)
 ):
     """Save a planned route"""
+    if route.trip_id:
+        _ensure_trip_member(route.trip_id, current_user["id"])
+
     route_data = {
         "trip_id": route.trip_id,
         "name": route.name,
@@ -58,11 +111,14 @@ async def get_my_routes(
     trip_id: Optional[str] = None,
     current_user=Depends(oauth2.get_current_user)
 ):
-    """Get user's saved routes"""
-    query = supabase.table("saved_routes").select("*").eq("created_by", current_user["id"])
+    """Get routes. If trip_id provided, return shared routes for that trip."""
+    query = supabase.table("saved_routes").select("*")
     
     if trip_id:
+        _ensure_trip_member(trip_id, current_user["id"])
         query = query.eq("trip_id", trip_id)
+    else:
+        query = query.eq("created_by", current_user["id"])
     
     result = query.order("created_at", desc=True).execute()
     return result.data
@@ -73,11 +129,29 @@ async def delete_route(
     current_user=Depends(oauth2.get_current_user)
 ):
     """Delete a saved route"""
+    route_res = (
+        supabase.table("saved_routes")
+        .select("id, created_by, trip_id")
+        .eq("id", route_id)
+        .maybe_single()
+        .execute()
+    )
+    if not route_res.data:
+        raise HTTPException(status_code=404, detail="Route not found")
+
+    route = route_res.data
+    allowed = route.get("created_by") == current_user["id"]
+    if (not allowed) and route.get("trip_id"):
+        _ensure_trip_member(route["trip_id"], current_user["id"])
+        allowed = _is_trip_leader(route["trip_id"], current_user["id"])
+
+    if not allowed:
+        raise HTTPException(status_code=403, detail="You do not have permission to delete this route")
+
     result = (
         supabase.table("saved_routes")
         .delete()
         .eq("id", route_id)
-        .eq("created_by", current_user["id"])
         .execute()
     )
     

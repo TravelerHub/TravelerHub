@@ -12,6 +12,56 @@ router = APIRouter(
 )
 
 
+def _ensure_trip_member(trip_id: str, user_id: str) -> None:
+    member = (
+        supabase.table("group_member")
+        .select("id")
+        .eq("group_id", trip_id)
+        .eq("user_id", user_id)
+        .is_("left_datetime", None)
+        .maybe_single()
+        .execute()
+    )
+    if member.data:
+        return
+
+    owner = (
+        supabase.table("trips")
+        .select("id")
+        .eq("id", trip_id)
+        .eq("owner_id", user_id)
+        .maybe_single()
+        .execute()
+    )
+    if not owner.data:
+        raise HTTPException(status_code=403, detail="Not a member of this group")
+
+
+def _is_trip_leader(trip_id: str, user_id: str) -> bool:
+    member = (
+        supabase.table("group_member")
+        .select("id")
+        .eq("group_id", trip_id)
+        .eq("user_id", user_id)
+        .eq("role", "leader")
+        .is_("left_datetime", None)
+        .maybe_single()
+        .execute()
+    )
+    if member.data:
+        return True
+
+    owner = (
+        supabase.table("trips")
+        .select("id")
+        .eq("id", trip_id)
+        .eq("owner_id", user_id)
+        .maybe_single()
+        .execute()
+    )
+    return bool(owner.data)
+
+
 class CreateTransactionPayload(BaseModel):
     description: str
     amount: float = Field(gt=0)
@@ -61,12 +111,14 @@ def get_transactions(
 
         query = (
             supabase.table("expenses")
-            .select("id, merchant_name, place_name, category, total, date, currency, created_at, items")
-            .eq("user_id", user_id)
+            .select("id, user_id, trip_id, merchant_name, place_name, category, total, date, currency, created_at, items")
         )
 
         if trip_id:
+            _ensure_trip_member(trip_id, user_id)
             query = query.eq("trip_id", trip_id)
+        else:
+            query = query.eq("user_id", user_id)
 
         result = query.order("created_at", desc=True).limit(500).execute()
 
@@ -91,6 +143,9 @@ def create_transaction(
         user_id = current_user.get("id") or current_user.get("user_id")
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token payload")
+
+        if payload.trip_id:
+            _ensure_trip_member(payload.trip_id, user_id)
 
         tx_type = payload.type if payload.type in {"expense", "income"} else "expense"
         amount = abs(float(payload.amount))
@@ -143,9 +198,8 @@ def delete_transaction(
 
         existing = (
             supabase.table("expenses")
-            .select("id")
+            .select("id, user_id, trip_id")
             .eq("id", transaction_id)
-            .eq("user_id", user_id)
             .limit(1)
             .execute()
         )
@@ -153,7 +207,19 @@ def delete_transaction(
         if not existing.data:
             raise HTTPException(status_code=404, detail="Transaction not found")
 
-        supabase.table("expenses").delete().eq("id", transaction_id).eq("user_id", user_id).execute()
+        row = existing.data[0]
+        owner_user_id = row.get("user_id")
+        row_trip_id = row.get("trip_id")
+
+        allowed = owner_user_id == user_id
+        if (not allowed) and row_trip_id:
+            _ensure_trip_member(row_trip_id, user_id)
+            allowed = _is_trip_leader(row_trip_id, user_id)
+
+        if not allowed:
+            raise HTTPException(status_code=403, detail="You do not have permission to delete this transaction")
+
+        supabase.table("expenses").delete().eq("id", transaction_id).execute()
         return {"success": True}
 
     except HTTPException:
