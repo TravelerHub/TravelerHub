@@ -48,18 +48,37 @@ def ensure_conversation_member(conversation_id: str, user_id: str):
 
 
 def ensure_trip_member(trip_id: str, user_id: str):
-    membership = (
-        supabase
-        .from_("group_member")
-        .select("id")
-        .eq("group_id", trip_id)
-        .eq("user_id", user_id)
-        .is_("left_datetime", None)
-        .maybe_single()
-        .execute()
-    )
-    if membership.data:
-        return
+    try:
+        membership = (
+            supabase
+            .from_("trip_members")
+            .select("id")
+            .eq("trip_id", trip_id)
+            .eq("user_id", user_id)
+            .is_("left_at", None)
+            .maybe_single()
+            .execute()
+        )
+        if membership.data:
+            return
+    except Exception:
+        pass
+
+    try:
+        membership = (
+            supabase
+            .from_("group_member")
+            .select("id")
+            .eq("group_id", trip_id)
+            .eq("user_id", user_id)
+            .is_("left_datetime", None)
+            .maybe_single()
+            .execute()
+        )
+        if membership.data:
+            return
+    except Exception:
+        pass
 
     owner = (
         supabase
@@ -282,15 +301,29 @@ def create_conversation(
         member_ids.add(current_user["id"])
 
         if payload.trip_id and member_ids:
-            allowed_res = (
-                supabase
-                .from_("group_member")
-                .select("user_id")
-                .eq("group_id", payload.trip_id)
-                .is_("left_datetime", None)
-                .execute()
-            )
-            allowed_ids = {row["user_id"] for row in (allowed_res.data or [])}
+            allowed_rows = []
+            try:
+                allowed_res = (
+                    supabase
+                    .from_("trip_members")
+                    .select("user_id")
+                    .eq("trip_id", payload.trip_id)
+                    .is_("left_at", None)
+                    .execute()
+                )
+                allowed_rows = allowed_res.data or []
+            except Exception:
+                allowed_res = (
+                    supabase
+                    .from_("group_member")
+                    .select("user_id")
+                    .eq("group_id", payload.trip_id)
+                    .is_("left_datetime", None)
+                    .execute()
+                )
+                allowed_rows = allowed_res.data or []
+
+            allowed_ids = {row["user_id"] for row in allowed_rows}
             allowed_ids.add(current_user["id"])
             invalid = [uid for uid in member_ids if uid not in allowed_ids]
             if invalid:

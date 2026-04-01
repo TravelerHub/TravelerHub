@@ -13,17 +13,35 @@ router = APIRouter(
 
 
 def _ensure_trip_member(trip_id: str, user_id: str) -> None:
-    member = (
-        supabase.table("group_member")
-        .select("id")
-        .eq("group_id", trip_id)
-        .eq("user_id", user_id)
-        .is_("left_datetime", None)
-        .maybe_single()
-        .execute()
-    )
-    if member.data:
-        return
+    try:
+        member = (
+            supabase.table("trip_members")
+            .select("id")
+            .eq("trip_id", trip_id)
+            .eq("user_id", user_id)
+            .is_("left_at", None)
+            .maybe_single()
+            .execute()
+        )
+        if member.data:
+            return
+    except Exception:
+        pass
+
+    try:
+        member = (
+            supabase.table("group_member")
+            .select("id")
+            .eq("group_id", trip_id)
+            .eq("user_id", user_id)
+            .is_("left_datetime", None)
+            .maybe_single()
+            .execute()
+        )
+        if member.data:
+            return
+    except Exception:
+        pass
 
     owner = (
         supabase.table("trips")
@@ -38,18 +56,37 @@ def _ensure_trip_member(trip_id: str, user_id: str) -> None:
 
 
 def _is_trip_leader(trip_id: str, user_id: str) -> bool:
-    member = (
-        supabase.table("group_member")
-        .select("id")
-        .eq("group_id", trip_id)
-        .eq("user_id", user_id)
-        .eq("role", "leader")
-        .is_("left_datetime", None)
-        .maybe_single()
-        .execute()
-    )
-    if member.data:
-        return True
+    try:
+        member = (
+            supabase.table("trip_members")
+            .select("id")
+            .eq("trip_id", trip_id)
+            .eq("user_id", user_id)
+            .eq("role", "leader")
+            .is_("left_at", None)
+            .maybe_single()
+            .execute()
+        )
+        if member.data:
+            return True
+    except Exception:
+        pass
+
+    try:
+        member = (
+            supabase.table("group_member")
+            .select("id")
+            .eq("group_id", trip_id)
+            .eq("user_id", user_id)
+            .eq("role", "leader")
+            .is_("left_datetime", None)
+            .maybe_single()
+            .execute()
+        )
+        if member.data:
+            return True
+    except Exception:
+        pass
 
     owner = (
         supabase.table("trips")
