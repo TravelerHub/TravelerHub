@@ -33,6 +33,9 @@ function Login() {
       // Store the token for authenticated requests
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("user", JSON.stringify(data.user));
+      if (data.symmetric_key) {
+        localStorage.setItem("card_symmetric_key", data.symmetric_key);
+      }
 
       // Set up E2E encryption keypair if this device doesn't have one yet.
       // Private key stays in localStorage — only the public key is uploaded.

@@ -21,6 +21,8 @@ from routers import discovery
 from routers import smart_route
 from routers import nominations
 from routers import polls
+from routers import finance
+from routers import billing
 
 app = FastAPI()
 
@@ -53,6 +55,8 @@ app.include_router(discovery.router)     # /discovery
 app.include_router(smart_route.router)   # /smart-route
 app.include_router(nominations.router)   # /nominations
 app.include_router(polls.router)         # /polls
+app.include_router(finance.router)       # /finance
+app.include_router(billing.router)       # /billing
 
 
 

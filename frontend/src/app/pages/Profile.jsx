@@ -1,12 +1,21 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { API_BASE } from '../../config';
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
 import TravelPreferences from "../../components/TravelPreferences";
+import {
+  addEncryptedCard,
+  createCardSetupSession,
+  encryptCardPayload,
+  finalizeCardSetup,
+  getSavedCards,
+  removeSavedCard,
+} from "../../services/billingService";
 
 function Profile() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   // ── Profile state ──────────────────────────────────────────────────────────
   const getStoredUser = () => {
@@ -46,12 +55,23 @@ function Profile() {
   const [passwordError,   setPasswordError]   = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [billingMessage,  setBillingMessage]  = useState("");
+  const [savedCards, setSavedCards] = useState([]);
+  const [cardsLoading, setCardsLoading] = useState(false);
+  const [showCardForm, setShowCardForm] = useState(false);
+  const [cardForm, setCardForm] = useState({
+    holderName: "",
+    cardNumber: "",
+    expMonth: "",
+    expYear: "",
+  });
 
   // ── Tab state ──────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState("profile");
 
   const TABS = [
     { id: "profile",       label: "Profile"       },
+    { id: "payment",       label: "Payment"       },
     { id: "preferences",   label: "Preferences"   },
     { id: "notifications", label: "Notifications" },
     { id: "security",      label: "Security"      },
@@ -131,6 +151,138 @@ function Profile() {
   };
 
   const handleDeleteAccount = () => navigate("/");
+
+  const loadSavedCards = async () => {
+    setCardsLoading(true);
+    try {
+      const cards = await getSavedCards();
+      setSavedCards(cards);
+    } catch (error) {
+      setBillingMessage(error?.message || "Failed to load saved cards");
+    } finally {
+      setCardsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get("tab");
+    if (tab === "payment") {
+      setActiveTab("payment");
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    if (activeTab === "payment") {
+      loadSavedCards();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const sessionId = params.get("session_id");
+    const checkoutStatus = params.get("checkout");
+
+    if (!sessionId || checkoutStatus !== "success") {
+      return;
+    }
+
+    const finalize = async () => {
+      try {
+        await finalizeCardSetup(sessionId);
+        setBillingMessage("Card added successfully.");
+        await loadSavedCards();
+      } catch (error) {
+        setBillingMessage(error?.message || "Failed to save card after setup.");
+      } finally {
+        navigate("/profile?tab=payment", { replace: true });
+      }
+    };
+
+    finalize();
+  }, [location.search, navigate]);
+
+  const handleAddCreditCard = async () => {
+    setBillingMessage("");
+    try {
+      const data = await createCardSetupSession();
+      if (data?.mode === "manual") {
+        setShowCardForm(true);
+        setBillingMessage("Stripe is not configured. Card data will be encrypted in browser using your local symmetric key.");
+        return;
+      }
+
+      if (!data?.url) {
+        throw new Error("Missing setup URL");
+      }
+      window.location.assign(data.url);
+    } catch (error) {
+      setBillingMessage(error?.message || "Unable to start card setup.");
+    }
+  };
+
+  const detectCardBrand = (cardNumber) => {
+    if (/^4/.test(cardNumber)) return "visa";
+    if (/^(5[1-5]|2[2-7])/.test(cardNumber)) return "mastercard";
+    if (/^3[47]/.test(cardNumber)) return "amex";
+    if (/^6(?:011|5)/.test(cardNumber)) return "discover";
+    return "card";
+  };
+
+  const handleSaveEncryptedCard = async () => {
+    setBillingMessage("");
+
+    const digits = cardForm.cardNumber.replace(/\D/g, "");
+    if (digits.length < 13 || digits.length > 19) {
+      setBillingMessage("Card number looks invalid.");
+      return;
+    }
+
+    const month = Number(cardForm.expMonth);
+    const year = Number(cardForm.expYear);
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      setBillingMessage("Expiration month must be between 1 and 12.");
+      return;
+    }
+
+    if (!Number.isInteger(year) || year < 2024 || year > 2100) {
+      setBillingMessage("Expiration year is invalid.");
+      return;
+    }
+
+    try {
+      const encryptedPayload = await encryptCardPayload({
+        holder_name: cardForm.holderName,
+        card_number: digits,
+        exp_month: month,
+        exp_year: year,
+      });
+
+      await addEncryptedCard({
+        encryptedPayload,
+        brand: detectCardBrand(digits),
+        last4: digits.slice(-4),
+      });
+
+      setCardForm({ holderName: "", cardNumber: "", expMonth: "", expYear: "" });
+      setShowCardForm(false);
+      setBillingMessage("Encrypted card saved successfully.");
+      await loadSavedCards();
+    } catch (error) {
+      setBillingMessage(error?.message || "Failed to save encrypted card.");
+    }
+  };
+
+  const handleRemoveCard = async (card) => {
+    setBillingMessage("");
+    try {
+      await removeSavedCard(card.id);
+      setBillingMessage("Card removed successfully.");
+      await loadSavedCards();
+    } catch (error) {
+      setBillingMessage(error?.message || "Failed to remove card.");
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -408,6 +560,135 @@ function Profile() {
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* ── PREFERENCES tab ── */}
+              {activeTab === "payment" && (
+                <div className="p-6">
+                  <h3 className="text-sm font-bold mb-5" style={{ color: "#160f29" }}>Payment Methods</h3>
+
+                  <div className="rounded-xl p-4" style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                    <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#64748b" }}>
+                      Credit Card
+                    </p>
+                    <p className="text-xs mb-3" style={{ color: "#94a3b8" }}>
+                      Add your credit card for future trip payments.
+                    </p>
+                    <button
+                      onClick={handleAddCreditCard}
+                      className="w-full py-2.5 rounded-xl text-sm font-semibold transition"
+                      style={{ background: "#160f29", color: "#fbfbf2" }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = "0.92"}
+                      onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+                    >
+                      Add Credit Card
+                    </button>
+                    {billingMessage && (
+                      <p
+                        className="text-xs mt-2"
+                        style={{ color: billingMessage.includes("successfully") ? "#15803d" : "#b91c1c" }}
+                      >
+                        {billingMessage}
+                      </p>
+                    )}
+
+                    {showCardForm && (
+                      <div className="mt-4 space-y-3">
+                        <input
+                          type="text"
+                          placeholder="Cardholder name"
+                          value={cardForm.holderName}
+                          onChange={(e) => setCardForm((prev) => ({ ...prev, holderName: e.target.value }))}
+                          className={inputClass}
+                          style={inputStyle}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Card number"
+                          value={cardForm.cardNumber}
+                          onChange={(e) => setCardForm((prev) => ({ ...prev, cardNumber: e.target.value }))}
+                          className={inputClass}
+                          style={inputStyle}
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            placeholder="MM"
+                            value={cardForm.expMonth}
+                            onChange={(e) => setCardForm((prev) => ({ ...prev, expMonth: e.target.value }))}
+                            className={inputClass}
+                            style={inputStyle}
+                          />
+                          <input
+                            type="text"
+                            placeholder="YYYY"
+                            value={cardForm.expYear}
+                            onChange={(e) => setCardForm((prev) => ({ ...prev, expYear: e.target.value }))}
+                            className={inputClass}
+                            style={inputStyle}
+                          />
+                        </div>
+                        <p className="text-xs" style={{ color: "#9ca3af" }}>
+                          CVV is never collected or stored.
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleSaveEncryptedCard}
+                            className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
+                            style={{ background: "#160f29", color: "#fbfbf2" }}
+                          >
+                            Encrypt and Save Card
+                          </button>
+                          <button
+                            onClick={() => setShowCardForm(false)}
+                            className="px-4 py-2.5 rounded-xl text-sm font-semibold"
+                            style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb" }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 rounded-xl p-4" style={{ background: "#fff", border: "1px solid #e5e7eb" }}>
+                    <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#9ca3af" }}>
+                      Saved Cards
+                    </p>
+
+                    {cardsLoading ? (
+                      <p className="text-sm" style={{ color: "#6b7280" }}>Loading cards...</p>
+                    ) : savedCards.length === 0 ? (
+                      <p className="text-sm" style={{ color: "#6b7280" }}>No saved cards yet.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {savedCards.map((card) => (
+                          <div
+                            key={card.id || card.payment_method_id}
+                            className="rounded-lg px-3 py-2 flex items-center justify-between"
+                            style={{ background: "#f9fafb", border: "1px solid #f3f4f6" }}
+                          >
+                            <div>
+                              <p className="text-sm font-semibold" style={{ color: "#160f29" }}>
+                                {(card.brand || "Card").toUpperCase()} •••• {card.last4 || "----"}
+                              </p>
+                              <p className="text-xs" style={{ color: "#9ca3af" }}>
+                                {card.status || "active"}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => handleRemoveCard(card)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                              style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca" }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

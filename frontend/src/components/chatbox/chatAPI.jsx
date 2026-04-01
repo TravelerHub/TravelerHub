@@ -6,8 +6,10 @@ export const chatApi = {
 
   // ── Conversations ──────────────────────────────────────────────────────────
 
-  getConversations: () =>
-    request("/api/conversations"),
+  getConversations: (tripId = null) => {
+    const query = tripId ? `?trip_id=${encodeURIComponent(tripId)}` : "";
+    return request(`/api/conversations${query}`);
+  },
 
   createConversation: (payload) =>
     request("/api/conversations", { method: "POST", body: payload }),
