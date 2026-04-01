@@ -84,6 +84,7 @@ class MessageOut(BaseModel):
 class ConversationCreate(BaseModel):
     conversation_name: Optional[str] = None
     members: Optional[List[str]] = None
+    trip_id: Optional[str] = None
 
 class ConversationOut(BaseModel):
     conversation_id: str

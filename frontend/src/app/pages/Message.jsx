@@ -5,6 +5,8 @@ import ChatLayout from "../../components/chatbox/chatLayout";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import { XMarkIcon, CheckIcon } from "@heroicons/react/24/outline";
 import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
+import { API_BASE } from "../../config";
+import { ensureActiveGroupId, getActiveGroupId, getMyGroups, setActiveGroupId } from "../../services/groupService";
 
 export default function Message() {
   const navigate = useNavigate();
@@ -17,29 +19,59 @@ export default function Message() {
   const [loading,          setLoading]          = useState(false);
   const [error,            setError]            = useState("");
   const [refreshTrigger,   setRefreshTrigger]   = useState(0);
+  const [groups,           setGroups]           = useState([]);
+  const [activeGroupId,    setActiveGroupIdState] = useState("");
 
   const displayName = user?.username || user?.name || "Traveler";
 
   if (!user) return <div className="p-6 text-sm text-gray-500">Please log in.</div>;
 
   useEffect(() => {
-    const fetchUsers = async () => {
+    const bootGroupContext = async () => {
       try {
-        const res = await fetch("http://127.0.0.1:8000/users/", {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token") || sessionStorage.getItem("token")}`,
-          },
+        const allGroups = await getMyGroups();
+        setGroups(allGroups);
+
+        let groupId = getActiveGroupId();
+        const found = allGroups.some((g) => String(g.group_id || g.id) === String(groupId));
+        if (!found) {
+          groupId = await ensureActiveGroupId();
+        }
+        setActiveGroupIdState(groupId || "");
+      } catch (err) {
+        console.error("Failed to load groups:", err);
+        setGroups([]);
+      }
+    };
+    bootGroupContext();
+  }, []);
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      if (!activeGroupId) {
+        setAvailableUsers([]);
+        return;
+      }
+
+      try {
+        const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+        const res = await fetch(`${API_BASE}/groups/${activeGroupId}/members`, {
+          headers: { Authorization: `Bearer ${token}` },
         });
+
         if (res.ok) {
-          const users = await res.json();
-          setAvailableUsers(users.filter((u) => u.id !== user.id));
+          const members = await res.json();
+          const others = members
+            .filter((m) => m.user_id !== user.id)
+            .map((m) => ({ id: m.user_id, username: m.username, email: m.email }));
+          setAvailableUsers(others);
         }
       } catch (err) {
-        console.error("Failed to fetch users:", err);
+        console.error("Failed to fetch group members:", err);
       }
     };
     fetchUsers();
-  }, [user?.id]);
+  }, [activeGroupId, user?.id]);
 
   const handleCreateConversation = async () => {
     if (!conversationName.trim()) { setError("Conversation name is required"); return; }
@@ -49,6 +81,7 @@ export default function Message() {
       const conversation = await chatApi.createConversation({
         conversation_name: conversationName,
         members: selectedMembers,
+        trip_id: activeGroupId || null,
       });
 
       // Distribute session key to all members client-side.
@@ -143,9 +176,37 @@ export default function Message() {
 
         {/* Chat area */}
         <div className="flex-1 overflow-hidden p-4" style={{ background: "#f3f4f6" }}>
+          <div className="mb-3 flex items-center gap-2">
+            <span className="text-xs font-semibold" style={{ color: "#6b7280" }}>Group</span>
+            <select
+              value={activeGroupId}
+              onChange={(e) => {
+                const value = e.target.value;
+                setActiveGroupId(value);
+                setActiveGroupIdState(value);
+                setRefreshTrigger((n) => n + 1);
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs"
+              style={{ border: "1px solid #d1d5db", background: "#fff", color: "#111827" }}
+            >
+              {groups.length === 0 ? (
+                <option value="">No groups</option>
+              ) : (
+                groups.map((group) => {
+                  const gid = group.group_id || group.id;
+                  return (
+                    <option key={gid} value={gid}>
+                      {group.name || "Untitled Group"}
+                    </option>
+                  );
+                })
+              )}
+            </select>
+          </div>
           <ChatLayout
             key={refreshTrigger}
             currentUser={user}
+            tripId={activeGroupId || undefined}
             onNewChat={() => setShowCreateModal(true)}
           />
         </div>
