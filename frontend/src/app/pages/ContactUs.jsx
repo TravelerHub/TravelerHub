@@ -389,7 +389,7 @@ export default function ContactUs() {
                 >
                   <button
                     onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                    className="w-full flex items-center justify-between px-5 py-4 text-left transition hover:bg-black/2"
+                    className="w-full flex items-center justify-between px-5 py-4 text-left transition hover:bg-black/[0.02]"
                     style={{ background: "#fff" }}
                   >
                     <span className="text-sm font-semibold pr-4" style={{ color: "#160f29" }}>{q}</span>

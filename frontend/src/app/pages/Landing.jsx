@@ -3,9 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import Navbar_Landing from "../../components/navbar/Navbar_landing";
 import Footer from "../../components/Footer";
 
-import beachVideo from "../../assets/images/beachVideo.mp4";
-import vietnameVideo from "../../assets/images/vietnameVideo.mp4";
-import drivingVideo from "../../assets/images/drivingVideo.mp4";
+// import beachVideo from "../../assets/images/beachVideo.mp4";
+// import vietnameVideo from "../../assets/images/vietnameVideo.mp4";
+// import drivingVideo from "../../assets/images/drivingVideo.mp4";
 import LandingImg1 from "../../assets/images/travelPic1.jpg";
 import LandingImg2 from "../../assets/images/travelPic2.jpg";
 import LandingImg3 from "../../assets/images/travelPic3.jpg";
@@ -13,6 +13,12 @@ import LandingImg4 from "../../assets/images/travelPic4.jpg";
 import LandingImg5 from "../../assets/images/travelPic5.jpg";
 import LandingImg6 from "../../assets/images/travelPic6.jpg";
 import LandingImg7 from "../../assets/images/travelPic7.jpg";
+
+// video source
+const beachVideo    = "https://uiljduxxhxgqkxygxrhf.supabase.co/storage/v1/object/public/videoLandingPage/beach.mp4";
+const vietnameVideo = "https://uiljduxxhxgqkxygxrhf.supabase.co/storage/v1/object/public/videoLandingPage/vietname.mp4"
+const drivingVideo  = "https://uiljduxxhxgqkxygxrhf.supabase.co/storage/v1/object/public/videoLandingPage/driving.mp4";
+
 
 // ── Scroll-reveal hook ────────────────────────────────────────────────────────
 function useScrollReveal(threshold = 0.15) {
