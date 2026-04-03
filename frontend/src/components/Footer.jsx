@@ -1,32 +1,43 @@
 import { Link } from "react-router-dom";
 
 function Footer() {
-  //const currentYear = new Date().getFullYear();
+  const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="bg-gray-900 text-white">
-      <div className="flex justify-center align-center w-screen px-6 py-4">
-        {/* Main Footer Content */}-
-        <div className="flex justify-in-between space-x-5 gap-6">
-          <Link to="/about" className="footer-btn">
-            About Us
-          </Link>
+    <footer style={{ background: "#160f29", borderTop: "1px solid #374151" }}>
+      <div className="max-w-7xl mx-auto px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-3">
 
-          <Link to="/service" className="footer-btn">
-            Services
-          </Link>
+        {/* Brand */}
+        <p className="text-sm font-semibold" style={{ color: "#fbfbf2" }}>
+          TravelHub
+        </p>
 
-          <Link to="/feedback" className="footer-btn">
-            Feedback
-          </Link>
+        {/* Links */}
+        <nav className="flex items-center gap-6">
+          {[
+            { to: "/about",     label: "About"      },
+            { to: "/service",   label: "Services"   },
+            { to: "/feedback",  label: "Feedback"   },
+            { to: "/contactus", label: "Contact"    },
+          ].map(({ to, label }) => (
+            <Link
+              key={to}
+              to={to}
+              className="text-sm transition hover:opacity-100"
+              style={{ color: "#5c6b73" }}
+              onMouseEnter={e => (e.currentTarget.style.color = "#fbfbf2")}
+              onMouseLeave={e => (e.currentTarget.style.color = "#5c6b73")}
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
 
-          <Link to="/contactus" className="footer-btn">
-            Contact Us
-          </Link>
-        </div>
+        {/* Copyright */}
+        <p className="text-xs" style={{ color: "#5c6b73" }}>
+          © {currentYear} TravelHub
+        </p>
 
-        
-        
       </div>
     </footer>
   );

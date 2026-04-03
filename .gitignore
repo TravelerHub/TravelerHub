@@ -41,3 +41,9 @@ __pycache__/
 
 .CLAUDE.md
 CLAUDE.md
+
+# Large media files
+*.mp4
+*.mov
+*.avi
+*.mkv
