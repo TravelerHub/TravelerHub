@@ -200,6 +200,39 @@ export default function TravelPreferences() {
         </div>
       </div>
 
+      {/* Navigation Settings */}
+      <div>
+        {sectionLabel("Navigation intelligence")}
+        <div className="space-y-2">
+          <label className="flex items-center justify-between p-3 rounded-xl cursor-pointer"
+            style={{ background: preferences.park_and_walk_auto ? '#dcfce7' : '#f3f4f6' }}>
+            <div>
+              <span className="text-sm font-medium" style={{ color: '#160f29' }}>Auto Park & Walk</span>
+              <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>Suggest parking + walking in congested areas</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={preferences.park_and_walk_auto || false}
+              onChange={() => setPreferences(p => ({ ...p, park_and_walk_auto: !p.park_and_walk_auto }))}
+              className="rounded text-green-600 focus:ring-green-500 w-5 h-5"
+            />
+          </label>
+          <label className="flex items-center justify-between p-3 rounded-xl cursor-pointer"
+            style={{ background: preferences.silent_mode ? '#dbeafe' : '#f3f4f6' }}>
+            <div>
+              <span className="text-sm font-medium" style={{ color: '#160f29' }}>Silent Mode</span>
+              <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>Only high-priority alerts (hazards). Group ETA stays visual.</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={preferences.silent_mode || false}
+              onChange={() => setPreferences(p => ({ ...p, silent_mode: !p.silent_mode }))}
+              className="rounded text-blue-600 focus:ring-blue-500 w-5 h-5"
+            />
+          </label>
+        </div>
+      </div>
+
       {/* Save */}
       <button
         onClick={handleSave}
