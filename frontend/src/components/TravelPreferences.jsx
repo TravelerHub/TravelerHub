@@ -73,148 +73,146 @@ export default function TravelPreferences() {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-6 bg-gray-200 rounded w-48"></div>
-          <div className="h-4 bg-gray-200 rounded w-64"></div>
-          <div className="flex gap-2">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-10 w-24 bg-gray-200 rounded-full"></div>
-            ))}
-          </div>
+      <div className="animate-pulse space-y-4 py-2">
+        <div className="h-4 rounded-full w-40" style={{ background: "#f3f4f6" }} />
+        <div className="flex flex-wrap gap-2">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-8 w-24 rounded-full" style={{ background: "#f3f4f6" }} />
+          ))}
+        </div>
+        <div className="h-4 rounded-full w-32 mt-2" style={{ background: "#f3f4f6" }} />
+        <div className="flex gap-2">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-14 flex-1 rounded-xl" style={{ background: "#f3f4f6" }} />
+          ))}
         </div>
       </div>
     );
   }
 
+  const sectionLabel = (text) => (
+    <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#9ca3af" }}>
+      {text}
+    </p>
+  );
+
+  const pill = (isActive, onClick, emoji, label) => (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition"
+      style={
+        isActive
+          ? { background: "#160f29", color: "#fbfbf2" }
+          : { background: "#f3f4f6", color: "#374151" }
+      }
+      onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "#e5e7eb"; }}
+      onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "#f3f4f6"; }}
+    >
+      <span>{emoji}</span>
+      <span>{label}</span>
+    </button>
+  );
+
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-      <h2 className="text-lg font-semibold text-gray-800 mb-1">
-        Travel Preferences
-      </h2>
-      <p className="text-gray-500 text-sm mb-5">
-        Personalize your place suggestions and search results
-      </p>
+    <div className="space-y-6">
 
       {/* Success / Error */}
       {success && (
-        <div className="bg-green-50 text-green-700 px-4 py-3 rounded-lg mb-4 text-sm">
+        <div className="text-sm px-4 py-2.5 rounded-xl" style={{ background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0" }}>
           {success}
         </div>
       )}
       {error && (
-        <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+        <div className="text-sm px-4 py-2.5 rounded-xl" style={{ background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }}>
           {error}
         </div>
       )}
 
-      <div className="space-y-6">
-        {/* Favorite Place Types */}
-        <div>
-          <label className="text-sm font-medium text-gray-700 block mb-3">
-            What places do you enjoy visiting?
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {CATEGORY_OPTIONS.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => toggleItem("preferred_categories", cat.id)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition ${
-                  preferences.preferred_categories.includes(cat.id)
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                <span>{cat.emoji}</span>
-                <span>{cat.label}</span>
-              </button>
-            ))}
-          </div>
+      {/* Favorite Place Types */}
+      <div>
+        {sectionLabel("What places do you enjoy visiting?")}
+        <div className="flex flex-wrap gap-2">
+          {CATEGORY_OPTIONS.map((cat) =>
+            pill(
+              preferences.preferred_categories.includes(cat.id),
+              () => toggleItem("preferred_categories", cat.id),
+              cat.emoji,
+              cat.label
+            )
+          )}
         </div>
+      </div>
 
-        {/* Price Preference */}
-        <div>
-          <label className="text-sm font-medium text-gray-700 block mb-3">
-            Price range preference
-          </label>
-          <div className="flex gap-2">
-            {PRICE_OPTIONS.map((price) => (
+      {/* Price Preference */}
+      <div>
+        {sectionLabel("Price range preference")}
+        <div className="flex gap-2">
+          {PRICE_OPTIONS.map((price) => {
+            const isActive = preferences.price_preference === price.id;
+            return (
               <button
                 key={price.id}
-                onClick={() =>
-                  setPreferences((prev) => ({
-                    ...prev,
-                    price_preference: price.id,
-                  }))
+                onClick={() => setPreferences((prev) => ({ ...prev, price_preference: price.id }))}
+                className="flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition text-center"
+                style={
+                  isActive
+                    ? { background: "#183a37", color: "#fbfbf2", border: "1px solid #183a37" }
+                    : { background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb" }
                 }
-                className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition text-center ${
-                  preferences.price_preference === price.id
-                    ? "bg-green-600 text-white shadow-sm"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "#e5e7eb"; }}
+                onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "#f3f4f6"; }}
               >
-                <div className="text-lg">{price.symbol}</div>
-                <div className="text-xs mt-0.5">{price.label}</div>
+                <div className="text-base font-bold">{price.symbol}</div>
+                <div className="text-xs mt-0.5 opacity-80">{price.label}</div>
               </button>
-            ))}
-          </div>
+            );
+          })}
         </div>
-
-        {/* Interests */}
-        <div>
-          <label className="text-sm font-medium text-gray-700 block mb-3">
-            Your travel interests
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {INTEREST_OPTIONS.map((interest) => (
-              <button
-                key={interest.id}
-                onClick={() => toggleItem("interests", interest.id)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition ${
-                  preferences.interests.includes(interest.id)
-                    ? "bg-purple-600 text-white shadow-sm"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                <span>{interest.emoji}</span>
-                <span>{interest.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Dietary Restrictions */}
-        <div>
-          <label className="text-sm font-medium text-gray-700 block mb-3">
-            Dietary restrictions
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {DIETARY_OPTIONS.map((diet) => (
-              <button
-                key={diet.id}
-                onClick={() => toggleItem("dietary_restrictions", diet.id)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition ${
-                  preferences.dietary_restrictions.includes(diet.id)
-                    ? "bg-orange-500 text-white shadow-sm"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                <span>{diet.emoji}</span>
-                <span>{diet.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Save Button */}
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 font-medium transition disabled:bg-blue-400"
-        >
-          {saving ? "Saving..." : "Save Preferences"}
-        </button>
       </div>
+
+      {/* Interests */}
+      <div>
+        {sectionLabel("Your travel interests")}
+        <div className="flex flex-wrap gap-2">
+          {INTEREST_OPTIONS.map((interest) =>
+            pill(
+              preferences.interests.includes(interest.id),
+              () => toggleItem("interests", interest.id),
+              interest.emoji,
+              interest.label
+            )
+          )}
+        </div>
+      </div>
+
+      {/* Dietary Restrictions */}
+      <div>
+        {sectionLabel("Dietary restrictions")}
+        <div className="flex flex-wrap gap-2">
+          {DIETARY_OPTIONS.map((diet) =>
+            pill(
+              preferences.dietary_restrictions.includes(diet.id),
+              () => toggleItem("dietary_restrictions", diet.id),
+              diet.emoji,
+              diet.label
+            )
+          )}
+        </div>
+      </div>
+
+      {/* Save */}
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        className="w-full py-2.5 rounded-xl text-sm font-semibold transition"
+        style={
+          saving
+            ? { background: "#e5e7eb", color: "#9ca3af", cursor: "not-allowed" }
+            : { background: "#160f29", color: "#fbfbf2" }
+        }
+      >
+        {saving ? "Saving…" : "Save Preferences"}
+      </button>
     </div>
   );
 }

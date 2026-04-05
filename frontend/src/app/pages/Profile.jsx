@@ -1,60 +1,98 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { API_BASE } from '../../config';
+import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
+import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
+import TravelPreferences from "../../components/TravelPreferences";
+import {
+  addEncryptedCard,
+  createCardSetupSession,
+  encryptCardPayload,
+  finalizeCardSetup,
+  getSavedCards,
+  removeSavedCard,
+} from "../../services/billingService";
 
 function Profile() {
   const navigate = useNavigate();
+  const location = useLocation();
 
-  // Load user from localStorage (saved during login)
+  // ── Profile state ──────────────────────────────────────────────────────────
   const getStoredUser = () => {
     const stored = localStorage.getItem("user");
     if (stored) {
       const parsed = JSON.parse(stored);
       return {
         username: parsed.username || "",
-        email: parsed.email || "",
-
-        //Address fields
-        street: parsed.street || "",
-        city: parsed.city || "",
-        state: parsed.state || "",
-        zipcode: parsed.zipcode || "",
+        email:    parsed.email    || "",
+        street:   parsed.street   || "",
+        city:     parsed.city     || "",
+        state:    parsed.state    || "",
+        zipcode:  parsed.zipcode  || "",
       };
     }
-
-    // console.log("user info: ", stored)
     return { username: "", email: "", street: "", city: "", state: "", zipcode: "" };
   };
 
-  const [user, setUser] = useState(getStoredUser);
+  const [user,      setUser]      = useState(getStoredUser);
   const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState(user);
+  const [formData,  setFormData]  = useState(user);
+  const [saving,    setSaving]    = useState(false);
+  const [error,     setError]     = useState("");
 
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  // ── Settings state ─────────────────────────────────────────────────────────
+  const [notifications, setNotifications] = useState({
+    tripReminders:  true,
+    financeUpdates: false,
+    voteResults:    true,
+  });
+  const [locationSharing,  setLocationSharing]  = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [passwordData,     setPasswordData]     = useState({
+    currentPassword: "", newPassword: "", confirmPassword: "",
+  });
+  const [passwordSaving,  setPasswordSaving]  = useState(false);
+  const [passwordError,   setPasswordError]   = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [billingMessage,  setBillingMessage]  = useState("");
+  const [savedCards, setSavedCards] = useState([]);
+  const [cardsLoading, setCardsLoading] = useState(false);
+  const [showCardForm, setShowCardForm] = useState(false);
+  const [cardForm, setCardForm] = useState({
+    holderName: "",
+    cardNumber: "",
+    expMonth: "",
+    expYear: "",
+  });
 
+  // ── Tab state ──────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState("profile");
+
+  const TABS = [
+    { id: "profile",       label: "Profile"       },
+    { id: "payment",       label: "Payment"       },
+    { id: "preferences",   label: "Preferences"   },
+    { id: "notifications", label: "Notifications" },
+    { id: "security",      label: "Security"      },
+    { id: "account",       label: "Account"       },
+  ];
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
   const handleSave = async () => {
     setSaving(true);
     setError("");
-
     try {
       const token = localStorage.getItem("token");
-
       const response = await fetch(`${API_BASE}/users/me`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(formData),
       });
-
       if (response.ok) {
         const updatedUser = await response.json();
         setUser(updatedUser);
         setFormData(updatedUser);
-
-        // Update localStorage too
         localStorage.setItem("user", JSON.stringify(updatedUser));
         setIsEditing(false);
       } else {
@@ -74,219 +112,784 @@ function Profile() {
     setIsEditing(false);
   };
 
-  // Get initials for avatar
+  const handlePasswordChange = async () => {
+    setPasswordError("");
+    setPasswordSuccess("");
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setPasswordError("New passwords do not match");
+      return;
+    }
+    if (passwordData.newPassword.length < 6) {
+      setPasswordError("New password must be at least 6 characters");
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API_BASE}/users/me/password`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          current_password: passwordData.currentPassword,
+          new_password:     passwordData.newPassword,
+        }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setPasswordSuccess("Password changed successfully!");
+        setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+        setShowPasswordForm(false);
+      } else {
+        setPasswordError(data.detail || "Failed to change password");
+      }
+    } catch (err) {
+      console.error("Password change error:", err);
+      setPasswordError("Cannot connect to server");
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
+  const handleDeleteAccount = () => navigate("/");
+
+  const loadSavedCards = async () => {
+    setCardsLoading(true);
+    try {
+      const cards = await getSavedCards();
+      setSavedCards(cards);
+    } catch (error) {
+      setBillingMessage(error?.message || "Failed to load saved cards");
+    } finally {
+      setCardsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get("tab");
+    if (tab === "payment") {
+      setActiveTab("payment");
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    if (activeTab === "payment") {
+      loadSavedCards();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const sessionId = params.get("session_id");
+    const checkoutStatus = params.get("checkout");
+
+    if (!sessionId || checkoutStatus !== "success") {
+      return;
+    }
+
+    const finalize = async () => {
+      try {
+        await finalizeCardSetup(sessionId);
+        setBillingMessage("Card added successfully.");
+        await loadSavedCards();
+      } catch (error) {
+        setBillingMessage(error?.message || "Failed to save card after setup.");
+      } finally {
+        navigate("/profile?tab=payment", { replace: true });
+      }
+    };
+
+    finalize();
+  }, [location.search, navigate]);
+
+  const handleAddCreditCard = async () => {
+    setBillingMessage("");
+    try {
+      const data = await createCardSetupSession();
+      if (data?.mode === "manual") {
+        setShowCardForm(true);
+        setBillingMessage("Stripe is not configured. Card data will be encrypted in browser using your local symmetric key.");
+        return;
+      }
+
+      if (!data?.url) {
+        throw new Error("Missing setup URL");
+      }
+      window.location.assign(data.url);
+    } catch (error) {
+      setBillingMessage(error?.message || "Unable to start card setup.");
+    }
+  };
+
+  const detectCardBrand = (cardNumber) => {
+    if (/^4/.test(cardNumber)) return "visa";
+    if (/^(5[1-5]|2[2-7])/.test(cardNumber)) return "mastercard";
+    if (/^3[47]/.test(cardNumber)) return "amex";
+    if (/^6(?:011|5)/.test(cardNumber)) return "discover";
+    return "card";
+  };
+
+  const handleSaveEncryptedCard = async () => {
+    setBillingMessage("");
+
+    const digits = cardForm.cardNumber.replace(/\D/g, "");
+    if (digits.length < 13 || digits.length > 19) {
+      setBillingMessage("Card number looks invalid.");
+      return;
+    }
+
+    const month = Number(cardForm.expMonth);
+    const year = Number(cardForm.expYear);
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      setBillingMessage("Expiration month must be between 1 and 12.");
+      return;
+    }
+
+    if (!Number.isInteger(year) || year < 2024 || year > 2100) {
+      setBillingMessage("Expiration year is invalid.");
+      return;
+    }
+
+    try {
+      const encryptedPayload = await encryptCardPayload({
+        holder_name: cardForm.holderName,
+        card_number: digits,
+        exp_month: month,
+        exp_year: year,
+      });
+
+      await addEncryptedCard({
+        encryptedPayload,
+        brand: detectCardBrand(digits),
+        last4: digits.slice(-4),
+      });
+
+      setCardForm({ holderName: "", cardNumber: "", expMonth: "", expYear: "" });
+      setShowCardForm(false);
+      setBillingMessage("Encrypted card saved successfully.");
+      await loadSavedCards();
+    } catch (error) {
+      setBillingMessage(error?.message || "Failed to save encrypted card.");
+    }
+  };
+
+  const handleRemoveCard = async (card) => {
+    setBillingMessage("");
+    try {
+      await removeSavedCard(card.id);
+      setBillingMessage("Card removed successfully.");
+      await loadSavedCards();
+    } catch (error) {
+      setBillingMessage(error?.message || "Failed to remove card.");
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    navigate("/");
+  };
+
   const getInitials = (name) => {
     if (!name) return "?";
     return name.slice(0, 2).toUpperCase();
   };
 
-  const hasAddress =
-    user.street || user.city || user.state || user.zipcode;
+  const hasAddress = user.street || user.city || user.state || user.zipcode;
+
+  // ── Reusable input style ───────────────────────────────────────────────────
+  const inputClass = "w-full px-4 py-2.5 rounded-xl text-sm outline-none transition";
+  const inputStyle = { border: "1px solid #d1d5db", color: "#160f29", background: "#fff" };
+
+  // ── Toggle switch component ────────────────────────────────────────────────
+  const Toggle = ({ checked, onChange }) => (
+    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+      <input type="checkbox" checked={checked} onChange={onChange} className="sr-only peer" />
+      <div
+        className="w-11 h-6 rounded-full transition-colors peer-checked:bg-teal-800"
+        style={{ background: checked ? "#183a37" : "#d1d5db" }}
+      />
+      <div
+        className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow transition-transform"
+        style={{ transform: checked ? "translateX(20px)" : "translateX(0)" }}
+      />
+    </label>
+  );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-8">
-      <div className="max-w-lg mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">My Profile</h1>
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="text-gray-500 hover:text-gray-700 text-sm flex items-center gap-1"
+    <div className="flex h-screen overflow-hidden">
+
+      {/* ══ Black sidebar ══════════════════════════════════════════════════════ */}
+      <aside className="w-52 shrink-0 flex flex-col" style={{ background: "#000000" }}>
+
+        {/* Avatar + name */}
+        <div className="px-5 pt-6 pb-5 shrink-0 border-b" style={{ borderColor: "#374151" }}>
+          <div
+            className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold mb-3"
+            style={{ background: "#183a37", color: "#fbfbf2" }}
           >
-            ← Back
-          </button>
+            {getInitials(user.username)}
+          </div>
+          <p className="font-bold text-sm leading-tight truncate" style={{ color: "#f9fafb" }}>
+            {user.username || "My Account"}
+          </p>
+          <p className="text-xs truncate mt-0.5" style={{ color: "#6b7280" }}>
+            {user.email}
+          </p>
         </div>
 
-        {/* Profile Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          {/* Avatar Section */}
-          <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-8 text-center">
-            <div className="w-20 h-20 bg-white rounded-full mx-auto flex items-center justify-center shadow-md">
-              <span className="text-2xl font-bold text-blue-600">
-                {getInitials(user.username)}
-              </span>
-            </div>
-            <h2 className="text-white text-xl font-semibold mt-4">{user.username}</h2>
-            <p className="text-blue-100 text-sm">{user.email}</p>
-          </div>
+        {/* Page nav */}
+        <nav className="flex flex-col gap-1 px-3 py-4">
+          {SIDEBAR_ITEMS.map((item) => {
+            const isDisabled = !item.path;
+            return (
+              <button
+                key={item.label}
+                onClick={() => item.path && navigate(item.path)}
+                disabled={isDisabled}
+                className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition ${isDisabled ? "cursor-not-allowed" : "hover:bg-white/10"}`}
+                style={{ color: isDisabled ? "#4b5563" : "#9ca3af" }}
+              >
+                {item.label}
+              </button>
+            );
+          })}
+        </nav>
 
-          {/* Info Section */}
-          <div className="p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-semibold text-gray-800">Profile Details</h3>
-              {!isEditing && (
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="text-blue-600 hover:text-blue-700 text-sm font-medium px-3 py-1 rounded-lg hover:bg-blue-50 transition"
+        {/* Log out at bottom */}
+        <div className="mt-auto px-3 pb-5">
+          <button
+            onClick={handleLogout}
+            className="w-full py-2.5 rounded-lg text-sm font-semibold transition hover:bg-gray-800"
+            style={{ background: "#1f2937", color: "#9ca3af" }}
+          >
+            Log Out
+          </button>
+        </div>
+      </aside>
+
+      {/* ══ Main column ════════════════════════════════════════════════════════ */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <Navbar_Dashboard />
+
+        <main className="flex-1 overflow-y-auto" style={{ background: "#f3f4f6" }}>
+          <div className="max-w-2xl mx-auto px-6 py-8">
+
+            {/* ── Hero banner ─────────────────────────────────────────────── */}
+            <div className="rounded-2xl overflow-hidden mb-4" style={{ background: "#160f29" }}>
+              <div className="px-8 py-7 flex items-center gap-5">
+                <div
+                  className="w-14 h-14 shrink-0 rounded-full flex items-center justify-center text-lg font-bold"
+                  style={{ background: "#183a37", color: "#fbfbf2" }}
                 >
-                  Edit
-                </button>
-              )}
+                  {getInitials(user.username)}
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-base font-bold truncate" style={{ color: "#fbfbf2" }}>
+                    {user.username || "—"}
+                  </h2>
+                  <p className="text-sm truncate mt-0.5" style={{ color: "rgba(251,251,242,0.5)" }}>
+                    {user.email}
+                  </p>
+                </div>
+              </div>
+
+              {/* Tab pills inside hero */}
+              <div
+                className="flex px-8 gap-1 pb-1"
+                style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
+              >
+                {TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className="px-4 py-2.5 text-xs font-semibold transition rounded-t-lg"
+                    style={
+                      activeTab === tab.id
+                        ? { color: "#fbfbf2", borderBottom: "2px solid #fbfbf2" }
+                        : { color: "rgba(251,251,242,0.4)", borderBottom: "2px solid transparent" }
+                    }
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {isEditing ? (
-              <div className="space-y-5">
-                {/* Username */}
-                <div>
-                  <label className="text-gray-600 text-sm font-medium block mb-2">
-                    Username
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.username}
-                    onChange={(e) =>
-                      setFormData({ ...formData, username: e.target.value })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
-                  />
-                </div>
+            {/* ── Tab content ─────────────────────────────────────────────── */}
+            <div
+              className="rounded-2xl overflow-hidden"
+              style={{ background: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}
+            >
 
-                {/* Email */}
-                <div>
-                  <label className="text-gray-600 text-sm font-medium block mb-2">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
-                  />
-                </div>
+              {/* ── PROFILE tab ── */}
+              {activeTab === "profile" && (
+                <div className="p-6">
+                  {isEditing ? (
+                    <div className="space-y-5">
+                      <div className="flex items-center justify-between mb-1">
+                        <h3 className="text-sm font-bold" style={{ color: "#160f29" }}>Edit Profile</h3>
+                      </div>
 
-                {/* ✅ Address */}
-                <div className="pt-2">
-                  <h4 className="text-gray-800 font-semibold mb-3">Address</h4>
-
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-gray-600 text-sm font-medium block mb-2">
-                        Street
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.street}
-                        onChange={(e) =>
-                          setFormData({ ...formData, street: e.target.value })
-                        }
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="sm:col-span-1">
-                        <label className="text-gray-600 text-sm font-medium block mb-2">
-                          City
-                        </label>
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: "#9ca3af" }}>Username</label>
                         <input
                           type="text"
-                          value={formData.city}
-                          onChange={(e) =>
-                            setFormData({ ...formData, city: e.target.value })
-                          }
-                          className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                          value={formData.username}
+                          onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                          className={inputClass}
+                          style={inputStyle}
+                          onFocus={e => e.target.style.borderColor = "#160f29"}
+                          onBlur={e => e.target.style.borderColor = "#d1d5db"}
                         />
                       </div>
 
-                      <div className="sm:col-span-1">
-                        <label className="text-gray-600 text-sm font-medium block mb-2">
-                          State
-                        </label>
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: "#9ca3af" }}>Email</label>
                         <input
-                          type="text"
-                          value={formData.state}
-                          onChange={(e) =>
-                            setFormData({ ...formData, state: e.target.value })
-                          }
-                          className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                          type="email"
+                          value={formData.email}
+                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                          className={inputClass}
+                          style={inputStyle}
+                          onFocus={e => e.target.style.borderColor = "#160f29"}
+                          onBlur={e => e.target.style.borderColor = "#d1d5db"}
                         />
                       </div>
 
-                      <div className="sm:col-span-1">
-                        <label className="text-gray-600 text-sm font-medium block mb-2">
-                          Zipcode
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.zipcode}
-                          onChange={(e) =>
-                            setFormData({ ...formData, zipcode: e.target.value })
-                          }
-                          className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="flex-1 bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 font-medium transition disabled:bg-blue-400"
-                  >
-                    {saving ? "Saving..." : "Save Changes"}
-                  </button>
-                  <button
-                    onClick={handleCancel}
-                    className="flex-1 bg-gray-100 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-200 font-medium transition"
-                  >
-                    Cancel
-                  </button>
-                </div>
-
-                {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex justify-between py-3 border-b border-gray-100">
-                  <span className="text-gray-500">Username</span>
-                  <span className="text-gray-900 font-medium">{user.username}</span>
-                </div>
-
-                <div className="flex justify-between py-3 border-b border-gray-100">
-                  <span className="text-gray-500">Email</span>
-                  <span className="text-gray-900 font-medium">{user.email}</span>
-                </div>
-
-                {/* ✅ Address view box */}
-                <div className="pt-4">
-                  <h4 className="text-gray-800 font-semibold mb-2">Address</h4>
-
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                    {hasAddress ? (
-                      <div className="text-gray-700 text-sm space-y-1">
-                        <div>{user.street}</div>
-                        <div>
-                          {user.city}
-                          {user.city && user.state ? ", " : ""}
-                          {user.state} {user.zipcode}
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#9ca3af" }}>Address</p>
+                        <div className="space-y-3">
+                          <input
+                            type="text"
+                            placeholder="Street"
+                            value={formData.street}
+                            onChange={(e) => setFormData({ ...formData, street: e.target.value })}
+                            className={inputClass}
+                            style={inputStyle}
+                            onFocus={e => e.target.style.borderColor = "#160f29"}
+                            onBlur={e => e.target.style.borderColor = "#d1d5db"}
+                          />
+                          <div className="grid grid-cols-3 gap-3">
+                            {[
+                              { placeholder: "City",    field: "city"    },
+                              { placeholder: "State",   field: "state"   },
+                              { placeholder: "Zipcode", field: "zipcode" },
+                            ].map(({ placeholder, field }) => (
+                              <input
+                                key={field}
+                                type="text"
+                                placeholder={placeholder}
+                                value={formData[field]}
+                                onChange={(e) => setFormData({ ...formData, [field]: e.target.value })}
+                                className="px-4 py-2.5 rounded-xl text-sm outline-none transition"
+                                style={inputStyle}
+                                onFocus={e => e.target.style.borderColor = "#160f29"}
+                                onBlur={e => e.target.style.borderColor = "#d1d5db"}
+                              />
+                            ))}
+                          </div>
                         </div>
                       </div>
-                    ) : (
-                      <p className="text-gray-500 text-sm">
-                        No address saved yet.
+
+                      {error && (
+                        <p className="text-sm px-4 py-2.5 rounded-xl" style={{ background: "#fef2f2", color: "#dc2626" }}>
+                          {error}
+                        </p>
+                      )}
+
+                      <div className="flex gap-3 pt-1">
+                        <button
+                          onClick={handleSave}
+                          disabled={saving}
+                          className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
+                          style={saving ? { background: "#e5e7eb", color: "#9ca3af", cursor: "not-allowed" } : { background: "#160f29", color: "#fbfbf2" }}
+                        >
+                          {saving ? "Saving…" : "Save Changes"}
+                        </button>
+                        <button
+                          onClick={handleCancel}
+                          className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
+                          style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb" }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="flex items-center justify-between mb-5">
+                        <h3 className="text-sm font-bold" style={{ color: "#160f29" }}>Profile Details</h3>
+                        <button
+                          onClick={() => setIsEditing(true)}
+                          className="px-4 py-1.5 rounded-xl text-xs font-semibold transition"
+                          style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb" }}
+                          onMouseEnter={e => e.currentTarget.style.background = "#e5e7eb"}
+                          onMouseLeave={e => e.currentTarget.style.background = "#f3f4f6"}
+                        >
+                          Edit
+                        </button>
+                      </div>
+
+                      <div className="space-y-1">
+                        {[
+                          { label: "Username", value: user.username },
+                          { label: "Email",    value: user.email    },
+                        ].map(({ label, value }) => (
+                          <div key={label} className="flex items-center justify-between py-3" style={{ borderBottom: "1px solid #f3f4f6" }}>
+                            <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "#9ca3af" }}>{label}</span>
+                            <span className="text-sm font-medium" style={{ color: "#160f29" }}>{value || "—"}</span>
+                          </div>
+                        ))}
+
+                        <div className="pt-4">
+                          <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#9ca3af" }}>Address</p>
+                          <div className="rounded-xl px-4 py-3" style={{ background: "#f9fafb", border: "1px solid #f3f4f6" }}>
+                            {hasAddress ? (
+                              <div className="text-sm space-y-0.5" style={{ color: "#374151" }}>
+                                {user.street && <div>{user.street}</div>}
+                                <div>
+                                  {user.city}{user.city && user.state ? ", " : ""}{user.state} {user.zipcode}
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-sm" style={{ color: "#9ca3af" }}>No address saved yet.</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── PREFERENCES tab ── */}
+              {activeTab === "payment" && (
+                <div className="p-6">
+                  <h3 className="text-sm font-bold mb-5" style={{ color: "#160f29" }}>Payment Methods</h3>
+
+                  <div className="rounded-xl p-4" style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                    <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#64748b" }}>
+                      Credit Card
+                    </p>
+                    <p className="text-xs mb-3" style={{ color: "#94a3b8" }}>
+                      Add your credit card for future trip payments.
+                    </p>
+                    <button
+                      onClick={handleAddCreditCard}
+                      className="w-full py-2.5 rounded-xl text-sm font-semibold transition"
+                      style={{ background: "#160f29", color: "#fbfbf2" }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = "0.92"}
+                      onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+                    >
+                      Add Credit Card
+                    </button>
+                    {billingMessage && (
+                      <p
+                        className="text-xs mt-2"
+                        style={{ color: billingMessage.includes("successfully") ? "#15803d" : "#b91c1c" }}
+                      >
+                        {billingMessage}
                       </p>
+                    )}
+
+                    {showCardForm && (
+                      <div className="mt-4 space-y-3">
+                        <input
+                          type="text"
+                          placeholder="Cardholder name"
+                          value={cardForm.holderName}
+                          onChange={(e) => setCardForm((prev) => ({ ...prev, holderName: e.target.value }))}
+                          className={inputClass}
+                          style={inputStyle}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Card number"
+                          value={cardForm.cardNumber}
+                          onChange={(e) => setCardForm((prev) => ({ ...prev, cardNumber: e.target.value }))}
+                          className={inputClass}
+                          style={inputStyle}
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            placeholder="MM"
+                            value={cardForm.expMonth}
+                            onChange={(e) => setCardForm((prev) => ({ ...prev, expMonth: e.target.value }))}
+                            className={inputClass}
+                            style={inputStyle}
+                          />
+                          <input
+                            type="text"
+                            placeholder="YYYY"
+                            value={cardForm.expYear}
+                            onChange={(e) => setCardForm((prev) => ({ ...prev, expYear: e.target.value }))}
+                            className={inputClass}
+                            style={inputStyle}
+                          />
+                        </div>
+                        <p className="text-xs" style={{ color: "#9ca3af" }}>
+                          CVV is never collected or stored.
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleSaveEncryptedCard}
+                            className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
+                            style={{ background: "#160f29", color: "#fbfbf2" }}
+                          >
+                            Encrypt and Save Card
+                          </button>
+                          <button
+                            onClick={() => setShowCardForm(false)}
+                            className="px-4 py-2.5 rounded-xl text-sm font-semibold"
+                            style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb" }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 rounded-xl p-4" style={{ background: "#fff", border: "1px solid #e5e7eb" }}>
+                    <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#9ca3af" }}>
+                      Saved Cards
+                    </p>
+
+                    {cardsLoading ? (
+                      <p className="text-sm" style={{ color: "#6b7280" }}>Loading cards...</p>
+                    ) : savedCards.length === 0 ? (
+                      <p className="text-sm" style={{ color: "#6b7280" }}>No saved cards yet.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {savedCards.map((card) => (
+                          <div
+                            key={card.id || card.payment_method_id}
+                            className="rounded-lg px-3 py-2 flex items-center justify-between"
+                            style={{ background: "#f9fafb", border: "1px solid #f3f4f6" }}
+                          >
+                            <div>
+                              <p className="text-sm font-semibold" style={{ color: "#160f29" }}>
+                                {(card.brand || "Card").toUpperCase()} •••• {card.last4 || "----"}
+                              </p>
+                              <p className="text-xs" style={{ color: "#9ca3af" }}>
+                                {card.status || "active"}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => handleRemoveCard(card)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                              style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca" }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>
+              )}
+
+              {/* ── PREFERENCES tab ── */}
+              {activeTab === "preferences" && (
+                <div className="p-6">
+                  <TravelPreferences />
+                </div>
+              )}
+
+              {/* ── NOTIFICATIONS tab ── */}
+              {activeTab === "notifications" && (
+                <div className="p-6 space-y-0">
+                  <h3 className="text-sm font-bold mb-5" style={{ color: "#160f29" }}>Notification Preferences</h3>
+
+                  {[
+                    { key: "tripReminders",  label: "Trip Reminders",  sub: "Get notified about upcoming trips"      },
+                    { key: "financeUpdates", label: "Finance Updates",  sub: "Expense and payment notifications"      },
+                    { key: "voteResults",    label: "Vote Results",     sub: "Get notified when group voting ends"    },
+                  ].map(({ key, label, sub }, i, arr) => (
+                    <div
+                      key={key}
+                      className="flex items-center justify-between py-4"
+                      style={{ borderBottom: i < arr.length - 1 ? "1px solid #f3f4f6" : "none" }}
+                    >
+                      <div>
+                        <p className="text-sm font-medium" style={{ color: "#160f29" }}>{label}</p>
+                        <p className="text-xs mt-0.5" style={{ color: "#9ca3af" }}>{sub}</p>
+                      </div>
+                      <Toggle
+                        checked={notifications[key]}
+                        onChange={(e) => setNotifications({ ...notifications, [key]: e.target.checked })}
+                      />
+                    </div>
+                  ))}
+
+                  <div className="pt-4 mt-2" style={{ borderTop: "1px solid #f3f4f6" }}>
+                    <h3 className="text-sm font-bold mb-4" style={{ color: "#160f29" }}>Privacy</h3>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium" style={{ color: "#160f29" }}>Location Sharing</p>
+                        <p className="text-xs mt-0.5" style={{ color: "#9ca3af" }}>Share your location with trip members</p>
+                      </div>
+                      <Toggle
+                        checked={locationSharing}
+                        onChange={(e) => setLocationSharing(e.target.checked)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── SECURITY tab ── */}
+              {activeTab === "security" && (
+                <div className="p-6">
+                  <h3 className="text-sm font-bold mb-5" style={{ color: "#160f29" }}>Change Password</h3>
+
+                  {passwordSuccess && (
+                    <div className="text-sm px-4 py-3 rounded-xl mb-5" style={{ background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0" }}>
+                      {passwordSuccess}
+                    </div>
+                  )}
+
+                  {!showPasswordForm ? (
+                    <button
+                      onClick={() => setShowPasswordForm(true)}
+                      className="w-full py-2.5 rounded-xl text-sm font-semibold transition"
+                      style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "#e5e7eb"}
+                      onMouseLeave={e => e.currentTarget.style.background = "#f3f4f6"}
+                    >
+                      Change Password
+                    </button>
+                  ) : (
+                    <div className="space-y-4">
+                      {[
+                        { label: "Current Password",  field: "currentPassword" },
+                        { label: "New Password",       field: "newPassword"     },
+                        { label: "Confirm New Password", field: "confirmPassword" },
+                      ].map(({ label, field }) => (
+                        <div key={field}>
+                          <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: "#9ca3af" }}>
+                            {label}
+                          </label>
+                          <input
+                            type="password"
+                            value={passwordData[field]}
+                            onChange={(e) => setPasswordData({ ...passwordData, [field]: e.target.value })}
+                            className={inputClass}
+                            style={inputStyle}
+                            onFocus={e => e.target.style.borderColor = "#160f29"}
+                            onBlur={e => e.target.style.borderColor = "#d1d5db"}
+                          />
+                        </div>
+                      ))}
+
+                      {passwordError && (
+                        <p className="text-sm px-4 py-2.5 rounded-xl" style={{ background: "#fef2f2", color: "#dc2626" }}>
+                          {passwordError}
+                        </p>
+                      )}
+
+                      <div className="flex gap-3 pt-1">
+                        <button
+                          onClick={handlePasswordChange}
+                          disabled={passwordSaving}
+                          className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
+                          style={passwordSaving ? { background: "#e5e7eb", color: "#9ca3af", cursor: "not-allowed" } : { background: "#160f29", color: "#fbfbf2" }}
+                        >
+                          {passwordSaving ? "Saving…" : "Update Password"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowPasswordForm(false);
+                            setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+                            setPasswordError("");
+                          }}
+                          className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
+                          style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb" }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── ACCOUNT tab ── */}
+              {activeTab === "account" && (
+                <div className="p-6">
+                  <h3 className="text-sm font-bold mb-5" style={{ color: "#160f29" }}>Account Actions</h3>
+
+                  <div className="space-y-3">
+                    <button
+                      onClick={handleLogout}
+                      className="w-full py-2.5 rounded-xl text-sm font-semibold transition text-left px-4 flex items-center justify-between"
+                      style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "#e5e7eb"}
+                      onMouseLeave={e => e.currentTarget.style.background = "#f3f4f6"}
+                    >
+                      <span>Log Out</span>
+                      <span style={{ color: "#9ca3af" }}>→</span>
+                    </button>
+
+                    <div className="rounded-xl p-4" style={{ background: "#fef2f2", border: "1px solid #fecaca" }}>
+                      <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#dc2626" }}>Danger Zone</p>
+                      <p className="text-xs mb-3" style={{ color: "#9ca3af" }}>
+                        Permanently delete your account and all associated data. This cannot be undone.
+                      </p>
+                      <button
+                        onClick={() => setShowDeleteModal(true)}
+                        className="w-full py-2.5 rounded-xl text-sm font-semibold transition"
+                        style={{ background: "#dc2626", color: "#fff" }}
+                        onMouseEnter={e => e.currentTarget.style.background = "#b91c1c"}
+                        onMouseLeave={e => e.currentTarget.style.background = "#dc2626"}
+                      >
+                        Delete Account
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
+        </main>
+      </div>
+
+      {/* ── Delete Account Modal ──────────────────────────────────────────────── */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)" }}>
+          <div className="w-full rounded-2xl overflow-hidden" style={{ maxWidth: 420, background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
+            <div className="px-6 pt-6 pb-4">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center mb-4" style={{ background: "#fef2f2" }}>
+                <span style={{ color: "#dc2626", fontSize: 18 }}>⚠</span>
               </div>
-            )}
+              <h3 className="text-base font-bold mb-2" style={{ color: "#160f29" }}>Delete Account?</h3>
+              <p className="text-sm" style={{ color: "#5c6b73" }}>
+                This action cannot be undone. All your data, trips, and settings will be permanently deleted.
+              </p>
+            </div>
+            <div className="flex gap-3 px-6 pb-6 pt-2">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
+                style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
+                style={{ background: "#dc2626", color: "#fff" }}
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
-
-        {/* Link to Settings */}
-        <div className="mt-6 text-center">
-          <button
-            onClick={() => navigate("/settings")}
-            className="text-gray-500 hover:text-blue-600 text-sm transition"
-          >
-            Go to Settings →
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

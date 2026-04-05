@@ -1,13 +1,31 @@
 /**
  * End-to-End Encryption utilities for frontend
- * Uses TweetNaCl.js for hybrid encryption
+ * Uses TweetNaCl.js for hybrid encryption.
+ *
+ * Architecture: ALL crypto happens here in the browser.
+ * The server stores opaque ciphertext blobs and never sees plaintext or private keys.
+ *
+ * Key flow:
+ *  1. generateKeypair()           → private key stays in localStorage, public key uploaded to server
+ *  2. generateConversationKey()   → random 32-byte session key, encrypted per member via encryptKeyForUser()
+ *  3. decryptKeyForUser()         → client decrypts their session key blob using their local private key
+ *  4. encryptMessage() / decryptMessage() → symmetric encrypt/decrypt using the session key
+ *
+ * Session keys are cached in _sessionKeyCache (in-memory Map) so decryption never requires a server call.
  */
 
-// TweetNaCl utility functions for E2E encryption
+// In-memory session key cache — survives the page session, cleared on tab close.
+// conversationId (string) → base64 session key (string)
+const _sessionKeyCache = new Map();
+
 export const encryptionUtils = {
+
+  // ── Key generation ─────────────────────────────────────────────────────────
+
   /**
-   * Generate a keypair for the current user
-   * @returns {Object} {public_key, private_key} both as base64 strings
+   * Generate a new X25519 keypair for the current user.
+   * Call once on first login. Store result via storeKeypair().
+   * @returns {{ public_key: string, private_key: string }} both as base64
    */
   generateKeypair: () => {
     const keyPair = nacl.box.keyPair();
@@ -18,20 +36,31 @@ export const encryptionUtils = {
   },
 
   /**
-   * Encrypt a session key with a recipient's public key
-   * @param {string} sessionKey - base64-encoded session key
-   * @param {string} recipientPublicKey - base64-encoded public key
-   * @returns {string} base64-encoded encrypted key
+   * Generate a random 256-bit symmetric session key for a conversation.
+   * @returns {string} base64-encoded 32-byte key
+   */
+  generateConversationKey: () => {
+    return nacl.util.encodeBase64(nacl.randomBytes(32));
+  },
+
+  // ── Key exchange ───────────────────────────────────────────────────────────
+
+  /**
+   * Encrypt a session key for a recipient using their public key.
+   * Uses an ephemeral keypair so the sender is anonymous to the server.
+   * Output format: nonce(24) + ephemeralPublicKey(32) + ciphertext
+   *
+   * @param {string} sessionKey        - base64 session key to encrypt
+   * @param {string} recipientPublicKey - base64 recipient's public key
+   * @returns {string} base64-encoded encrypted blob
    */
   encryptKeyForUser: (sessionKey, recipientPublicKey) => {
-    const keyBytes = nacl.util.decodeBase64(sessionKey);
+    const keyBytes       = nacl.util.decodeBase64(sessionKey);
     const publicKeyBytes = nacl.util.decodeBase64(recipientPublicKey);
+    const ephemeral      = nacl.box.keyPair();
+    const nonce          = nacl.randomBytes(nacl.box.nonceLength);
+    const encrypted      = nacl.box(keyBytes, nonce, publicKeyBytes, ephemeral.secretKey);
 
-    const ephemeral = nacl.box.keyPair();
-    const nonce = nacl.randomBytes(nacl.box.nonceLength);
-    const encrypted = nacl.box(keyBytes, nonce, publicKeyBytes, ephemeral.secretKey);
-
-    // Return nonce + ephemeral public key + encrypted data
     const result = new Uint8Array(nonce.length + ephemeral.publicKey.length + encrypted.length);
     result.set(nonce);
     result.set(ephemeral.publicKey, nonce.length);
@@ -41,315 +70,135 @@ export const encryptionUtils = {
   },
 
   /**
-   * Generate a random symmetric key for conversations
-   * @returns {string} base64-encoded key
+   * Decrypt a session key blob using the local private key.
+   * Reverses encryptKeyForUser() — expects same blob format.
+   * Input format: nonce(24) + ephemeralPublicKey(32) + ciphertext
+   *
+   * @param {string} encryptedKeyBase64  - base64 encrypted blob from server
+   * @param {string} myPrivateKeyBase64  - base64 private key from localStorage
+   * @returns {string} base64-decoded session key
    */
-  generateConversationKey: () => {
-    const key = nacl.randomBytes(32); // 256-bit key
-    return nacl.util.encodeBase64(key);
+  decryptKeyForUser: (encryptedKeyBase64, myPrivateKeyBase64) => {
+    const bytes         = nacl.util.decodeBase64(encryptedKeyBase64);
+    const nonce         = bytes.slice(0, nacl.box.nonceLength);
+    const ephemeralPub  = bytes.slice(nacl.box.nonceLength, nacl.box.nonceLength + 32);
+    const ciphertext    = bytes.slice(nacl.box.nonceLength + 32);
+    const myPrivateKey  = nacl.util.decodeBase64(myPrivateKeyBase64);
+
+    const decrypted = nacl.box.open(ciphertext, nonce, ephemeralPub, myPrivateKey);
+    if (!decrypted) {
+      throw new Error("Failed to decrypt session key — wrong private key or corrupted blob");
+    }
+    return nacl.util.encodeBase64(decrypted);
   },
 
+  // ── Message encryption ─────────────────────────────────────────────────────
+
   /**
-   * Encrypt a message with a symmetric session key
-   * @param {string} message - plaintext message
-   * @param {string} sessionKey - base64-encoded symmetric key
+   * Encrypt a plaintext message with a symmetric session key.
+   * Output format: nonce(24) + ciphertext
+   *
+   * @param {string} message    - plaintext string
+   * @param {string} sessionKey - base64 32-byte key
    * @returns {string} base64-encoded encrypted message
    */
   encryptMessage: (message, sessionKey) => {
-    try {
-      // Ensure key is properly decoded to Uint8Array
-      let keyBytes = nacl.util.decodeBase64(sessionKey);
-      if (!(keyBytes instanceof Uint8Array)) {
-        keyBytes = new Uint8Array(keyBytes);
-      }
-      
-      // CRITICAL: Validate key size is exactly 32 bytes
-      if (keyBytes.length !== 32) {
-        console.error(`Key size error: expected 32 bytes, got ${keyBytes.length}`);
-        throw new Error(`bad key size: expected 32, got ${keyBytes.length}`);
-      }
-      
-      const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
-      
-      // Encode message to UTF-8 bytes and ensure it's a Uint8Array
-      let messageBytes = nacl.util.decodeUTF8(message);
-      if (!(messageBytes instanceof Uint8Array)) {
-        // If it's not a Uint8Array, convert it
-        messageBytes = new Uint8Array(messageBytes);
-      }
-
-      // Validate all inputs are Uint8Array
-      if (!(messageBytes instanceof Uint8Array)) {
-        throw new Error("Message bytes not Uint8Array after conversion");
-      }
-      if (!(nonce instanceof Uint8Array)) {
-        throw new Error("Nonce not Uint8Array");
-      }
-      if (!(keyBytes instanceof Uint8Array)) {
-        throw new Error("Key bytes not Uint8Array after conversion");
-      }
-
-      const encrypted = nacl.secretbox(messageBytes, nonce, keyBytes);
-      
-      if (!encrypted) {
-        throw new Error("Encryption failed - returned null");
-      }
-      if (!(encrypted instanceof Uint8Array)) {
-        throw new Error("Encrypted result not Uint8Array");
-      }
-
-      // Return nonce + ciphertext
-      const result = new Uint8Array(nonce.length + encrypted.length);
-      result.set(new Uint8Array(nonce));
-      result.set(new Uint8Array(encrypted), nonce.length);
-
-      return nacl.util.encodeBase64(result);
-    } catch (err) {
-      console.error("Encryption error details:", {
-        error: err.message,
-        sessionKeyType: typeof sessionKey,
-        sessionKeyLength: sessionKey?.length,
-        messageType: typeof message,
-        messageLength: message?.length
-      });
-      throw new Error(`Message encryption failed: ${err.message}`);
+    const keyBytes = nacl.util.decodeBase64(sessionKey);
+    if (keyBytes.length !== 32) {
+      throw new Error(`Bad key size: expected 32, got ${keyBytes.length}`);
     }
+
+    const nonce        = nacl.randomBytes(nacl.secretbox.nonceLength);
+    const messageBytes = nacl.util.decodeUTF8(message);
+    const encrypted    = nacl.secretbox(messageBytes, nonce, keyBytes);
+
+    if (!encrypted) throw new Error("Encryption returned null");
+
+    const result = new Uint8Array(nonce.length + encrypted.length);
+    result.set(nonce);
+    result.set(encrypted, nonce.length);
+
+    return nacl.util.encodeBase64(result);
   },
 
   /**
-   * Decrypt a message with a symmetric session key
-   * @param {string} encryptedMessage - base64-encoded encrypted message
-   * @param {string} sessionKey - base64-encoded symmetric key
-   * @returns {string} plaintext message
+   * Decrypt a ciphertext message with a symmetric session key.
+   *
+   * @param {string} encryptedMessage - base64-encoded nonce + ciphertext
+   * @param {string} sessionKey       - base64 32-byte key
+   * @returns {string} plaintext string
    */
   decryptMessage: (encryptedMessage, sessionKey) => {
-    try {
-      let encryptedBytes = nacl.util.decodeBase64(encryptedMessage);
-      if (!(encryptedBytes instanceof Uint8Array)) {
-        encryptedBytes = new Uint8Array(encryptedBytes);
-      }
-      
-      let keyBytes = nacl.util.decodeBase64(sessionKey);
-      
-      // Ensure keyBytes is Uint8Array
-      if (!(keyBytes instanceof Uint8Array)) {
-        keyBytes = new Uint8Array(keyBytes);
-      }
-
-      // CRITICAL: Validate key size is exactly 32 bytes
-      if (keyBytes.length !== 32) {
-        console.error(`Key size error in decrypt: expected 32 bytes, got ${keyBytes.length}`);
-        throw new Error(`bad key size: expected 32, got ${keyBytes.length}`);
-      }
-
-      const nonce = new Uint8Array(encryptedBytes.slice(0, nacl.secretbox.nonceLength));
-      const ciphertext = new Uint8Array(encryptedBytes.slice(nacl.secretbox.nonceLength));
-
-      const decrypted = nacl.secretbox.open(ciphertext, nonce, keyBytes);
-      if (!decrypted) {
-        throw new Error("Decryption failed: message corrupted or wrong key");
-      }
-
-      // Decode the decrypted bytes to UTF-8 string
-      const decoded = nacl.util.encodeUTF8(decrypted);
-      return decoded;
-    } catch (err) {
-      console.error("Decryption error:", err);
-      throw new Error(`Message decryption failed: ${err.message}`);
+    const keyBytes       = nacl.util.decodeBase64(sessionKey);
+    if (keyBytes.length !== 32) {
+      throw new Error(`Bad key size: expected 32, got ${keyBytes.length}`);
     }
+
+    const encryptedBytes = nacl.util.decodeBase64(encryptedMessage);
+    const nonce          = encryptedBytes.slice(0, nacl.secretbox.nonceLength);
+    const ciphertext     = encryptedBytes.slice(nacl.secretbox.nonceLength);
+    const decrypted      = nacl.secretbox.open(ciphertext, nonce, keyBytes);
+
+    if (!decrypted) throw new Error("Decryption failed: wrong key or corrupted message");
+
+    return nacl.util.encodeUTF8(decrypted);
+  },
+
+  // ── Session key cache ──────────────────────────────────────────────────────
+
+  /**
+   * Store a session key in both the in-memory cache and localStorage.
+   * Call this after decrypting a session key blob from the server.
+   */
+  cacheSessionKey: (conversationId, sessionKey) => {
+    _sessionKeyCache.set(conversationId, sessionKey);
+    encryptionUtils.storeConversationKey(conversationId, sessionKey);
   },
 
   /**
-   * Normalize a session key to ensure it's exactly 32 bytes when decoded
-   * @param {string} base64Key - base64-encoded key
-   * @returns {string} normalized base64-encoded 32-byte key
+   * Get a session key from cache (memory first, then localStorage).
+   * Returns null if not found — caller must fetch from server.
    */
-  normalizeKey: (base64Key) => {
-    try {
-      let keyBytes = nacl.util.decodeBase64(base64Key);
-      if (!(keyBytes instanceof Uint8Array)) {
-        keyBytes = new Uint8Array(keyBytes);
-      }
-      
-      // If key is wrong size, we need to fix it
-      if (keyBytes.length === 32) {
-        return base64Key; // Already correct
-      }
-      
-      console.warn(`Normalizing key from ${keyBytes.length} bytes to 32 bytes`);
-      
-      const normalized = new Uint8Array(32);
-      
-      if (keyBytes.length < 32) {
-        // Pad with repeated bytes
-        for (let i = 0; i < 32; i++) {
-          normalized[i] = keyBytes[i % keyBytes.length];
-        }
-      } else {
-        // Truncate
-        for (let i = 0; i < 32; i++) {
-          normalized[i] = keyBytes[i];
-        }
-      }
-      
-      return nacl.util.encodeBase64(normalized);
-    } catch (err) {
-      console.error("Error normalizing key:", err);
-      throw err;
-    }
+  getCachedSessionKey: (conversationId) => {
+    return _sessionKeyCache.get(conversationId) || encryptionUtils.getConversationKey(conversationId) || null;
   },
 
-  /**
-   * Store keypair in localStorage
-   */
+  // ── localStorage persistence ───────────────────────────────────────────────
+
+  /** Persist the user's keypair in localStorage. Only call once per device. */
   storeKeypair: (keypair) => {
     localStorage.setItem("user_keypair", JSON.stringify(keypair));
   },
 
-  /**
-   * Retrieve keypair from localStorage
-   */
+  /** Retrieve the keypair from localStorage. Returns null if not set up yet. */
   getKeypair: () => {
     const stored = localStorage.getItem("user_keypair");
     return stored ? JSON.parse(stored) : null;
   },
 
-  /**
-   * Store session key for a conversation
-   */
+  /** Persist a session key for a conversation in localStorage (versioned). */
   storeConversationKey: (conversationId, sessionKey) => {
     const keys = JSON.parse(localStorage.getItem("conversation_keys") || "{}");
-    keys[conversationId] = {
-      value: sessionKey,
-      version: 2,
-    };
+    keys[conversationId] = { value: sessionKey, version: 2 };
     localStorage.setItem("conversation_keys", JSON.stringify(keys));
   },
 
-  /**
-   * Retrieve session key for a conversation
-   */
+  /** Retrieve a session key from localStorage. Returns null if missing or stale. */
   getConversationKey: (conversationId) => {
-    const keys = JSON.parse(localStorage.getItem("conversation_keys") || "{}");
+    const keys  = JSON.parse(localStorage.getItem("conversation_keys") || "{}");
     const entry = keys[conversationId];
-
-    if (!entry) {
-      return null;
-    }
-
-    if (typeof entry === "string") {
-      delete keys[conversationId];
-      localStorage.setItem("conversation_keys", JSON.stringify(keys));
-      return null;
-    }
-
-    if (entry.version !== 2 || typeof entry.value !== "string") {
-      delete keys[conversationId];
-      localStorage.setItem("conversation_keys", JSON.stringify(keys));
-      return null;
-    }
-
+    if (!entry || entry.version !== 2 || typeof entry.value !== "string") return null;
     return entry.value;
   },
 
-  /**
-   * Return a stable key for frontend message encryption/decryption.
-   * Prefers a cached key and otherwise falls back to a deterministic key.
-   */
-  getStableConversationKey: (conversationId) => {
-    const cachedKey = encryptionUtils.getConversationKey(conversationId);
-
-    if (cachedKey) {
-      const normalizedCachedKey = encryptionUtils.normalizeKey(cachedKey);
-      encryptionUtils.storeConversationKey(conversationId, normalizedCachedKey);
-      return normalizedCachedKey;
-    }
-
-    const fallbackKey = encryptionUtils.normalizeKey(
-      encryptionUtils.generateFallbackKey(conversationId)
-    );
-    encryptionUtils.storeConversationKey(conversationId, fallbackKey);
-    return fallbackKey;
-  },
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
   /**
-   * Build a de-duplicated set of candidate keys for decryption.
-   */
-  getDecryptionKeys: (conversationId, extraKeys = []) => {
-    const seen = new Set();
-    const candidates = [];
-
-    const addKey = (candidateKey) => {
-      if (!candidateKey || typeof candidateKey !== "string") {
-        return;
-      }
-
-      try {
-        const normalizedKey = encryptionUtils.normalizeKey(candidateKey);
-        if (!seen.has(normalizedKey)) {
-          seen.add(normalizedKey);
-          candidates.push(normalizedKey);
-        }
-      } catch (err) {
-        console.warn("Skipping invalid decryption key", err);
-      }
-    };
-
-    addKey(encryptionUtils.getConversationKey(conversationId));
-    addKey(encryptionUtils.generateFallbackKey(conversationId));
-    extraKeys.forEach(addKey);
-
-    return candidates;
-  },
-
-  /**
-   * Heuristic used to avoid showing ciphertext for plaintext legacy messages.
+   * Heuristic to detect whether a message string looks like ciphertext.
+   * Used to gracefully handle legacy plaintext messages.
    */
   isLikelyEncryptedMessage: (content) => {
-    if (typeof content !== "string" || content.length < 40) {
-      return false;
-    }
-
+    if (typeof content !== "string" || content.length < 40) return false;
     return /^[A-Za-z0-9+/=]+$/.test(content);
-  },
-
-  /**
-   * Generate a deterministic fallback key based on conversation ID
-   * Used when proper encryption keys aren't available
-   */
-  generateFallbackKey: (conversationId) => {
-    try {
-      // Create a deterministic 32-byte key
-      const hash = new Uint8Array(32);
-      
-      // Use conversation ID bytes to seed the hash
-      const encoder = new TextEncoder();
-      const idBytes = encoder.encode(conversationId + "_key");
-      
-      for (let i = 0; i < 32; i++) {
-        // Mix in bytes from the ID multiple times
-        const idByte = idBytes[i % idBytes.length];
-        hash[i] = ((idByte * 7 + i * 13) ^ (i * 23)) & 0xFF;
-      }
-      
-      // Convert to base64 string
-      const base64Key = nacl.util.encodeBase64(hash);
-      
-      // Verify it can be decoded back
-      const verify = nacl.util.decodeBase64(base64Key);
-      if (!(verify instanceof Uint8Array) || verify.length !== 32) {
-        throw new Error("Fallback key generation failed verification");
-      }
-      
-      return base64Key;
-    } catch (err) {
-      console.error("Error generating fallback key:", err);
-      // Emergency fallback - create a simple but valid base64 key
-      const emergencyKey = new Uint8Array(32);
-      for (let i = 0; i < 32; i++) {
-        emergencyKey[i] = (conversationId.charCodeAt(i % conversationId.length) + i) & 0xFF;
-      }
-      return nacl.util.encodeBase64(emergencyKey);
-    }
   },
 };

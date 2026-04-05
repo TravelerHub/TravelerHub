@@ -37,3 +37,13 @@ env/
 __pycache__/
 *.py[cod]
 *$py.class
+
+
+.CLAUDE.md
+CLAUDE.md
+
+# Large media files
+*.mp4
+*.mov
+*.avi
+*.mkv

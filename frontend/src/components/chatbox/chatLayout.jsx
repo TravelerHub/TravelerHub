@@ -4,71 +4,50 @@ import { EmptyState, Panel } from "./ui";
 import ConversationList from "./ConversationList";
 import ChatWindow from "./ChatWindow";
 
-/**
- * Props:
- * - currentUser: { id, username, email, ... }
- */
-export default function ChatLayout({ currentUser }) {
-  const [conversations, setConversations] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
-
-  // cache members/messages per conversation to avoid refetch spam
+export default function ChatLayout({ currentUser, onNewChat, tripId }) {
+  const [conversations,         setConversations]         = useState([]);
+  const [selectedId,            setSelectedId]            = useState(null);
   const [membersByConversation, setMembersByConversation] = useState({});
-  const [messagesByConversation, setMessagesByConversation] = useState({});
-  const [loadingLeft, setLoadingLeft] = useState(true);
-  const [loadingRight, setLoadingRight] = useState(false);
-  const [error, setError] = useState("");
+  const [messagesByConversation,setMessagesByConversation]= useState({});
+  const [loadingLeft,           setLoadingLeft]           = useState(true);
+  const [loadingRight,          setLoadingRight]          = useState(false);
+  const [error,                 setError]                 = useState("");
 
   // Load conversation list
   useEffect(() => {
     if (!currentUser?.id) return;
     let alive = true;
-
     (async () => {
       try {
         setLoadingLeft(true);
         setError("");
-        const data = await chatApi.getConversations();
+        const data = await chatApi.getConversations(tripId || null);
         if (!alive) return;
-        setConversations(Array.isArray(data) ? data : data.conversations || []);
-        // auto-select first conversation if none selected
-        const firstId = (Array.isArray(data) ? data : data.conversations || [])?.[0]?.conversation_id;
-        setSelectedId((prev) => prev ?? firstId ?? null);
+        const list = Array.isArray(data) ? data : data.conversations || [];
+        setConversations(list);
+        setSelectedId((prev) => prev ?? list[0]?.conversation_id ?? null);
       } catch (e) {
-        if (!alive) return;
-        setError(e.message || "Failed to load conversations");
+        if (alive) setError(e.message || "Failed to load conversations");
       } finally {
         if (alive) setLoadingLeft(false);
       }
     })();
+    return () => { alive = false; };
+  }, [currentUser?.id, tripId]);
 
-    return () => {
-      alive = false;
-    };
-  }, [currentUser?.id]);
-
-  // When selected conversation changes, load members + messages
+  // Load members + messages when conversation selected
   useEffect(() => {
     if (!selectedId) return;
-
     let alive = true;
-
     (async () => {
       try {
         setLoadingRight(true);
         setError("");
-
-        // load members if missing
         if (!membersByConversation[selectedId]) {
           const members = await chatApi.getMembers(selectedId);
           if (!alive) return;
-          setMembersByConversation((prev) => ({
-            ...prev,
-            [selectedId]: normalizeUsers(members),
-          }));
+          setMembersByConversation((prev) => ({ ...prev, [selectedId]: normalizeUsers(members) }));
         }
-
-        // load messages if missing
         if (!messagesByConversation[selectedId]) {
           const msgs = await chatApi.getMessages(selectedId);
           if (!alive) return;
@@ -78,22 +57,17 @@ export default function ChatLayout({ currentUser }) {
           }));
         }
       } catch (e) {
-        if (!alive) return;
-        setError(e.message || "Failed to load conversation");
+        if (alive) setError(e.message || "Failed to load conversation");
       } finally {
         if (alive) setLoadingRight(false);
       }
     })();
+    return () => { alive = false; };
+  }, [selectedId]);
 
-    return () => {
-      alive = false;
-    };
-  }, [selectedId]); // intentionally not depending on caches to avoid loops
-
-  const selectedMembers = membersByConversation[selectedId] || [];
+  const selectedMembers  = membersByConversation[selectedId]  || [];
   const selectedMessages = messagesByConversation[selectedId] || [];
 
-  // Create a nice display name: all other users in conversation (excluding me)
   const conversationTitle = useMemo(() => {
     if (!selectedId) return "";
     const others = selectedMembers.filter((u) => u.id !== currentUser?.id);
@@ -101,16 +75,28 @@ export default function ChatLayout({ currentUser }) {
     return others.map((u) => u.username || u.email || u.id).join(", ");
   }, [selectedId, selectedMembers, currentUser?.id]);
 
+  // Find the full name of selected conversation (may have a conversation_name)
+  const selectedConv = conversations.find(
+    (c) => (c.conversation_id ?? c.id) === selectedId
+  );
+  const displayTitle = selectedConv?.conversation_name?.trim() || conversationTitle;
+
   return (
-    <div className="h-[calc(100vh-64px)] w-full grid grid-cols-12 gap-4">
-      {/* Left */}
-      <Panel className="col-span-4 lg:col-span-3 h-full overflow-hidden flex flex-col">
-        <div className="p-3 border-b border-gray-200">
-          <div className="font-semibold text-gray-800">Conversations</div>
-          <div className="text-xs text-gray-500">Pick a chat to view messages</div>
+    <div className="h-full flex gap-3">
+
+      {/* ── Conversation list panel ──────────────────────────────────── */}
+      <Panel className="w-64 shrink-0 flex flex-col">
+        {/* Header */}
+        <div className="px-4 py-3 shrink-0" style={{ borderBottom: "1px solid #ebebeb" }}>
+          <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#374151" }}>
+            Messages
+          </p>
+          <p className="text-[10px] mt-0.5" style={{ color: "#9ca3af" }}>
+            {conversations.length} conversation{conversations.length !== 1 ? "s" : ""}
+          </p>
         </div>
 
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           <ConversationList
             loading={loadingLeft}
             conversations={conversations}
@@ -118,21 +104,22 @@ export default function ChatLayout({ currentUser }) {
             onSelect={setSelectedId}
             currentUserId={currentUser?.id}
             membersByConversation={membersByConversation}
+            onNewChat={onNewChat}
           />
         </div>
       </Panel>
 
-      {/* Right */}
-      <Panel className="col-span-8 lg:col-span-9 h-full overflow-hidden flex flex-col">
+      {/* ── Chat window panel ────────────────────────────────────────── */}
+      <Panel className="flex-1 flex flex-col min-w-0">
         {!selectedId ? (
           <EmptyState
-            title="No conversation selected"
-            subtitle="Select one from the left to start."
+            title="Select a conversation"
+            subtitle="Choose one from the left to start chatting."
           />
         ) : (
           <ChatWindow
             loading={loadingRight}
-            title={conversationTitle}
+            title={displayTitle}
             currentUserId={currentUser?.id}
             members={selectedMembers}
             messages={selectedMessages}
@@ -142,8 +129,12 @@ export default function ChatLayout({ currentUser }) {
         )}
       </Panel>
 
+      {/* Error toast */}
       {error && (
-        <div className="fixed bottom-4 left-4 right-4 max-w-3xl mx-auto bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg shadow-sm">
+        <div
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl shadow-lg text-xs font-medium z-50"
+          style={{ background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }}
+        >
           {error}
         </div>
       )}
@@ -151,7 +142,6 @@ export default function ChatLayout({ currentUser }) {
   );
 }
 
-// Ensures no duplicates + consistent shape
 function normalizeUsers(input) {
   const arr = Array.isArray(input) ? input : input.members || [];
   const map = new Map();
