@@ -54,7 +54,7 @@ const router = createBrowserRouter([
     { path: "/message", element: <Message /> },
     {path: '/create-poll', element: <CreatePoll />},
     {path: "/messagetesting", element: <MessageTesting /> },
-    {path: "/booking", element: <Booking /> }
+    {path: "/booking", element: <Booking /> },
 
     // Authenticated routes (chat widget available)
     {
