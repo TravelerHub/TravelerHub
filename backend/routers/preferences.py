@@ -17,6 +17,10 @@ class PreferencesUpdate(BaseModel):
     dietary_restrictions: Optional[List[str]] = None
     interests: Optional[List[str]] = None
     avoid_types: Optional[List[str]] = None
+    travel_pace: Optional[str] = None           # chill | moderate | packed
+    spontaneity_score: Optional[int] = None     # 1-10
+    park_and_walk_auto: Optional[bool] = None
+    silent_mode: Optional[bool] = None
 
 
 class PreferencesOut(BaseModel):
@@ -27,6 +31,10 @@ class PreferencesOut(BaseModel):
     dietary_restrictions: List[str]
     interests: List[str]
     avoid_types: List[str]
+    travel_pace: Optional[str] = "moderate"
+    spontaneity_score: Optional[int] = 5
+    park_and_walk_auto: Optional[bool] = False
+    silent_mode: Optional[bool] = False
 
 
 # ---- Endpoints ----
@@ -88,6 +96,18 @@ def update_my_preferences(
             update_data["interests"] = prefs.interests
         if prefs.avoid_types is not None:
             update_data["avoid_types"] = prefs.avoid_types
+        if prefs.travel_pace is not None:
+            if prefs.travel_pace not in ("chill", "moderate", "packed"):
+                raise HTTPException(status_code=400, detail="travel_pace must be chill, moderate, or packed")
+            update_data["travel_pace"] = prefs.travel_pace
+        if prefs.spontaneity_score is not None:
+            if not (1 <= prefs.spontaneity_score <= 10):
+                raise HTTPException(status_code=400, detail="spontaneity_score must be 1-10")
+            update_data["spontaneity_score"] = prefs.spontaneity_score
+        if prefs.park_and_walk_auto is not None:
+            update_data["park_and_walk_auto"] = prefs.park_and_walk_auto
+        if prefs.silent_mode is not None:
+            update_data["silent_mode"] = prefs.silent_mode
 
         if not update_data:
             # Nothing to update, return current

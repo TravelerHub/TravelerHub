@@ -8,7 +8,17 @@ import Map from '../../components/Map';
 import { searchPlaces, getPlaceName } from '../../services/geocodingService';
 import { getOptimizedRoute } from '../../services/routeService';
 import { ensureActiveGroupId, getActiveGroupId, getMyGroups, setActiveGroupId } from '../../services/groupService';
+import { syncMyPosition } from '../../services/smartRouteService';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+
+// GCS components
+import FairPointFinder from '../../components/FairPointFinder';
+import GroupArrivalSync from '../../components/GroupArrivalSync';
+import RankedChoicePoll from '../../components/RankedChoicePoll';
+import WeatherRouteAlert from '../../components/WeatherRouteAlert';
+import GroupSocialContract from '../../components/GroupSocialContract';
+import RoutePreferences from '../../components/RoutePreferences';
+import { planSmartRoute } from '../../services/smartRouteService';
 
 import {
   searchNearbyPlaces,
@@ -118,6 +128,17 @@ function Navigation() {
   const [pendingPin, setPendingPin] = useState(null);
   const [pinLabel, setPinLabel] = useState('');
   const [addPinMode, setAddPinMode] = useState(false);
+
+  // Route preference state (scenic/foodie/budget/fastest)
+  const [routePreference, setRoutePreference] = useState('fastest');
+  const [smartChapters, setSmartChapters] = useState([]);
+  const [smartSuggestions, setSmartSuggestions] = useState([]);
+
+  // GCS state
+  const [activePollId, setActivePollId] = useState(null);
+  const [showGcsPanel, setShowGcsPanel] = useState(false);
+  const [routeDestination, setRouteDestination] = useState(null); // for Group Arrival Sync
+  const lastSyncRef = useRef(0);
 
   useEffect(() => {
     const boot = async () => {
@@ -238,6 +259,17 @@ function Navigation() {
 
   const handleUserPositionUpdate = useCallback((pos) => {
     setUserPosition(pos);
+
+    // Sync position to backend for group tracking (throttled to every 5s)
+    const now = Date.now();
+    if (activeGroupId && now - lastSyncRef.current > 5000) {
+      lastSyncRef.current = now;
+      syncMyPosition(activeGroupId, {
+        lat: pos.lat, lng: pos.lng,
+        heading: pos.heading, accuracy: pos.accuracy,
+      }).catch(() => {}); // fire-and-forget
+    }
+
     if (!currentRoute?.steps) return;
     const userCoord = [pos.lng, pos.lat];
     const steps = currentRoute.steps;
@@ -257,7 +289,7 @@ function Navigation() {
       }
       return prev;
     });
-  }, [currentRoute, transportMode]);
+  }, [currentRoute, transportMode, activeGroupId]);
 
   useEffect(() => {
     const dest = searchParams.get('destination');
@@ -388,10 +420,40 @@ function Navigation() {
     if (markers.length < 2) { setRouteError('Please add at least 2 locations'); return; }
     setRouteLoading(true);
     setRouteError('');
+    setSmartChapters([]);
+    setSmartSuggestions([]);
     try {
       const waypoints = markers.map(m => m.coordinates);
+
+      // Always get the base route for geometry + steps (needed for turn-by-turn nav)
       const route = await getOptimizedRoute(waypoints, transportMode);
       setCurrentRoute(route);
+
+      // Set destination for Group Arrival Sync
+      const lastWp = waypoints[waypoints.length - 1];
+      setRouteDestination({ lat: lastWp[1], lng: lastWp[0] });
+
+      // If preference is NOT fastest, also call the smart route for chapters + POI suggestions
+      if (routePreference !== 'fastest') {
+        try {
+          const smartWaypoints = markers.map(m => ({
+            name: m.title || 'Waypoint',
+            coordinates: m.coordinates,
+          }));
+          const smartResult = await planSmartRoute(
+            smartWaypoints,
+            transportMode,
+            routePreference,
+            new Date().toISOString(),
+            activeGroupId || null,
+          );
+          setSmartChapters(smartResult.chapters || []);
+          setSmartSuggestions(smartResult.suggestions || []);
+        } catch (smartErr) {
+          console.warn('Smart route enhancement failed (using basic route):', smartErr.message);
+        }
+      }
+
       fetchAlongRouteSuggestions(route);
     } catch (error) {
       setRouteError(error.message || 'Unable to calculate route. Please try again.');
@@ -864,6 +926,25 @@ function Navigation() {
                   </button>
                 ))}
               </div>
+
+              {/* Route Preference Selector (scenic/foodie/budget/fastest) */}
+              <div className="mb-3">
+                <RoutePreferences
+                  preference={routePreference}
+                  onPreferenceChange={(pref) => setRoutePreference(pref)}
+                  chapters={smartChapters}
+                  suggestions={smartSuggestions}
+                  onSuggestionClick={(sug) => {
+                    setMarkers(prev => [...prev, {
+                      coordinates: sug.coordinates,
+                      title: sug.name,
+                      description: sug.vicinity || sug.name,
+                    }]);
+                  }}
+                  loading={routeLoading}
+                />
+              </div>
+
               <div className="space-y-2">
                 <button
                   onClick={handleGetCurrentLocation}
@@ -1022,9 +1103,8 @@ function Navigation() {
                       {placesResults.map((place, idx) => (
                         <div
                           key={idx}
-                          className="rounded-lg p-2.5 cursor-pointer transition hover:opacity-80 flex items-start gap-2 border"
+                          className="rounded-lg p-2.5 transition flex items-start gap-2 border"
                           style={{ background: '#f0f0e8', borderColor: '#d1d1c7' }}
-                          onClick={() => handleAddPlaceToRoute(place)}
                         >
                           <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: '#e8e8e0', color: '#183a37' }}>
                             {place.category?.includes('restaurant') && <BuildingStorefrontIcon className="w-4 h-4" />}
@@ -1036,7 +1116,25 @@ function Navigation() {
                             <div className="text-xs font-medium truncate" style={{ color: '#160f29' }}>{place.shortName || place.name}</div>
                             <div className="text-xs truncate" style={{ color: '#5c6b73' }}>{place.address}</div>
                           </div>
-                          <PlusIcon className="w-4 h-4 shrink-0" style={{ color: '#183a37' }} />
+                          <div className="flex gap-1 shrink-0">
+                            <button
+                              onClick={() => {
+                                const [lng, lat] = place.coordinates;
+                                if (mapRef.current) mapRef.current.flyTo({ center: [lng, lat], zoom: 16, duration: 2000 });
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-black/5 transition"
+                              title="View on Map"
+                            >
+                              <MapIcon className="w-3.5 h-3.5" style={{ color: '#183a37' }} />
+                            </button>
+                            <button
+                              onClick={() => handleAddPlaceToRoute(place)}
+                              className="p-1.5 rounded-lg hover:bg-black/5 transition"
+                              title="Add to Route"
+                            >
+                              <PlusIcon className="w-3.5 h-3.5" style={{ color: '#183a37' }} />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1150,6 +1248,67 @@ function Navigation() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* ── GCS: Group-Centric Tools Toggle ── */}
+            {activeGroupId && (
+              <div className="px-4 py-3 border-b" style={{ borderColor: '#d1d1c7' }}>
+                <button
+                  onClick={() => setShowGcsPanel(!showGcsPanel)}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition hover:opacity-80"
+                  style={{ background: '#183a37', color: '#f9fafb' }}
+                >
+                  <span>Group Intelligence</span>
+                  <span>{showGcsPanel ? '▲' : '▼'}</span>
+                </button>
+              </div>
+            )}
+
+            {/* ── GCS Panel ── */}
+            {showGcsPanel && activeGroupId && (
+              <div className="px-4 py-3 space-y-3 border-b" style={{ borderColor: '#d1d1c7' }}>
+                <FairPointFinder
+                  tripId={activeGroupId}
+                  onSelectPlace={(place) => {
+                    setMarkers(prev => [...prev, place]);
+                  }}
+                  onCreatePoll={(pollId) => setActivePollId(pollId)}
+                />
+
+                {activePollId && (
+                  <RankedChoicePoll
+                    pollId={activePollId}
+                    tripId={activeGroupId}
+                    onClose={() => setActivePollId(null)}
+                  />
+                )}
+
+                <GroupArrivalSync
+                  tripId={activeGroupId}
+                  destination={routeDestination}
+                  autoRefresh={isNavigating}
+                />
+
+                <GroupSocialContract
+                  tripId={activeGroupId}
+                  isLeader={true}
+                />
+              </div>
+            )}
+
+            {/* ── Weather Route Alert ── */}
+            {currentRoute && markers.length >= 2 && (
+              <div className="px-4 py-3 border-b" style={{ borderColor: '#d1d1c7' }}>
+                <WeatherRouteAlert
+                  waypoints={markers.map(m => ({ lat: m.coordinates[1], lng: m.coordinates[0] }))}
+                  departureTime={new Date().toISOString()}
+                  routeDurationMinutes={
+                    currentRoute.summary?.totalDuration
+                      ? parseInt(currentRoute.summary.totalDuration)
+                      : null
+                  }
+                />
               </div>
             )}
 
@@ -1327,6 +1486,8 @@ function Navigation() {
                       ? { emoji: '🚶', bg: '#dcfce7', color: '#166534' }
                       : step.travel_mode === 'BICYCLING'
                       ? { emoji: '🚲', bg: '#ffedd5', color: '#9a3412' }
+                      : step.travel_mode === 'TRANSIT'
+                      ? { emoji: '🚌', bg: '#dbeafe', color: '#1e40af' }
                       : { emoji: '🚗', bg: '#e8e8e0', color: '#160f29' };
 
                     return (
