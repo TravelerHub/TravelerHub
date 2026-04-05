@@ -60,131 +60,6 @@ function Navbar_Dashboard() {
         />
       </div>
 
-<<<<<<< HEAD
-        {/* Quick Action Icons */}
-        <div className="flex items-center gap-3">   
-
-          {/* Notification */}
-          <div className="relative group">
-            <button
-              onClick={() => navigate("/")}
-              className="w-10 h-10 flex items-center justify-center  hover:bg-gray-100 transition"
-            >
-              <span className="text-lg">🔔</span>
-            </button>
-            <div className="absolute top-full mt-2 right-1/2 translate-x-1/2
-              bg-gray-900 text-white text-xs rounded px-2 py-1
-              opacity-0 invisible group-hover:opacity-100 group-hover:visible transition
-              whitespace-nowrap z-50">
-              Notification
-            </div>
-          </div>
-
-          {/* Navigation */}
-          <div className="relative group">
-            <button
-              onClick={() => navigate("/navigation")}
-              className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 transition"
-            >
-              <span className="text-lg">🗺️</span>
-            </button>
-            <div className="absolute top-full mt-2 right-1/2 translate-x-1/2
-              bg-gray-900 text-white text-xs rounded px-2 py-1
-              opacity-0 invisible group-hover:opacity-100 group-hover:visible transition
-              whitespace-nowrap z-50">
-              Navigation
-            </div>
-          </div>
-
-
-          {/* Booking */}
-          <div className="relative group">
-            <button
-              onClick={() => navigate("/booking")}
-              className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 transition"
-            >
-              <span className="text-lg">🏨</span>
-            </button>
-            <div className="absolute top-full mt-2 right-1/2 translate-x-1/2
-              bg-gray-900 text-white text-xs rounded px-2 py-1
-              opacity-0 invisible group-hover:opacity-100 group-hover:visible transition
-              whitespace-nowrap z-50">
-              Booking
-            </div>
-          </div>
-
-          {/* Messenger */}
-          <div className="relative group">
-            <button
-              // onClick={() => navigate("/message")}
-              onClick={() => navigate("/message")}
-              className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 transition"
-            >
-              <span className="text-lg">💬</span>
-            </button>
-            <div className="absolute top-full mt-2 right-1/2 translate-x-1/2
-              bg-gray-900 text-white text-xs rounded px-2 py-1
-              opacity-0 invisible group-hover:opacity-100 group-hover:visible transition
-              whitespace-nowrap z-50">
-              Messenger
-            </div>
-          </div>
-
-          {/* Expenses */}
-          <div className="relative group">
-            <button
-              onClick={() => navigate("/expenses")}
-              className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 transition"
-            >
-              <span className="text-lg">🧾</span>
-            </button>
-            <div className="absolute top-full mt-2 right-1/2 translate-x-1/2
-              bg-gray-900 text-white text-xs rounded px-2 py-1
-              opacity-0 invisible group-hover:opacity-100 group-hover:visible transition
-              whitespace-nowrap z-50">
-              Smart Scanner
-            </div>
-          </div>
-
-          {/* Calendar */}
-          <div className="relative group">
-            <button
-              onClick={() => navigate("/calendar")}
-              className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 transition"
-            >
-              <span className="text-lg">📅</span>
-            </button>
-            <div className="absolute top-full mt-2 right-1/2 translate-x-1/2
-              bg-gray-900 text-white text-xs rounded px-2 py-1
-              opacity-0 invisible group-hover:opacity-100 group-hover:visible transition
-              whitespace-nowrap z-50">
-              Calendar
-            </div>
-          </div>
-          
-
-          {/* Finance */}
-          <div className="relative group">
-            <button
-              onClick={() => navigate("/finance")}
-              className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 transition"
-            >
-              <span className="text-lg">💰</span>
-            </button>
-            <div className="absolute top-full mt-2 right-1/2 translate-x-1/2
-              bg-gray-900 text-white text-xs rounded px-2 py-1
-              opacity-0 invisible group-hover:opacity-100 group-hover:visible transition
-              whitespace-nowrap z-50">
-              Finance
-            </div>
-          </div>
-        </div>
-
-        {/* Welcome Text */}
-        <span className="text-lg text-gray-600 hidden sm:inline">
-          Welcome,{" "}
-          <span className="font-medium text-gray-800">{user?.username}</span>
-=======
       {/* ── Right actions ── */}
       <div className="flex items-center gap-3 ml-auto">
         {/* Language badge */}
@@ -193,7 +68,6 @@ function Navbar_Dashboard() {
           style={{ color: "#5c6b73", background: "#e2e2da" }}
         >
           EN
->>>>>>> ac19178fac1baf248ff86fcf4a4a2a2bcffab7cb
         </span>
 
         {/* Chat notifications */}

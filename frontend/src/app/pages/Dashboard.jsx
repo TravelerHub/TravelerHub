@@ -13,6 +13,7 @@ import TodoWidget          from "../../components/dashboard/TodoWidget.jsx";
 import MiniCalendar        from "../../components/dashboard/MiniCalendar.jsx";
 import LocalInfoWidget     from "../../components/dashboard/LocalInfoWidget.jsx";
 import BookingSummaryWidget from "../../components/dashboard/BookingSummaryWidget.jsx";
+import GalleryWidget       from "../../components/dashboard/GalleryWidget.jsx";
 
 // ── Color palette ─────────────────────────────────────────────────────────────
 // #160f29  deep dark   (sidebar, widget backgrounds)
@@ -100,9 +101,6 @@ export default function Dashboard() {
     }
   };
 
-<<<<<<< HEAD
-  // If no user, redirect to login
-=======
   const fetchUpcomingBookings = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -140,7 +138,6 @@ export default function Dashboard() {
   };
 
   // ── Create trip ────────────────────────────────────────────────────────────
->>>>>>> ac19178fac1baf248ff86fcf4a4a2a2bcffab7cb
   const handleCreateTrip = async (e) => {
     e.preventDefault();
     if (!newTripName.trim()) { setCreateError("Trip name is required."); return; }
@@ -229,12 +226,8 @@ export default function Dashboard() {
           <p className="mb-4" style={{ color: "#5c6b73" }}>You are not logged in.</p>
           <button
             onClick={() => navigate("/login")}
-<<<<<<< HEAD
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
-=======
             className="px-6 py-3 rounded-xl font-semibold text-white transition"
             style={{ background: "#160f29" }}
->>>>>>> ac19178fac1baf248ff86fcf4a4a2a2bcffab7cb
           >
             Go to Login
           </button>
@@ -250,103 +243,7 @@ export default function Dashboard() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-<<<<<<< HEAD
-    <div className="min-h-screen w-screen flex flex-col bg-gradient-to-br from-gray-50 to-gray-100">
-      <Navbar_Dashboard />
-      
-      <div className="w-full max-w-7xl mx-auto px-6 py-8 flex flex-col gap-6">
-        
-        {/* TOP ROW: Profile/Quick Actions + Your Trips */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* LEFT: Quick Actions (Profile/Upload + Polls) */}
-          <div className="flex flex-col gap-4">
-            
-            {/* 1. Image Upload */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col items-center">
-              <ImageUpload 
-                onUploadSuccess={() => console.log("Image uploaded successfully!")} 
-              />
-              <p className="text-sm text-gray-500 mt-4 text-center">
-                Upload a photo to personalize your account.
-              </p>
-            </div>
-            
-            {/* 2. Poll Icon Button */}
-            <div 
-              onClick={() => navigate("/polls")} 
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition"
-            >
-              <div className="text-4xl mb-3">📊</div>
-              <h2 className="text-lg font-semibold text-gray-800">View Polls</h2>
-              <p className="text-gray-400 text-sm mt-1 text-center">Check out active polls</p>
-            </div>
-            
-          </div>
-
-          {/* RIGHT: Your Trips Card */}
-          <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">Your Trips</h2>
-
-            <div className="py-6">
-              <div className="text-4xl mb-3">🌴</div>
-              <p className="text-gray-600">No trips yet</p>
-              <p className="text-gray-400 text-sm mt-1">Start planning your first adventure!</p>
-
-              <button className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium transition">
-                Create Trip
-              </button>
-            </div>
-          </div>
-          
-        </div>
-
-        {/* SECOND ROW: Bookings (full width) */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-start justify-between mb-3">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800">Bookings</h3>
-              <p className="text-sm text-gray-500 mt-1">
-                Flights, hotels, and transportation in one place.
-              </p>
-            </div>
-            <span className="text-2xl">✈️</span>
-          </div>
-
-          <div className="mt-5 grid grid-cols-3 gap-3">
-            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-center">
-              <p className="text-xs text-gray-500">Flights</p>
-              <p className="text-sm font-semibold text-gray-800">0</p>
-            </div>
-            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-center">
-              <p className="text-xs text-gray-500">Hotels</p>
-              <p className="text-sm font-semibold text-gray-800">0</p>
-            </div>
-            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-center">
-              <p className="text-xs text-gray-500">Rides</p>
-              <p className="text-sm font-semibold text-gray-800">0</p>
-            </div>
-          </div>
-
-          <button
-            onClick={() => navigate("/bookings")}
-            className="mt-6 w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition"
-          >
-            Go to Bookings
-          </button>
-
-          <button
-            onClick={() => navigate("/bookings/new")}
-            className="mt-3 w-full py-2.5 rounded-lg font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-          >
-            Add Booking
-          </button>
-        </div>
-        
-      </div>
-=======
     <div className="flex h-screen overflow-hidden" style={{ background: "#f3f4f6" }}>
->>>>>>> ac19178fac1baf248ff86fcf4a4a2a2bcffab7cb
 
       {/* ══ SIDEBAR ══════════════════════════════════════════════════════════ */}
       <aside className="w-52 shrink-0 flex flex-col" style={{ background: "#000000" }}>
@@ -584,6 +481,11 @@ export default function Dashboard() {
 
             <Widget title="Booking Summary" className="col-span-2" style={{ minHeight: "260px" }}>
               <BookingSummaryWidget bookings={upcomingBookings} />
+            </Widget>
+
+            {/* ── ROW 5 · Trip Gallery (col 1-3) ──────────────────────────── */}
+            <Widget title="Trip Gallery" className="col-span-3" style={{ minHeight: "260px" }}>
+              <GalleryWidget />
             </Widget>
 
           </div>

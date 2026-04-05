@@ -25,6 +25,7 @@ import Finance from "./app/pages/Finance.jsx";
 import GroupVote from "./app/pages/GroupVote.jsx";
 import WelcomeAfterLogin from "./app/pages/WelcomeAfterLogin.jsx";
 import ChatWidget from "./components/ChatWidget.jsx";
+import Gallery from "./app/pages/Gallery.jsx";
 
 // Layout that injects the floating AI chat widget on authenticated pages
 function AuthLayout() {
@@ -54,7 +55,7 @@ const router = createBrowserRouter([
     { path: "/expenses", element: <Expenses /> },
     { path: "/message", element: <Message /> },
     {path: '/create-poll', element: <CreatePoll />},
-    {path: "/messagetesting", element: <MessageTesting /> },
+    //{path: "/messagetesting", element: <MessageTesting /> },
     {path: "/booking", element: <Booking /> },
 
     // Authenticated routes (chat widget available)
@@ -72,6 +73,7 @@ const router = createBrowserRouter([
         { path: "/finance", element: <Finance /> },
         { path: "/vote",    element: <GroupVote /> },
         { path: "/welcome", element: <WelcomeAfterLogin /> },
+        { path: "/gallery", element: <Gallery /> },
       ],
     },
 ]);
