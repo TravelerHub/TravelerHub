@@ -4,101 +4,137 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-BOOKING_API_KEY = os.getenv("BOOKING_API_KEY", "")
-BOOKING_AFFILIATE_ID = os.getenv("BOOKING_AFFILIATE_ID", "")
-BOOKING_BASE_URL = os.getenv("BOOKING_BASE_URL", "https://demandapi-sandbox.booking.com/3.1")
+GOOGLE_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
+GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+NEARBY_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
 
-HEADERS = {
-    "Authorization": f"Bearer {BOOKING_API_KEY}",
-    "X-Affiliate-Id": BOOKING_AFFILIATE_ID,
-    "Content-Type": "application/json",
+# Maps Google price_level (0–4) to a rough USD label shown in the UI
+_PRICE_LABEL = {
+    0: "Free",
+    1: "Inexpensive",
+    2: "Moderate",
+    3: "Expensive",
+    4: "Very Expensive",
 }
 
 
-async def get_city_id(city_name: str) -> dict:
+async def search_city(city_name: str) -> dict:
     """
-    POST /common/locations/cities
-    Returns first 5 city results for the given name.
+    Google Geocoding API — resolve a city name to lat/lng.
+    Returns up to 5 results. Each result includes lat, lng, and country.
+    Used by both hotel search and activity search in the frontend.
     """
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                f"{BOOKING_BASE_URL}/common/locations/cities",
-                headers=HEADERS,
-                json={"name": city_name, "languages": ["en-gb"]},
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                GEOCODE_URL,
+                params={"address": city_name, "key": GOOGLE_API_KEY},
             )
             resp.raise_for_status()
             data = resp.json()
-            results = data.get("data", data) if isinstance(data, dict) else data
-            if isinstance(results, list):
-                results = results[:5]
-            return {"data": results, "error": None}
+
+        if data.get("status") not in ("OK", "ZERO_RESULTS"):
+            return {"data": None, "error": data.get("status", "Geocoding error")}
+
+        cities = []
+        for r in data.get("results", [])[:5]:
+            loc = r["geometry"]["location"]
+            country = next(
+                (c["short_name"] for c in r.get("address_components", [])
+                 if "country" in c.get("types", [])),
+                None,
+            )
+            cities.append({
+                "name": r.get("formatted_address"),
+                "iata_code": None,   # Google doesn't return IATA codes
+                "country": country,
+                "lat": loc["lat"],
+                "lng": loc["lng"],
+            })
+        return {"data": cities, "error": None}
     except httpx.HTTPError as e:
+        return {"data": None, "error": str(e)}
+    except Exception as e:
         return {"data": None, "error": str(e)}
 
 
 async def search_hotels(
-    city_id: int,
+    lat: float,
+    lng: float,
     checkin: str,
     checkout: str,
     adults: int,
     rooms: int = 1,
 ) -> dict:
     """
-    POST /accommodations/search
-    Returns list of hotels for city + dates.
+    Google Places Nearby Search (type=lodging).
+    Returns up to 15 hotels near the given coordinates.
+    Note: Google Places does not return actual nightly prices —
+    price_level (1–4 scale) is shown instead.
+    checkin/checkout/adults/rooms are accepted for API compatibility
+    but are not sent to Google (use them to prefill the save form).
     """
-    body = {
-        "booker": {"country": "us", "platform": "mobile"},
-        "checkin": checkin,
-        "checkout": checkout,
-        "city": city_id,
-        "guests": {"number_of_adults": adults, "number_of_rooms": rooms},
-        "extras": ["products"],
-    }
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                f"{BOOKING_BASE_URL}/accommodations/search",
-                headers=HEADERS,
-                json=body,
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                NEARBY_URL,
+                params={
+                    "location": f"{lat},{lng}",
+                    "radius": 10000,       # 10 km
+                    "type": "lodging",
+                    "key": GOOGLE_API_KEY,
+                },
             )
             resp.raise_for_status()
             data = resp.json()
-            hotels = data.get("data", data) if isinstance(data, dict) else data
-            return {"data": hotels, "error": None}
+
+        if data.get("status") not in ("OK", "ZERO_RESULTS"):
+            return {"data": None, "error": data.get("status", "Places API error")}
+
+        hotels = []
+        for p in data.get("results", [])[:15]:
+            loc = p.get("geometry", {}).get("location", {})
+            price_level = p.get("price_level")
+            hotels.append({
+                "hotel_id": p.get("place_id"),
+                "name": p.get("name"),
+                "address": p.get("vicinity"),
+                "rating": p.get("rating"),
+                "price_level": price_level,
+                "price_label": _PRICE_LABEL.get(price_level) if price_level is not None else None,
+                "lat": loc.get("lat"),
+                "lng": loc.get("lng"),
+                "offer_id": p.get("place_id"),   # reuse place_id as offer reference
+                "price": None,                    # actual nightly price not available
+                "currency": "USD",
+                "room_type": None,
+                "beds": None,
+            })
+        return {"data": hotels, "error": None}
     except httpx.HTTPError as e:
+        return {"data": None, "error": str(e)}
+    except Exception as e:
         return {"data": None, "error": str(e)}
 
 
-async def get_hotel_availability(
-    accommodation_id: int,
-    checkin: str,
-    checkout: str,
-    adults: int,
-) -> dict:
+async def get_hotel_offer(place_id: str) -> dict:
     """
-    POST /accommodations/availability
-    Returns room availability and pricing for a specific hotel.
+    Google Places Details — fetch full details for a specific place.
     """
-    body = {
-        "accommodation": accommodation_id,
-        "booker": {"country": "us", "platform": "mobile"},
-        "checkin": checkin,
-        "checkout": checkout,
-        "extras": ["extra_charges"],
-        "guests": {"number_of_adults": adults, "number_of_rooms": 1},
-    }
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                f"{BOOKING_BASE_URL}/accommodations/availability",
-                headers=HEADERS,
-                json=body,
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://maps.googleapis.com/maps/api/place/details/json",
+                params={
+                    "place_id": place_id,
+                    "fields": "name,formatted_address,rating,price_level,geometry,url",
+                    "key": GOOGLE_API_KEY,
+                },
             )
             resp.raise_for_status()
             data = resp.json()
-            availability = data.get("data", data) if isinstance(data, dict) else data
-            return {"data": availability, "error": None}
+        return {"data": data.get("result"), "error": None}
     except httpx.HTTPError as e:
+        return {"data": None, "error": str(e)}
+    except Exception as e:
         return {"data": None, "error": str(e)}

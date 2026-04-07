@@ -4,69 +4,78 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-BOOKING_API_KEY = os.getenv("BOOKING_API_KEY", "")
-BOOKING_AFFILIATE_ID = os.getenv("BOOKING_AFFILIATE_ID", "")
-
-# Attractions uses v3.2 Beta endpoint
-ATTRACTIONS_BASE_URL = "https://demandapi-sandbox.booking.com/3.2"
-
-HEADERS = {
-    "Authorization": f"Bearer {BOOKING_API_KEY}",
-    "X-Affiliate-Id": BOOKING_AFFILIATE_ID,
-    "Content-Type": "application/json",
-}
+GOOGLE_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
+NEARBY_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
 
 
-async def search_attractions(
-    city_id: int,
-    start_date: str,
-    end_date: str,
-    currency: str = "USD",
-) -> dict:
+async def search_activities(lat: float, lng: float, radius: int = 5) -> dict:
     """
-    POST /attractions/search (v3.2 Beta)
-    Returns list of attractions for city + date range.
-    Handles 403 gracefully (beta access not granted).
+    Google Places Nearby Search (type=tourist_attraction).
+    radius is in km (converted to metres for the API).
+    Returns up to 15 activities near the given coordinates.
     """
-    body = {
-        "city": [city_id],
-        "currency": currency,
-        "date_range": {"start": start_date, "end": end_date},
-    }
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                f"{ATTRACTIONS_BASE_URL}/attractions/search",
-                headers=HEADERS,
-                json=body,
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                NEARBY_URL,
+                params={
+                    "location": f"{lat},{lng}",
+                    "radius": radius * 1000,   # km → metres
+                    "type": "tourist_attraction",
+                    "key": GOOGLE_API_KEY,
+                },
             )
-            if resp.status_code == 403:
-                return {"data": [], "error": "Attractions API requires beta access"}
             resp.raise_for_status()
             data = resp.json()
-            attractions = data.get("data", data) if isinstance(data, dict) else data
-            return {"data": attractions, "error": None}
+
+        if data.get("status") not in ("OK", "ZERO_RESULTS"):
+            return {"data": None, "error": data.get("status", "Places API error")}
+
+        activities = []
+        for p in data.get("results", [])[:15]:
+            loc = p.get("geometry", {}).get("location", {})
+            photos = p.get("photos", [])
+            activities.append({
+                "id": p.get("place_id"),
+                "name": p.get("name"),
+                "description": p.get("editorial_summary", {}).get("overview"),
+                "address": p.get("vicinity"),
+                "lat": loc.get("lat"),
+                "lng": loc.get("lng"),
+                "rating": p.get("rating"),
+                "price": None,          # Google Places does not return ticket prices
+                "currency": "USD",
+                "pictures": [
+                    f"https://maps.googleapis.com/maps/api/place/photo"
+                    f"?maxwidth=400&photo_reference={photos[0]['photo_reference']}&key={GOOGLE_API_KEY}"
+                ] if photos else [],
+                "booking_link": f"https://www.google.com/maps/place/?q=place_id:{p.get('place_id')}",
+            })
+        return {"data": activities, "error": None}
     except httpx.HTTPError as e:
+        return {"data": None, "error": str(e)}
+    except Exception as e:
         return {"data": None, "error": str(e)}
 
 
-async def get_attraction_details(attraction_ids: list) -> dict:
+async def get_activity_details(activity_id: str) -> dict:
     """
-    POST /attractions/details (v3.2 Beta)
-    Returns details for one or more attractions.
+    Google Places Details for a specific place_id.
     """
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                f"{ATTRACTIONS_BASE_URL}/attractions/details",
-                headers=HEADERS,
-                json={"attractions": attraction_ids, "languages": ["en-gb"]},
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://maps.googleapis.com/maps/api/place/details/json",
+                params={
+                    "place_id": activity_id,
+                    "fields": "name,formatted_address,rating,geometry,editorial_summary,url,photos",
+                    "key": GOOGLE_API_KEY,
+                },
             )
-            if resp.status_code == 403:
-                return {"data": [], "error": "Attractions API requires beta access"}
             resp.raise_for_status()
             data = resp.json()
-            details = data.get("data", data) if isinstance(data, dict) else data
-            return {"data": details, "error": None}
+        return {"data": data.get("result"), "error": None}
     except httpx.HTTPError as e:
+        return {"data": None, "error": str(e)}
+    except Exception as e:
         return {"data": None, "error": str(e)}

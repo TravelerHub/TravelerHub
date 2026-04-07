@@ -166,10 +166,12 @@ function HotelSearchModal({ open, onClose, onSave }) {
   async function search() {
     setSearching(true); setErr(""); setResults([]);
     try {
+      // Step 1: resolve city name → lat/lng via Google Geocoding
       const cityRes = await apiFetch(`/api/bookings/hotels/city?name=${encodeURIComponent(city)}`);
-      if (cityRes.error || !cityRes.data?.length) { setErr(cityRes.error || "City not found"); return; }
-      const cityId = cityRes.data[0].city_id ?? cityRes.data[0].id ?? cityRes.data[0].dest_id;
-      const res = await apiFetch(`/api/bookings/hotels/search?city_id=${cityId}&checkin=${checkin}&checkout=${checkout}&adults=${adults}&rooms=${rooms}`);
+      if (cityRes.error || !cityRes.data?.length) { setErr(cityRes.error || "City not found. Try a major city name (e.g. 'Los Angeles', 'New York')."); return; }
+      const { lat, lng } = cityRes.data[0];
+      // Step 2: search hotels by lat/lng via Google Places
+      const res = await apiFetch(`/api/bookings/hotels/search?lat=${lat}&lng=${lng}&checkin=${checkin}&checkout=${checkout}&adults=${adults}&rooms=${rooms}`);
       if (res.error) { setErr(res.error); return; }
       setResults(res.data || []);
     } catch (e) { setErr(e.message); }
@@ -179,7 +181,7 @@ function HotelSearchModal({ open, onClose, onSave }) {
   return (
     <Modal open={open} title="🏨 Search Hotels" onClose={onClose}>
       <div className="grid grid-cols-3 gap-3 mb-4">
-        <Field label="City"><input className={inputCls} style={inputStyle} value={city} onChange={(e) => setCity(e.target.value)} /></Field>
+        <Field label="City"><input className={inputCls} style={inputStyle} value={city} onChange={(e) => setCity(e.target.value)} placeholder="Los Angeles" /></Field>
         <Field label="Check-in"><input type="date" className={inputCls} style={inputStyle} value={checkin} onChange={(e) => setCheckin(e.target.value)} /></Field>
         <Field label="Check-out"><input type="date" className={inputCls} style={inputStyle} value={checkout} onChange={(e) => setCheckout(e.target.value)} /></Field>
         <Field label="Adults"><input type="number" min={1} className={inputCls} style={inputStyle} value={adults} onChange={(e) => setAdults(Number(e.target.value))} /></Field>
@@ -191,32 +193,54 @@ function HotelSearchModal({ open, onClose, onSave }) {
       {err && <p className="text-sm mb-3" style={{ color: "#dc2626" }}>{err}</p>}
       <div className="flex flex-col gap-2">
         {results.map((h, i) => {
-          const name = h.name || h.hotel_name || `Hotel ${i + 1}`;
-          const price = h.min_total_price ?? h.price ?? h.composite_price_breakdown?.gross_amount?.value;
+          const name = h.name || `Hotel ${i + 1}`;
           return (
             <div key={h.hotel_id ?? i} className="flex items-center justify-between gap-3 p-3 rounded-xl" style={{ border: "1px solid #e5e7eb" }}>
               <div>
                 <p className="font-semibold text-sm" style={{ color: "#160f29" }}>{name}</p>
-                {price != null && <p className="text-xs mt-0.5" style={{ color: "#5c6b73" }}>From ${Number(price).toFixed(2)}</p>}
+                {h.address && <p className="text-xs" style={{ color: "#5c6b73" }}>{h.address}</p>}
+                <p className="text-xs mt-0.5" style={{ color: "#5c6b73" }}>
+                  {h.rating && `⭐ ${h.rating} · `}{h.price_label || "Price: enter manually"}
+                </p>
               </div>
-              <button onClick={() => onSave({ title: name, vendor: name, type: "hotel", cost: price ?? "", start_time: checkin, end_time: checkout })}
+              <button onClick={() => onSave({ title: name, vendor: name, type: "hotel", cost: "", start_time: checkin, end_time: checkout })}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold transition hover:bg-gray-800" style={{ background: "#160f29", color: "#fff", whiteSpace: "nowrap" }}>
                 + Save
               </button>
             </div>
           );
         })}
-        {!searching && results.length === 0 && !err && <p className="text-sm" style={{ color: "#9ca3af" }}>Enter a city and click Search to see results.</p>}
+        {!searching && results.length === 0 && !err && <p className="text-sm" style={{ color: "#9ca3af" }}>Enter a city name and click Search to see results.</p>}
       </div>
     </Modal>
   );
 }
 
-function CarSearchModal({ open, onClose, onSave }) {
-  const [airport, setAirport] = useState("LAX");
-  const [pickup, setPickup] = useState("2026-08-01T10:00");
-  const [dropoff, setDropoff] = useState("2026-08-04T10:00");
-  const [driverAge, setDriverAge] = useState(25);
+function CarSearchModal({ open, onClose }) {
+  return (
+    <Modal open={open} title="🚗 Add Car Rental" onClose={onClose}>
+      <div className="rounded-xl p-4 mb-5" style={{ background: "#f3f4f6", border: "1px solid #e5e7eb" }}>
+        <p className="text-sm font-semibold mb-1" style={{ color: "#160f29" }}>Car rental search is unavailable</p>
+        <p className="text-sm" style={{ color: "#5c6b73" }}>
+          The current booking provider (Amadeus free tier) does not include car rental search.
+          Close this dialog and use the <strong>+ Add Booking</strong> button to log a car rental manually — just enter the vendor, dates, confirmation code, and cost.
+        </p>
+      </div>
+      <button
+        onClick={onClose}
+        className="px-5 py-2.5 rounded-xl text-sm font-semibold transition hover:bg-gray-800"
+        style={{ background: "#160f29", color: "#fff" }}
+      >
+        Got it — I'll add manually
+      </button>
+    </Modal>
+  );
+}
+
+function ToursSearchModal({ open, onClose, onSave }) {
+  const [city, setCity] = useState("Los Angeles");
+  const [visitDate, setVisitDate] = useState("2026-08-01");
+  const [radius, setRadius] = useState(5);
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [err, setErr] = useState("");
@@ -224,9 +248,13 @@ function CarSearchModal({ open, onClose, onSave }) {
   async function search() {
     setSearching(true); setErr(""); setResults([]);
     try {
-      const pickupIso = pickup.length === 16 ? `${pickup}:00` : pickup;
-      const dropoffIso = dropoff.length === 16 ? `${dropoff}:00` : dropoff;
-      const res = await apiFetch(`/api/bookings/cars/search?airport=${airport}&pickup=${encodeURIComponent(pickupIso)}&dropoff=${encodeURIComponent(dropoffIso)}&driver_age=${driverAge}`);
+      // Step 1: resolve city name → lat/lng via the same city search endpoint
+      const cityRes = await apiFetch(`/api/bookings/hotels/city?name=${encodeURIComponent(city)}`);
+      if (cityRes.error || !cityRes.data?.length) { setErr(cityRes.error || "City not found. Try a major city name (e.g. 'Los Angeles', 'Paris')."); return; }
+      const { lat, lng } = cityRes.data[0];
+      if (lat == null || lng == null) { setErr("Could not resolve coordinates for that city."); return; }
+      // Step 2: search Amadeus activities by lat/lng
+      const res = await apiFetch(`/api/bookings/attractions/search?lat=${lat}&lng=${lng}&radius=${radius}`);
       if (res.error) { setErr(res.error); return; }
       setResults(res.data || []);
     } catch (e) { setErr(e.message); }
@@ -234,93 +262,38 @@ function CarSearchModal({ open, onClose, onSave }) {
   }
 
   return (
-    <Modal open={open} title="🚗 Search Car Rentals" onClose={onClose}>
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <Field label="Airport (IATA)"><input className={inputCls} style={inputStyle} value={airport} onChange={(e) => setAirport(e.target.value.toUpperCase())} placeholder="LAX" /></Field>
-        <Field label="Driver Age"><input type="number" min={18} className={inputCls} style={inputStyle} value={driverAge} onChange={(e) => setDriverAge(Number(e.target.value))} /></Field>
-        <Field label="Pick-up datetime"><input type="datetime-local" className={inputCls} style={inputStyle} value={pickup} onChange={(e) => setPickup(e.target.value)} /></Field>
-        <Field label="Drop-off datetime"><input type="datetime-local" className={inputCls} style={inputStyle} value={dropoff} onChange={(e) => setDropoff(e.target.value)} /></Field>
-      </div>
-      <button onClick={search} disabled={searching} className="px-5 py-2.5 rounded-xl text-sm font-semibold mb-4 transition hover:bg-gray-800" style={{ background: "#160f29", color: "#fff" }}>
-        {searching ? "Searching…" : "Search Cars"}
-      </button>
-      {err && <p className="text-sm mb-3" style={{ color: "#dc2626" }}>{err}</p>}
-      <div className="flex flex-col gap-2">
-        {results.map((c, i) => {
-          const name = c.vehicle?.name ?? c.car_name ?? c.name ?? `Car ${i + 1}`;
-          const vendor = c.vendor?.name ?? c.supplier_name ?? "";
-          const price = c.price?.amount ?? c.total_price ?? c.base_price;
-          return (
-            <div key={c.id ?? i} className="flex items-center justify-between gap-3 p-3 rounded-xl" style={{ border: "1px solid #e5e7eb" }}>
-              <div>
-                <p className="font-semibold text-sm" style={{ color: "#160f29" }}>{name}</p>
-                {vendor && <p className="text-xs" style={{ color: "#5c6b73" }}>{vendor}</p>}
-                {price != null && <p className="text-xs mt-0.5" style={{ color: "#5c6b73" }}>From ${Number(price).toFixed(2)}</p>}
-              </div>
-              <button onClick={() => onSave({ title: `${name}${vendor ? ` — ${vendor}` : ""}`, vendor, type: "car", cost: price ?? "", start_time: pickup, end_time: dropoff })}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition hover:bg-gray-800" style={{ background: "#160f29", color: "#fff", whiteSpace: "nowrap" }}>
-                + Save
-              </button>
-            </div>
-          );
-        })}
-        {!searching && results.length === 0 && !err && <p className="text-sm" style={{ color: "#9ca3af" }}>Enter airport code and dates, then click Search.</p>}
-      </div>
-    </Modal>
-  );
-}
-
-function ToursSearchModal({ open, onClose, onSave }) {
-  const [city, setCity] = useState("Los Angeles");
-  const [startDate, setStartDate] = useState("2026-08-01");
-  const [endDate, setEndDate] = useState("2026-08-07");
-  const [results, setResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [err, setErr] = useState("");
-
-  async function search() {
-    setSearching(true); setErr(""); setResults([]);
-    try {
-      const cityRes = await apiFetch(`/api/bookings/hotels/city?name=${encodeURIComponent(city)}`);
-      if (cityRes.error || !cityRes.data?.length) { setErr(cityRes.error || "City not found"); return; }
-      const cityId = cityRes.data[0].city_id ?? cityRes.data[0].id ?? cityRes.data[0].dest_id;
-      const res = await apiFetch(`/api/bookings/attractions/search?city_id=${cityId}&start_date=${startDate}&end_date=${endDate}`);
-      if (res.error && res.data?.length === 0) { setErr(res.error); return; }
-      setResults(res.data || []);
-      if (res.error) setErr(res.error);
-    } catch (e) { setErr(e.message); }
-    finally { setSearching(false); }
-  }
-
-  return (
     <Modal open={open} title="🎡 Search Tours & Attractions" onClose={onClose}>
       <div className="grid grid-cols-3 gap-3 mb-4">
-        <Field label="City"><input className={inputCls} style={inputStyle} value={city} onChange={(e) => setCity(e.target.value)} /></Field>
-        <Field label="Start date"><input type="date" className={inputCls} style={inputStyle} value={startDate} onChange={(e) => setStartDate(e.target.value)} /></Field>
-        <Field label="End date"><input type="date" className={inputCls} style={inputStyle} value={endDate} onChange={(e) => setEndDate(e.target.value)} /></Field>
+        <Field label="City"><input className={inputCls} style={inputStyle} value={city} onChange={(e) => setCity(e.target.value)} placeholder="Los Angeles" /></Field>
+        <Field label="Visit date"><input type="date" className={inputCls} style={inputStyle} value={visitDate} onChange={(e) => setVisitDate(e.target.value)} /></Field>
+        <Field label="Radius (km)"><input type="number" min={1} max={20} className={inputCls} style={inputStyle} value={radius} onChange={(e) => setRadius(Number(e.target.value))} /></Field>
       </div>
       <button onClick={search} disabled={searching} className="px-5 py-2.5 rounded-xl text-sm font-semibold mb-4 transition hover:bg-gray-800" style={{ background: "#160f29", color: "#fff" }}>
-        {searching ? "Searching…" : "Search Tours"}
+        {searching ? "Searching…" : "Search Activities"}
       </button>
       {err && <p className="text-sm mb-3" style={{ color: "#dc2626" }}>{err}</p>}
       <div className="flex flex-col gap-2">
         {results.map((a, i) => {
-          const name = a.name ?? a.title ?? `Attraction ${i + 1}`;
-          const price = a.price?.amount ?? a.min_price ?? a.from_price;
+          const name = a.name ?? `Activity ${i + 1}`;
+          const price = a.price;
+          const currency = a.currency ?? "USD";
           return (
             <div key={a.id ?? i} className="flex items-center justify-between gap-3 p-3 rounded-xl" style={{ border: "1px solid #e5e7eb" }}>
               <div>
                 <p className="font-semibold text-sm" style={{ color: "#160f29" }}>{name}</p>
-                {price != null && <p className="text-xs mt-0.5" style={{ color: "#5c6b73" }}>From ${Number(price).toFixed(2)}</p>}
+                {a.description && <p className="text-xs" style={{ color: "#5c6b73" }}>{a.description}</p>}
+                <p className="text-xs mt-0.5" style={{ color: "#5c6b73" }}>
+                  {price != null ? `From ${currency} ${Number(price).toFixed(2)}` : "Price unavailable"}
+                </p>
               </div>
-              <button onClick={() => onSave({ title: name, vendor: "", type: "activity", cost: price ?? "", start_time: startDate, end_time: endDate })}
+              <button onClick={() => onSave({ title: name, vendor: "", type: "activity", cost: price ?? "", start_time: visitDate, end_time: visitDate })}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold transition hover:bg-gray-800" style={{ background: "#160f29", color: "#fff", whiteSpace: "nowrap" }}>
                 + Save
               </button>
             </div>
           );
         })}
-        {!searching && results.length === 0 && !err && <p className="text-sm" style={{ color: "#9ca3af" }}>Enter a city and dates, then click Search.</p>}
+        {!searching && results.length === 0 && !err && <p className="text-sm" style={{ color: "#9ca3af" }}>Enter a city and click Search to see nearby activities.</p>}
       </div>
     </Modal>
   );
