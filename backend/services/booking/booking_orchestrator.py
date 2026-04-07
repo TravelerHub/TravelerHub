@@ -1,7 +1,7 @@
 """
 booking_orchestrator.py
-Single entry point that combines Booking.com API search results with
-saving to Supabase via booking_repository.
+Combines Amadeus API search results with Supabase persistence
+via booking_repository.
 """
 
 from services.booking.booking_repository import (
@@ -24,30 +24,36 @@ async def save_hotel_booking(
     currency: str = "USD",
     participants: list = [],
 ) -> dict:
-    title = hotel_data.get("name") or hotel_data.get("hotel_name") or "Hotel"
+    # Google Places shape: hotel_id (place_id), name, address, rating, price_level, lat, lng
+    title = hotel_data.get("name") or "Hotel"
     details = {
-        "accommodation_id": hotel_data.get("accommodation_id") or hotel_data.get("hotel_id"),
+        "hotel_id": hotel_data.get("hotel_id"),
         "hotel_name": title,
         "address": hotel_data.get("address"),
         "check_in": checkin,
         "check_out": checkout,
         "adults": adults,
-        "meal_plan": hotel_data.get("meal_plan"),
-        "cancellation": hotel_data.get("free_cancellation"),
-        "thumbnail": hotel_data.get("thumbnail") or hotel_data.get("main_photo_url"),
+        "rating": hotel_data.get("rating"),
+        "price_level": hotel_data.get("price_level"),
+        "price_label": hotel_data.get("price_label"),
+        "lat": hotel_data.get("lat"),
+        "lng": hotel_data.get("lng"),
     }
+    resolved_price = price or (float(hotel_data["price"]) if hotel_data.get("price") else None)
+    resolved_currency = currency or hotel_data.get("currency", "USD")
+
     result = await create_booking(
         trip_id=trip_id,
         created_by=created_by,
         type="hotel",
         title=title,
-        vendor=hotel_data.get("chain_name") or hotel_data.get("hotel_name"),
-        source="booking.com",
-        external_id=str(hotel_data.get("accommodation_id") or hotel_data.get("hotel_id") or ""),
+        vendor=title,
+        source="manual",
+        external_id=str(hotel_data.get("hotel_id") or ""),
         start_time=f"{checkin}T00:00:00",
         end_time=f"{checkout}T00:00:00",
-        price=price,
-        currency=currency,
+        price=resolved_price,
+        currency=resolved_currency,
         details=details,
     )
     if result["data"] and participants:
@@ -67,37 +73,18 @@ async def save_car_booking(
     currency: str = "USD",
     participants: list = [],
 ) -> dict:
-    vehicle = car_data.get("vehicle", {}) or {}
-    supplier = car_data.get("vendor", {}) or car_data.get("supplier", {}) or {}
-    vehicle_name = vehicle.get("name") or car_data.get("car_name") or car_data.get("name") or "Car"
-    supplier_name = supplier.get("name") or car_data.get("supplier_name") or ""
-    title = f"{vehicle_name} — {supplier_name}".strip(" —") if supplier_name else vehicle_name
-
-    redirect_url = (
-        car_data.get("redirect_url")
-        or car_data.get("booking_url")
-        or car_data.get("url")
-    )
+    title = car_data.get("title") or car_data.get("name") or "Car Rental"
     details = {
-        "car_id": car_data.get("id") or car_data.get("car_id"),
-        "vehicle_name": vehicle_name,
-        "supplier": supplier_name,
         "pickup_datetime": pickup_datetime,
         "dropoff_datetime": dropoff_datetime,
-        "category": vehicle.get("category") or car_data.get("category"),
-        "seats": vehicle.get("seats") or car_data.get("seats"),
-        "booking_token": car_data.get("booking_token"),
-        "redirect_url": redirect_url,
     }
     result = await create_booking(
         trip_id=trip_id,
         created_by=created_by,
         type="car_rental",
         title=title,
-        vendor=supplier_name or None,
-        source="booking.com",
-        external_id=str(car_data.get("id") or car_data.get("car_id") or ""),
-        booking_url=redirect_url,
+        vendor=car_data.get("vendor") or None,
+        source="manual",
         start_time=pickup_datetime,
         end_time=dropoff_datetime,
         price=price,
@@ -121,29 +108,35 @@ async def save_attraction_booking(
     currency: str = "USD",
     participants: list = [],
 ) -> dict:
+    # Amadeus normalized shape: id, name, description, price, currency, pictures, booking_link
     title = attraction_data.get("name") or attraction_data.get("title") or "Attraction"
     details = {
-        "attraction_id": attraction_data.get("id") or attraction_data.get("attraction_id"),
+        "activity_id": attraction_data.get("id"),
         "name": title,
-        "address": attraction_data.get("address"),
+        "description": attraction_data.get("description"),
         "date": visit_date,
-        "duration_minutes": attraction_data.get("duration_minutes"),
         "visitor_count": visitor_count,
-        "category": attraction_data.get("category"),
-        "thumbnail": attraction_data.get("thumbnail") or attraction_data.get("image_url"),
+        "lat": attraction_data.get("lat"),
+        "lng": attraction_data.get("lng"),
+        "pictures": attraction_data.get("pictures", []),
+        "booking_link": attraction_data.get("booking_link"),
     }
+    resolved_price = price or (float(attraction_data["price"]) if attraction_data.get("price") else None)
+    resolved_currency = currency or attraction_data.get("currency", "USD")
+
     result = await create_booking(
         trip_id=trip_id,
         created_by=created_by,
         type="attraction",
         title=title,
-        vendor=attraction_data.get("operator") or attraction_data.get("supplier"),
-        source="booking.com",
-        external_id=str(attraction_data.get("id") or attraction_data.get("attraction_id") or ""),
+        vendor=None,
+        source="manual",
+        external_id=str(attraction_data.get("id") or ""),
+        booking_url=attraction_data.get("booking_link"),
         start_time=f"{visit_date}T00:00:00",
         end_time=f"{visit_date}T23:59:59",
-        price=price,
-        currency=currency,
+        price=resolved_price,
+        currency=resolved_currency,
         details=details,
     )
     if result["data"] and participants:
