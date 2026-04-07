@@ -9,4 +9,6 @@ export const SIDEBAR_ITEMS = [
   { label: "Booking",    path: "/booking"    },
   { label: "Calendar",   path: "/calendar"   },
   { label: "Wallet",     path: "/finance"    },
+  { label: "To-Do",      path: "/todo"       },
+  { label: "Emergency",  path: "/emergency"  },
 ];
