@@ -1,17 +1,22 @@
 """
-Booking.com Demand API routes + Supabase persistence.
+Google Places-powered booking routes + Supabase persistence.
 Prefix: /api/bookings  (registered BEFORE booking.py wildcard routes in main.py)
 
-Search (Booking.com API proxy):
-  GET  /api/bookings/hotels/city
-  GET  /api/bookings/hotels/search
-  GET  /api/bookings/hotels/{hotel_id}/availability
-  GET  /api/bookings/cars/search
-  GET  /api/bookings/cars/{car_id}
-  GET  /api/bookings/attractions/search
-  GET  /api/bookings/attractions/{attraction_id}
+City / geocode lookup:
+  GET  /api/bookings/hotels/city        — city name → lat/lng (Google Geocoding)
 
-Persistence (save search results to Supabase):
+Hotel Search (Google Places Nearby Search):
+  GET  /api/bookings/hotels/search      — search hotels by lat/lng
+  GET  /api/bookings/hotels/{place_id}  — hotel place details
+
+Activity Search (Google Places Nearby Search):
+  GET  /api/bookings/attractions/search — search tourist attractions by lat/lng
+  GET  /api/bookings/attractions/{id}   — activity details
+
+Car Rentals:
+  GET  /api/bookings/cars/search        — stub (add manually)
+
+Persistence:
   POST /api/bookings/hotels/save
   POST /api/bookings/cars/save
   POST /api/bookings/attractions/save
@@ -27,9 +32,9 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
-from services.booking.hotels_service import get_city_id, search_hotels, get_hotel_availability
+from services.booking.hotels_service import search_city, search_hotels, get_hotel_offer
 from services.booking.cars_service import search_cars, get_car_details
-from services.booking.attractions_service import search_attractions, get_attraction_details
+from services.booking.attractions_service import search_activities, get_activity_details
 from services.booking.booking_orchestrator import (
     save_hotel_booking,
     save_car_booking,
@@ -41,41 +46,40 @@ from services.booking.booking_repository import update_booking_status
 router = APIRouter(prefix="/api/bookings", tags=["bookings-search"])
 
 
-# ── Search: Hotels ─────────────────────────────────────────────────────────────
+# ── City lookup (Google Geocoding) ─────────────────────────────────────────────
 
 @router.get("/hotels/city")
-async def hotels_city(name: str = Query(..., description="City name to search")):
-    return await get_city_id(name)
+async def hotels_city(name: str = Query(..., description="City name, e.g. 'Los Angeles'")):
+    """Resolve a city name to lat/lng via Google Geocoding API."""
+    return await search_city(name)
 
+
+# ── Search: Hotels ─────────────────────────────────────────────────────────────
 
 @router.get("/hotels/search")
 async def hotels_search(
-    city_id: int = Query(...),
+    lat: float = Query(..., description="Latitude from city lookup"),
+    lng: float = Query(..., description="Longitude from city lookup"),
     checkin: str = Query(..., description="YYYY-MM-DD"),
     checkout: str = Query(..., description="YYYY-MM-DD"),
     adults: int = Query(..., ge=1),
     rooms: int = Query(1, ge=1),
 ):
-    return await search_hotels(city_id, checkin, checkout, adults, rooms)
+    return await search_hotels(lat, lng, checkin, checkout, adults, rooms)
 
 
-@router.get("/hotels/{hotel_id}/availability")
-async def hotels_availability(
-    hotel_id: int,
-    checkin: str = Query(..., description="YYYY-MM-DD"),
-    checkout: str = Query(..., description="YYYY-MM-DD"),
-    adults: int = Query(..., ge=1),
-):
-    return await get_hotel_availability(hotel_id, checkin, checkout, adults)
+@router.get("/hotels/{place_id}")
+async def hotels_details(place_id: str):
+    return await get_hotel_offer(place_id)
 
 
-# ── Search: Cars ───────────────────────────────────────────────────────────────
+# ── Search: Cars (stub) ────────────────────────────────────────────────────────
 
 @router.get("/cars/search")
 async def cars_search(
-    airport: str = Query(..., description="IATA airport code e.g. LAX"),
-    pickup: str = Query(..., description="ISO datetime e.g. 2026-08-01T10:00:00"),
-    dropoff: str = Query(..., description="ISO datetime e.g. 2026-08-08T10:00:00"),
+    airport: str = Query(...),
+    pickup: str = Query(...),
+    dropoff: str = Query(...),
     driver_age: int = Query(25, ge=18),
 ):
     return await search_cars(airport, pickup, dropoff, driver_age)
@@ -86,21 +90,20 @@ async def cars_details(car_id: str):
     return await get_car_details(car_id)
 
 
-# ── Search: Attractions ────────────────────────────────────────────────────────
+# ── Search: Activities ─────────────────────────────────────────────────────────
 
 @router.get("/attractions/search")
 async def attractions_search(
-    city_id: int = Query(...),
-    start_date: str = Query(..., description="YYYY-MM-DD"),
-    end_date: str = Query(..., description="YYYY-MM-DD"),
-    currency: str = Query("USD"),
+    lat: float = Query(..., description="Latitude of the city centre"),
+    lng: float = Query(..., description="Longitude of the city centre"),
+    radius: int = Query(5, ge=1, le=20, description="Search radius in km"),
 ):
-    return await search_attractions(city_id, start_date, end_date, currency)
+    return await search_activities(lat, lng, radius)
 
 
-@router.get("/attractions/{attraction_id}")
-async def attractions_details(attraction_id: str):
-    return await get_attraction_details([attraction_id])
+@router.get("/attractions/{activity_id}")
+async def attractions_details(activity_id: str):
+    return await get_activity_details(activity_id)
 
 
 # ── Save: Hotels ───────────────────────────────────────────────────────────────
