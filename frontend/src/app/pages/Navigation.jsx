@@ -61,6 +61,9 @@ import {
   ArrowUpIcon,
   ArrowUturnLeftIcon,
   ArrowUturnRightIcon,
+  Bars3Icon,
+  AdjustmentsHorizontalIcon,
+  ShareIcon,
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 
@@ -95,6 +98,17 @@ function Navigation() {
   const [savingRoute, setSavingRoute] = useState(false);
   const [groups, setGroups] = useState([]);
   const [activeGroupId, setActiveGroupIdState] = useState('');
+
+  // Mobile responsive state
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  const [showMobileTools, setShowMobileTools] = useState(false);
+
+  // Toast notification state
+  const [toast, setToast] = useState(null); // { message, type: 'success' | 'error' }
+  const showToast = useCallback((message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  }, []);
 
   const categories = [
     { id: 'all', label: 'All', Icon: MagnifyingGlassIcon },
@@ -156,6 +170,18 @@ function Navigation() {
     };
     boot();
   }, []);
+
+  // Auto-plan route when markers change (debounced 600ms)
+  const autoPlanTimerRef = useRef(null);
+  useEffect(() => {
+    if (markers.length < 2 || isNavigating) return;
+    clearTimeout(autoPlanTimerRef.current);
+    autoPlanTimerRef.current = setTimeout(() => {
+      handlePlanRoute();
+    }, 600);
+    return () => clearTimeout(autoPlanTimerRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markers.length]);
 
   useEffect(() => {
     loadSavedRoutes();
@@ -634,11 +660,13 @@ function Navigation() {
         setShowSaveModal(false);
         setRouteName('');
         loadSavedRoutes();
-        alert('Route saved successfully!');
+        showToast('Route saved!');
+      } else {
+        showToast('Failed to save route', 'error');
       }
     } catch (error) {
       console.error('Error saving route:', error);
-      alert('Failed to save route');
+      showToast('Failed to save route', 'error');
     } finally {
       setSavingRoute(false);
     }
@@ -670,6 +698,37 @@ function Navigation() {
       if (response.ok) loadSavedRoutes();
     } catch (error) {
       console.error('Error deleting route:', error);
+    }
+  };
+
+  const handleShareRoute = async () => {
+    if (!currentRoute || markers.length < 2) { showToast('Plan a route first', 'error'); return; }
+    if (!activeGroupId) { showToast('Select a trip group to share with', 'error'); return; }
+    try {
+      const token = localStorage.getItem('token');
+      const routeData = {
+        name: `Shared Route ${new Date().toLocaleDateString()}`,
+        waypoints: markers.map(m => ({ name: m.title, address: m.description, coordinates: m.coordinates })),
+        route_data: currentRoute.geometry,
+        total_distance: currentRoute.distance,
+        total_duration: currentRoute.duration,
+        trip_id: activeGroupId,
+      };
+      const response = await fetch(`${API_BASE}/routes/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(routeData),
+      });
+      if (response.ok) {
+        loadSavedRoutes();
+        showToast('Route shared with your group!');
+      } else {
+        const err = await response.json().catch(() => ({}));
+        showToast(err.detail || 'Failed to share route', 'error');
+      }
+    } catch (error) {
+      console.error('Error sharing route:', error);
+      showToast('Failed to share route', 'error');
     }
   };
 
@@ -723,11 +782,25 @@ function Navigation() {
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: '#f3f4f6' }}>
 
+      {/* ══ MOBILE SIDEBAR BACKDROP ═══════════════════════════════════════════ */}
+      {showMobileSidebar && (
+        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setShowMobileSidebar(false)} />
+      )}
+
       {/* ══ NAV SIDEBAR ══════════════════════════════════════════════════════════ */}
-      <aside className="w-52 shrink-0 flex flex-col" style={{ background: '#000000' }}>
-        <div className="px-5 pt-6 pb-5 border-b shrink-0" style={{ borderColor: '#374151' }}>
-          <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: '#6b7280' }}>TravelHub</p>
-          <p className="font-bold text-base leading-tight" style={{ color: '#f9fafb' }}>Navigation</p>
+      <aside className={`
+        fixed inset-y-0 left-0 z-50 w-52 flex flex-col transition-transform duration-300
+        lg:static lg:translate-x-0 lg:shrink-0
+        ${showMobileSidebar ? 'translate-x-0' : '-translate-x-full'}
+      `} style={{ background: '#000000' }}>
+        <div className="px-5 pt-6 pb-5 border-b shrink-0 flex items-center justify-between" style={{ borderColor: '#374151' }}>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: '#6b7280' }}>TravelHub</p>
+            <p className="font-bold text-base leading-tight" style={{ color: '#f9fafb' }}>Navigation</p>
+          </div>
+          <button onClick={() => setShowMobileSidebar(false)} className="lg:hidden p-1 rounded-lg hover:bg-white/10">
+            <XMarkIcon className="w-5 h-5" style={{ color: '#9ca3af' }} />
+          </button>
         </div>
         <nav className="flex flex-col gap-1 px-3 py-4 flex-1">
           {SIDEBAR_ITEMS.map((item) => {
@@ -735,7 +808,7 @@ function Navigation() {
             return (
               <button
                 key={item.label}
-                onClick={() => item.path && navigate(item.path)}
+                onClick={() => { item.path && navigate(item.path); setShowMobileSidebar(false); }}
                 className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition ${
                   isActive ? 'font-bold' : 'hover:bg-white/10'
                 }`}
@@ -750,13 +823,32 @@ function Navigation() {
 
       {/* ══ MAIN ═════════════════════════════════════════════════════════════════ */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Navbar_Dashboard />
+        <div className="hidden lg:block">
+          <Navbar_Dashboard />
+        </div>
 
         {/* Content: left tools panel + map */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden relative">
 
-          {/* ── Left Tools Panel ── */}
-          <div className="w-80 shrink-0 flex flex-col overflow-y-auto border-r" style={{ background: '#fbfbf2', borderColor: '#d1d1c7' }}>
+          {/* ── Mobile Tools Backdrop ── */}
+          {showMobileTools && (
+            <div className="fixed inset-0 bg-black/40 z-30 lg:hidden" onClick={() => setShowMobileTools(false)} />
+          )}
+
+          {/* ── Left Tools Panel (slide-over on mobile, static on desktop) ── */}
+          <div className={`
+            fixed inset-y-0 left-0 z-40 w-80 max-w-[85vw] flex flex-col overflow-y-auto border-r transition-transform duration-300
+            lg:static lg:translate-x-0 lg:shrink-0 lg:z-auto
+            ${showMobileTools ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+          `} style={{ background: '#fbfbf2', borderColor: '#d1d1c7' }}>
+
+            {/* Mobile drawer header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b shrink-0 lg:hidden" style={{ borderColor: '#d1d1c7' }}>
+              <h2 className="text-sm font-bold" style={{ color: '#160f29' }}>Route Planner</h2>
+              <button onClick={() => setShowMobileTools(false)} className="p-1.5 rounded-lg hover:bg-black/5">
+                <XMarkIcon className="w-5 h-5" style={{ color: '#5c6b73' }} />
+              </button>
+            </div>
 
             {/* Group Selector */}
             <div className="px-4 pt-4 pb-3 border-b shrink-0" style={{ borderColor: '#d1d1c7' }}>
@@ -866,11 +958,29 @@ function Navigation() {
                                 <div
                                   ref={provided.innerRef}
                                   {...provided.draggableProps}
-                                  className="p-2.5 rounded-lg transition group"
-                                  style={{ background: snapshot.isDragging ? '#e8e8e0' : '#f0f0e8', border: '1px solid #d1d1c7' }}
+                                  className="p-2.5 rounded-xl group"
+                                  style={{
+                                    background: snapshot.isDragging ? '#fff' : '#f0f0e8',
+                                    border: snapshot.isDragging ? '2px solid #183a37' : '1px solid #d1d1c7',
+                                    boxShadow: snapshot.isDragging ? '0 12px 28px rgba(0,0,0,0.18), 0 4px 10px rgba(0,0,0,0.08)' : 'none',
+                                    transform: snapshot.isDragging ? 'scale(1.03) rotate(1deg)' : 'none',
+                                    transition: snapshot.isDragging ? 'box-shadow 0.2s, border 0.2s' : 'all 0.25s cubic-bezier(0.2, 0, 0, 1)',
+                                    zIndex: snapshot.isDragging ? 999 : 'auto',
+                                    ...provided.draggableProps.style,
+                                  }}
                                 >
                                   <div className="flex items-start gap-2">
-                                    <div {...provided.dragHandleProps} className="text-gray-400 cursor-grab active:cursor-grabbing mt-0.5 text-sm select-none">⠿</div>
+                                    <div
+                                      {...provided.dragHandleProps}
+                                      className="flex flex-col items-center justify-center gap-px mt-0.5 cursor-grab active:cursor-grabbing select-none rounded p-0.5 hover:bg-black/5 transition"
+                                      style={{ color: snapshot.isDragging ? '#183a37' : '#9ca3af' }}
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                                        <circle cx="4" cy="3" r="1.5"/><circle cx="10" cy="3" r="1.5"/>
+                                        <circle cx="4" cy="7" r="1.5"/><circle cx="10" cy="7" r="1.5"/>
+                                        <circle cx="4" cy="11" r="1.5"/><circle cx="10" cy="11" r="1.5"/>
+                                      </svg>
+                                    </div>
                                     <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ${
                                       index === 0 ? 'bg-green-500' : index === markers.length - 1 && markers.length > 1 ? 'bg-red-500' : 'bg-gray-500'
                                     }`}>
@@ -993,6 +1103,15 @@ function Navigation() {
                 >
                   <BookmarkIcon className="w-4 h-4" style={{ color: '#183a37' }} />
                   Save Route
+                </button>
+                <button
+                  onClick={handleShareRoute}
+                  disabled={!currentRoute || markers.length < 2 || !activeGroupId}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white transition disabled:opacity-40 hover:opacity-80"
+                  style={{ background: '#183a37' }}
+                >
+                  <ShareIcon className="w-4 h-4" />
+                  Share with Group
                 </button>
               </div>
             </div>
@@ -1555,6 +1674,53 @@ function Navigation() {
               customPins={customPins}
             />
 
+            {/* ── Mobile floating controls (hidden on desktop) ── */}
+            {!isNavigating && (
+              <div className="absolute top-3 left-3 z-10 flex gap-2 lg:hidden">
+                <button
+                  onClick={() => setShowMobileSidebar(true)}
+                  className="w-10 h-10 rounded-xl shadow-lg flex items-center justify-center transition hover:opacity-80"
+                  style={{ background: '#000000' }}
+                >
+                  <Bars3Icon className="w-5 h-5 text-white" />
+                </button>
+                <button
+                  onClick={() => setShowMobileTools(true)}
+                  className="h-10 px-3 rounded-xl shadow-lg flex items-center gap-2 transition hover:opacity-80"
+                  style={{ background: '#183a37' }}
+                >
+                  <AdjustmentsHorizontalIcon className="w-5 h-5 text-white" />
+                  <span className="text-white text-xs font-semibold">Plan</span>
+                </button>
+              </div>
+            )}
+
+            {/* Mobile route summary pill */}
+            {!isNavigating && currentRoute && (
+              <div className="absolute bottom-4 left-3 right-3 z-10 lg:hidden">
+                <div className="rounded-xl shadow-lg p-3 flex items-center gap-3" style={{ background: '#160f29' }}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-semibold">{currentRoute.summary.totalDistance} · {currentRoute.summary.totalDuration}</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'rgba(251,251,242,0.6)' }}>{markers.length} stops · ETA {currentRoute.summary.estimatedArrival}</p>
+                  </div>
+                  <button
+                    onClick={handleStartNavigation}
+                    disabled={!currentRoute?.steps?.length}
+                    className="px-4 py-2 rounded-lg text-xs font-bold text-white shrink-0 transition hover:opacity-80 disabled:opacity-40"
+                    style={{ background: '#183a37' }}
+                  >
+                    Start
+                  </button>
+                  <button
+                    onClick={() => setShowMobileTools(true)}
+                    className="p-2 rounded-lg shrink-0 transition hover:bg-white/10"
+                  >
+                    <ChevronUpIcon className="w-4 h-4 text-white" />
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Add Pin mode banner */}
             {addPinMode && (
               <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 px-4 py-2 rounded-full shadow-lg text-sm font-medium flex items-center gap-2 animate-pulse text-white" style={{ background: '#183a37' }}>
@@ -1839,6 +2005,16 @@ function Navigation() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ══ TOAST NOTIFICATION ══════════════════════════════════════════════ */}
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-5 py-3 rounded-xl shadow-2xl text-sm font-medium text-white flex items-center gap-2 transition-all animate-[slideUp_0.3s_ease-out]`}
+          style={{ background: toast.type === 'error' ? '#dc2626' : '#183a37' }}
+        >
+          {toast.type === 'error' ? <XMarkIcon className="w-4 h-4" /> : <CheckIcon className="w-4 h-4" />}
+          {toast.message}
         </div>
       )}
 

@@ -9,28 +9,51 @@ router = APIRouter(prefix="/routes", tags=["Routes"])
 
 
 def _ensure_trip_member(trip_id: str, user_id: str) -> None:
-    member = (
-        supabase.table("group_member")
-        .select("id")
-        .eq("group_id", trip_id)
-        .eq("user_id", user_id)
-        .is_("left_datetime", None)
-        .maybe_single()
-        .execute()
-    )
-    if member.data:
-        return
+    try:
+        member = (
+            supabase.table("group_member")
+            .select("id")
+            .eq("group_id", trip_id)
+            .eq("user_id", user_id)
+            .is_("left_datetime", None)
+            .maybe_single()
+            .execute()
+        )
+        if member and member.data:
+            return
+    except Exception:
+        pass
 
-    owner = (
-        supabase.table("trips")
-        .select("id")
-        .eq("id", trip_id)
-        .eq("owner_id", user_id)
-        .maybe_single()
-        .execute()
-    )
-    if not owner.data:
-        raise HTTPException(status_code=403, detail="Not a member of this group")
+    try:
+        tm = (
+            supabase.table("trip_members")
+            .select("id")
+            .eq("trip_id", trip_id)
+            .eq("user_id", user_id)
+            .is_("left_at", None)
+            .maybe_single()
+            .execute()
+        )
+        if tm and tm.data:
+            return
+    except Exception:
+        pass
+
+    try:
+        owner = (
+            supabase.table("trips")
+            .select("id")
+            .eq("id", trip_id)
+            .eq("owner_id", user_id)
+            .maybe_single()
+            .execute()
+        )
+        if owner and owner.data:
+            return
+    except Exception:
+        pass
+
+    raise HTTPException(status_code=403, detail="Not a member of this group")
 
 
 def _is_trip_leader(trip_id: str, user_id: str) -> bool:

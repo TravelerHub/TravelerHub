@@ -877,15 +877,18 @@ def get_group_settings(
     current_user=Depends(oauth2.get_current_user),
 ):
     """Get the group's social contract settings."""
-    res = (
-        supabase.table("group_settings")
-        .select("*")
-        .eq("trip_id", trip_id)
-        .maybe_single()
-        .execute()
-    )
-    if res.data:
-        return res.data
+    try:
+        res = (
+            supabase.table("group_settings")
+            .select("*")
+            .eq("trip_id", trip_id)
+            .maybe_single()
+            .execute()
+        )
+        if res and res.data:
+            return res.data
+    except Exception:
+        pass
 
     # Return defaults
     return {
