@@ -4,6 +4,7 @@ import MessageList from "./MessagerList";
 import { chatApi } from "./chatAPI";
 import { encryptionUtils } from "../../lib/encryption";
 import { PaperAirplaneIcon } from "@heroicons/react/24/outline";
+import { API_BASE } from "../../config.js";
 
 export default function ChatWindow({
   loading,
@@ -136,7 +137,8 @@ export default function ChatWindow({
   useEffect(() => {
     if (!conversationID) return;
     let isActive = true;
-    const ws = new WebSocket(`ws://127.0.0.1:8000/api/ws/conversations/${conversationID}`);
+    const wsBase = API_BASE.replace(/^http/, "ws");
+    const ws = new WebSocket(`${wsBase}/api/ws/conversations/${conversationID}`);
     ws.onmessage = (event) => {
       if (!isActive) return;
       const msg = JSON.parse(event.data);
