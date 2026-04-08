@@ -30,6 +30,8 @@ function Navbar_Dashboard() {
       calendar: "/calendar",
       finance: "/finance", wallet: "/finance",
       scanner: "/expenses", receipt: "/expenses", expenses: "/expenses",
+      todo: "/todo", "to-do": "/todo", tasks: "/todo", checklist: "/todo",
+      emergency: "/emergency", sos: "/emergency", safety: "/emergency",
       profile: "/profile",
       settings: "/settings",
     };

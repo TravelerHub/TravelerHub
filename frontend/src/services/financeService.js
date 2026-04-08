@@ -53,3 +53,77 @@ export async function deleteFinanceTransaction(transactionId) {
     throw new Error('Failed to delete finance transaction');
   }
 }
+
+// ── Expense Splitting ────────────────────────────────────────────────────────
+
+export async function splitExpense(expenseId, { splitRule = 'equal', memberIds = null, shares = null } = {}) {
+  const body = { split_rule: splitRule };
+  if (memberIds) body.member_ids = memberIds;
+  if (shares) body.shares = shares;
+
+  const response = await fetch(`${API_BASE}/finance/split/${expenseId}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${getToken()}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to split expense');
+  }
+
+  return response.json();
+}
+
+export async function getTripBalances(tripId) {
+  const response = await fetch(`${API_BASE}/finance/balances/${tripId}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to load trip balances');
+  }
+
+  return response.json();
+}
+
+export async function recordSettlement({ tripId, toUserId, amount, currency = 'USD', method = 'manual', note = '' }) {
+  const response = await fetch(`${API_BASE}/finance/settle`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${getToken()}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      trip_id: tripId,
+      to_user_id: toUserId,
+      amount,
+      currency,
+      method,
+      note,
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to record settlement');
+  }
+
+  return response.json();
+}
+
+export async function getTripSettlements(tripId) {
+  const response = await fetch(`${API_BASE}/finance/settlements/${tripId}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to load settlements');
+  }
+
+  const payload = await response.json();
+  return payload.settlements || [];
+}
