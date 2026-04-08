@@ -4,11 +4,14 @@ Trip Photo Gallery — UC#6 (Centralized Trip Photo)
 Group-scoped photo sharing with Supabase Storage.
 
 Endpoints:
-  GET    /trips/{trip_id}/media              — fetch all photos for a trip
+  GET    /trips/{trip_id}/media              — fetch all photos with like/save status
   POST   /trips/{trip_id}/upload             — upload photo to trip album
   PATCH  /trips/{trip_id}/media/{media_id}   — update caption
   DELETE /trips/{trip_id}/media/{media_id}   — delete photo (owner or leader)
+  POST   /trips/{trip_id}/media/{media_id}/like   — toggle like
+  POST   /trips/{trip_id}/media/{media_id}/save   — toggle save/bookmark
   GET    /trips/my-albums                    — list all trips with photo counts
+  GET    /trips/saved-photos                 — user's saved/bookmarked photos
 """
 
 import secrets
@@ -73,9 +76,9 @@ async def get_trip_media(
     trip_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
-    """Fetches all media for a trip, ordered newest first."""
+    """Fetches all media for a trip with like/save status for the current user."""
     try:
-        _uid(current_user)
+        user_id = _uid(current_user)
 
         response = (
             supabase.table("trip_media")
@@ -84,8 +87,37 @@ async def get_trip_media(
             .order("created_at", desc=True)
             .execute()
         )
+        photos = response.data or []
+        if not photos:
+            return []
 
-        return response.data or []
+        media_ids = [p["id"] for p in photos]
+
+        # Fetch current user's likes
+        likes_res = (
+            supabase.table("media_likes")
+            .select("media_id")
+            .eq("user_id", user_id)
+            .in_("media_id", media_ids)
+            .execute()
+        )
+        liked_ids = {r["media_id"] for r in (likes_res.data or [])}
+
+        # Fetch current user's saves
+        saves_res = (
+            supabase.table("media_saves")
+            .select("media_id")
+            .eq("user_id", user_id)
+            .in_("media_id", media_ids)
+            .execute()
+        )
+        saved_ids = {r["media_id"] for r in (saves_res.data or [])}
+
+        for p in photos:
+            p["liked_by_me"] = p["id"] in liked_ids
+            p["saved_by_me"] = p["id"] in saved_ids
+
+        return photos
 
     except Exception as e:
         print(f"Error fetching media: {e}")
@@ -313,3 +345,110 @@ async def get_my_albums(
     albums.sort(key=lambda a: a.get("latest_at") or "", reverse=True)
 
     return {"albums": albums}
+
+
+# ── POST: Toggle like ────────────────────────────────────────────────────────
+
+@router.post("/{trip_id}/media/{media_id}/like")
+async def toggle_like(
+    trip_id: str,
+    media_id: str,
+    current_user=Depends(oauth2.get_current_user),
+):
+    """Like or unlike a photo. Returns the new like state and count."""
+    user_id = _uid(current_user)
+
+    existing = (
+        supabase.table("media_likes")
+        .select("id")
+        .eq("media_id", media_id)
+        .eq("user_id", user_id)
+        .maybe_single()
+        .execute()
+    )
+
+    if existing.data:
+        # Unlike
+        supabase.table("media_likes").delete().eq("id", existing.data["id"]).execute()
+        # Decrement count
+        photo = supabase.table("trip_media").select("like_count").eq("id", media_id).maybe_single().execute()
+        new_count = max(0, (photo.data or {}).get("like_count", 1) - 1)
+        supabase.table("trip_media").update({"like_count": new_count}).eq("id", media_id).execute()
+        return {"liked": False, "like_count": new_count}
+    else:
+        # Like
+        supabase.table("media_likes").insert({
+            "media_id": media_id,
+            "user_id": user_id,
+        }).execute()
+        photo = supabase.table("trip_media").select("like_count").eq("id", media_id).maybe_single().execute()
+        new_count = ((photo.data or {}).get("like_count", 0) or 0) + 1
+        supabase.table("trip_media").update({"like_count": new_count}).eq("id", media_id).execute()
+        return {"liked": True, "like_count": new_count}
+
+
+# ── POST: Toggle save/bookmark ───────────────────────────────────────────────
+
+@router.post("/{trip_id}/media/{media_id}/save")
+async def toggle_save(
+    trip_id: str,
+    media_id: str,
+    current_user=Depends(oauth2.get_current_user),
+):
+    """Save or unsave a photo to personal collection."""
+    user_id = _uid(current_user)
+
+    existing = (
+        supabase.table("media_saves")
+        .select("id")
+        .eq("media_id", media_id)
+        .eq("user_id", user_id)
+        .maybe_single()
+        .execute()
+    )
+
+    if existing.data:
+        supabase.table("media_saves").delete().eq("id", existing.data["id"]).execute()
+        return {"saved": False}
+    else:
+        supabase.table("media_saves").insert({
+            "media_id": media_id,
+            "user_id": user_id,
+        }).execute()
+        return {"saved": True}
+
+
+# ── GET: Saved photos ────────────────────────────────────────────────────────
+
+@router.get("/saved-photos")
+async def get_saved_photos(
+    current_user=Depends(oauth2.get_current_user),
+):
+    """Get all photos the user has saved/bookmarked across all trips."""
+    user_id = _uid(current_user)
+
+    saves_res = (
+        supabase.table("media_saves")
+        .select("media_id")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    media_ids = [r["media_id"] for r in (saves_res.data or [])]
+
+    if not media_ids:
+        return []
+
+    photos_res = (
+        supabase.table("trip_media")
+        .select("*")
+        .in_("id", media_ids)
+        .execute()
+    )
+
+    photos = photos_res.data or []
+    for p in photos:
+        p["liked_by_me"] = False
+        p["saved_by_me"] = True
+
+    return photos
