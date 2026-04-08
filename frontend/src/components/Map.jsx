@@ -54,7 +54,7 @@ const Map = forwardRef(function Map({
 
     mapRef.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/streets-v12',
+      style: 'mapbox://styles/mapbox/outdoors-v12',
       center: center,
       zoom: zoom,
     });
@@ -135,23 +135,28 @@ const Map = forwardRef(function Map({
       el.className = 'custom-marker';
       el.style.cursor = 'grab';
 
-      let bgColor;
+      let color;
       let label;
+      const isStart = index === 0;
+      const isEnd = index === markers.length - 1 && markers.length > 1;
 
-      if (index === 0) {
-        bgColor = 'bg-green-500';
+      if (isStart) {
+        color = '#16a34a';
         label = 'A';
-      } else if (index === markers.length - 1 && markers.length > 1) {
-        bgColor = 'bg-red-500';
+      } else if (isEnd) {
+        color = '#dc2626';
         label = 'B';
       } else {
-        bgColor = 'bg-blue-500';
+        color = '#183a37';
         label = index + 1;
       }
 
       el.innerHTML = `
-        <div class="flex items-center justify-center w-10 h-10 ${bgColor} rounded-full text-white font-bold shadow-lg border-2 border-white">
-          ${label}
+        <div style="position:relative;display:flex;align-items:center;justify-content:center;">
+          ${isEnd ? '<div style="position:absolute;inset:-4px;border-radius:50%;border:2px solid rgba(220,38,38,0.4);animation:ping 1.5s cubic-bezier(0,0,0.2,1) infinite;"></div>' : ''}
+          <div style="width:36px;height:36px;background:${color};border-radius:50%;color:white;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+            ${label}
+          </div>
         </div>
       `;
 
@@ -333,13 +338,13 @@ const Map = forwardRef(function Map({
     });
   }, [expenseMarkers]);
 
-  // Draw route (with completed segment coloring during navigation)
+  // Draw route (with glow casing + completed segment coloring during navigation)
   useEffect(() => {
     if (!mapRef.current) return;
 
     const drawRoute = () => {
       // Clean up existing route layers
-      ['route-completed', 'route'].forEach(id => {
+      ['route-completed', 'route', 'route-glow', 'route-completed-glow'].forEach(id => {
         if (mapRef.current.getLayer(id)) mapRef.current.removeLayer(id);
         if (mapRef.current.getSource(id)) mapRef.current.removeSource(id);
       });
@@ -348,9 +353,35 @@ const Map = forwardRef(function Map({
 
       const coords = route.geometry.coordinates;
 
+      // Helper: add a route segment with glow casing
+      const addSegment = (id, geometry, color, opacity, isGlow = false) => {
+        const sourceId = isGlow ? `${id}-glow` : id;
+        mapRef.current.addSource(sourceId, {
+          type: 'geojson',
+          data: { type: 'Feature', properties: {}, geometry },
+        });
+        if (isGlow) {
+          // Outer glow casing layer
+          mapRef.current.addLayer({
+            id: sourceId,
+            type: 'line',
+            source: sourceId,
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': color, 'line-width': 12, 'line-opacity': opacity * 0.25, 'line-blur': 4 },
+          });
+        } else {
+          // Inner crisp route line
+          mapRef.current.addLayer({
+            id,
+            type: 'line',
+            source: id,
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': color, 'line-width': 5, 'line-opacity': opacity },
+          });
+        }
+      };
+
       if (navigationMode && currentStepIndex > 0 && route.steps) {
-        // Split route into completed and remaining segments based on current step
-        // Find the coordinate index closest to the current step's start_location
         const currentStep = route.steps[currentStepIndex];
         const splitPoint = currentStep?.start_location;
         let splitIdx = 0;
@@ -359,65 +390,24 @@ const Map = forwardRef(function Map({
           let minDist = Infinity;
           coords.forEach(([lng, lat], i) => {
             const d = Math.abs(lng - splitPoint[0]) + Math.abs(lat - splitPoint[1]);
-            if (d < minDist) {
-              minDist = d;
-              splitIdx = i;
-            }
+            if (d < minDist) { minDist = d; splitIdx = i; }
           });
         }
 
-        // Completed portion (gray)
+        // Completed portion (muted gray)
         if (splitIdx > 0) {
-          mapRef.current.addSource('route-completed', {
-            type: 'geojson',
-            data: {
-              type: 'Feature',
-              properties: {},
-              geometry: { type: 'LineString', coordinates: coords.slice(0, splitIdx + 1) },
-            },
-          });
-          mapRef.current.addLayer({
-            id: 'route-completed',
-            type: 'line',
-            source: 'route-completed',
-            layout: { 'line-join': 'round', 'line-cap': 'round' },
-            paint: { 'line-color': '#9CA3AF', 'line-width': 5, 'line-opacity': 0.5 },
-          });
+          const completedGeom = { type: 'LineString', coordinates: coords.slice(0, splitIdx + 1) };
+          addSegment('route-completed', completedGeom, '#9CA3AF', 0.45);
         }
 
-        // Remaining portion (blue)
-        mapRef.current.addSource('route', {
-          type: 'geojson',
-          data: {
-            type: 'Feature',
-            properties: {},
-            geometry: { type: 'LineString', coordinates: coords.slice(splitIdx) },
-          },
-        });
-        mapRef.current.addLayer({
-          id: 'route',
-          type: 'line',
-          source: 'route',
-          layout: { 'line-join': 'round', 'line-cap': 'round' },
-          paint: { 'line-color': '#3B82F6', 'line-width': 5, 'line-opacity': 0.75 },
-        });
+        // Remaining portion (teal with glow)
+        const remainingGeom = { type: 'LineString', coordinates: coords.slice(splitIdx) };
+        addSegment('route', remainingGeom, '#183a37', 0.3, true);  // glow
+        addSegment('route', remainingGeom, '#183a37', 0.9);        // line
       } else {
-        // Normal mode — single blue route line
-        mapRef.current.addSource('route', {
-          type: 'geojson',
-          data: {
-            type: 'Feature',
-            properties: {},
-            geometry: route.geometry,
-          },
-        });
-        mapRef.current.addLayer({
-          id: 'route',
-          type: 'line',
-          source: 'route',
-          layout: { 'line-join': 'round', 'line-cap': 'round' },
-          paint: { 'line-color': '#3B82F6', 'line-width': 5, 'line-opacity': 0.75 },
-        });
+        // Normal mode — teal route with glow casing
+        addSegment('route', route.geometry, '#183a37', 0.25, true);  // glow
+        addSegment('route', route.geometry, '#183a37', 0.85);        // line
       }
     };
 
@@ -430,6 +420,12 @@ const Map = forwardRef(function Map({
 
   return (
     <div className="relative w-full h-full rounded-lg overflow-hidden">
+      <style>{`
+        @keyframes ping {
+          0% { transform: scale(1); opacity: 0.75; }
+          75%, 100% { transform: scale(1.8); opacity: 0; }
+        }
+      `}</style>
       <div ref={mapContainer} className="w-full h-full" />
     </div>
   );

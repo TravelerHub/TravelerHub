@@ -594,6 +594,22 @@ async def update_group_position(
         except Exception:
             pass
 
+    # Also check if user is the trip owner
+    if not membership or not membership.data:
+        try:
+            owner = (
+                supabase.table("trips")
+                .select("id")
+                .eq("id", group_id)
+                .eq("owner_id", user_id)
+                .maybe_single()
+                .execute()
+            )
+            if owner and owner.data:
+                membership = owner
+        except Exception:
+            pass
+
     if not membership or not membership.data:
         raise HTTPException(status_code=403, detail="Not a member of this group")
 
