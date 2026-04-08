@@ -13,6 +13,7 @@ import TodoWidget          from "../../components/dashboard/TodoWidget.jsx";
 import MiniCalendar        from "../../components/dashboard/MiniCalendar.jsx";
 import LocalInfoWidget     from "../../components/dashboard/LocalInfoWidget.jsx";
 import BookingSummaryWidget from "../../components/dashboard/BookingSummaryWidget.jsx";
+import GalleryWidget       from "../../components/dashboard/GalleryWidget.jsx";
 
 // ── Color palette ─────────────────────────────────────────────────────────────
 // #160f29  deep dark   (sidebar, widget backgrounds)
@@ -481,6 +482,11 @@ export default function Dashboard() {
 
             <Widget title="Booking Summary" className="col-span-2" style={{ minHeight: "260px" }}>
               <BookingSummaryWidget bookings={upcomingBookings} />
+            </Widget>
+
+            {/* ── ROW 5 · Trip Gallery ──────────────────────────────────────── */}
+            <Widget title="Trip Gallery" className="col-span-2" style={{ minHeight: "260px" }}>
+              <GalleryWidget />
             </Widget>
 
           </div>
