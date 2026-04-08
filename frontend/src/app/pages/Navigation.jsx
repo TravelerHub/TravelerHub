@@ -6,9 +6,9 @@ import { API_BASE } from '../../config';
 import { haversineDistance } from '../../utils/haversine';
 import Map from '../../components/Map';
 import { searchPlaces, getPlaceName } from '../../services/geocodingService';
-import { getOptimizedRoute } from '../../services/routeService';
+import { getOptimizedRoute, getMultiModalRoute } from '../../services/routeService';
 import { ensureActiveGroupId, getActiveGroupId, getMyGroups, setActiveGroupId } from '../../services/groupService';
-import { syncMyPosition } from '../../services/smartRouteService';
+import { planSmartRoute, syncMyPosition } from '../../services/smartRouteService';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 // GCS components
@@ -18,8 +18,10 @@ import RankedChoicePoll from '../../components/RankedChoicePoll';
 import WeatherRouteAlert from '../../components/WeatherRouteAlert';
 import GroupSocialContract from '../../components/GroupSocialContract';
 import RoutePreferences from '../../components/RoutePreferences';
-import { planSmartRoute } from '../../services/smartRouteService';
-
+import DiscoveryOverlay from '../../components/DiscoveryOverlay';
+import ShortlistSidebar from '../../components/ShortlistSidebar';
+import ExpenseMarkers from '../../components/ExpenseMarkers';
+import StoryMode from '../../components/StoryMode';
 import {
   searchNearbyPlaces,
   searchPlacesByText,
@@ -65,7 +67,7 @@ import {
   AdjustmentsHorizontalIcon,
   ShareIcon,
 } from '@heroicons/react/24/outline';
-import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
+import { StarIcon as StarIconSolid, UserGroupIcon, PlayIcon } from '@heroicons/react/24/solid';
 
 import { searchByCategory } from '../../services/placesService';
 
@@ -143,10 +145,19 @@ function Navigation() {
   const [pinLabel, setPinLabel] = useState('');
   const [addPinMode, setAddPinMode] = useState(false);
 
-  // Route preference state (scenic/foodie/budget/fastest)
+  const [multiModalEnabled, setMultiModalEnabled] = useState(false);
+  const [legModes, setLegModes] = useState([]); // per-leg transport modes
+
   const [routePreference, setRoutePreference] = useState('fastest');
   const [smartChapters, setSmartChapters] = useState([]);
   const [smartSuggestions, setSmartSuggestions] = useState([]);
+  const [showDiscovery, setShowDiscovery] = useState(false);
+  const [showShortlist, setShowShortlist] = useState(false);
+  const [showExpenseMarkers, setShowExpenseMarkers] = useState(false);
+  const [showStoryMode, setShowStoryMode] = useState(false);
+  const [discoveryPlaces, setDiscoveryPlaces] = useState([]);
+  const [expenseMapMarkers, setExpenseMapMarkers] = useState([]);
+  const [activeTripId] = useState(null);
 
   // GCS state
   const [activePollId, setActivePollId] = useState(null);
@@ -170,6 +181,19 @@ function Navigation() {
     };
     boot();
   }, []);
+
+  // Keep legModes in sync with markers count
+  useEffect(() => {
+    const numLegs = Math.max(0, markers.length - 1);
+    setLegModes(prev => {
+      if (prev.length === numLegs) return prev;
+      const next = [];
+      for (let i = 0; i < numLegs; i++) {
+        next.push(prev[i] || transportMode);
+      }
+      return next;
+    });
+  }, [markers.length, transportMode]);
 
   // Auto-plan route when markers change (debounced 600ms)
   const autoPlanTimerRef = useRef(null);
@@ -442,6 +466,7 @@ function Navigation() {
     );
   };
 
+  // Plan route (supports multi-modal when enabled)
   const handlePlanRoute = async () => {
     if (markers.length < 2) { setRouteError('Please add at least 2 locations'); return; }
     setRouteLoading(true);
@@ -451,15 +476,18 @@ function Navigation() {
     try {
       const waypoints = markers.map(m => m.coordinates);
 
-      // Always get the base route for geometry + steps (needed for turn-by-turn nav)
-      const route = await getOptimizedRoute(waypoints, transportMode);
+      let route;
+      if (multiModalEnabled && markers.length >= 2) {
+        route = await getMultiModalRoute(waypoints, legModes);
+      } else {
+        route = await getOptimizedRoute(waypoints, transportMode);
+      }
+
       setCurrentRoute(route);
 
-      // Set destination for Group Arrival Sync
       const lastWp = waypoints[waypoints.length - 1];
       setRouteDestination({ lat: lastWp[1], lng: lastWp[0] });
 
-      // If preference is NOT fastest, also call the smart route for chapters + POI suggestions
       if (routePreference !== 'fastest') {
         try {
           const smartWaypoints = markers.map(m => ({
@@ -479,7 +507,6 @@ function Navigation() {
           console.warn('Smart route enhancement failed (using basic route):', smartErr.message);
         }
       }
-
       fetchAlongRouteSuggestions(route);
     } catch (error) {
       setRouteError(error.message || 'Unable to calculate route. Please try again.');
@@ -489,6 +516,147 @@ function Navigation() {
     }
   };
 
+  // Plan a smart route with preference engine (scenic/foodie/budget/fastest)
+  const handlePlanSmartRoute = async () => {
+    if (markers.length < 2) {
+      setRouteError('Please add at least 2 locations');
+      return;
+    }
+
+    setRouteLoading(true);
+    setRouteError('');
+
+    try {
+      const waypoints = markers.map(m => ({
+        name: m.title || 'Stop',
+        coordinates: m.coordinates,
+      }));
+
+      const result = await planSmartRoute(
+        waypoints,
+        transportMode,
+        routePreference,
+        null, // departure_time
+        activeGroupId,
+      );
+
+      // Use the base directions data to build the same route format
+      if (result.directions_data?.routes?.[0]) {
+        const gRoute = result.directions_data.routes[0];
+        const { default: polyline } = await import('@mapbox/polyline');
+        const decodedPoints = polyline.decode(gRoute.overview_polyline.points);
+        const coordinates = decodedPoints.map(([lat, lng]) => [lng, lat]);
+        const geometry = { type: 'LineString', coordinates };
+
+        const totalDuration = gRoute.legs.reduce((sum, leg) => sum + leg.duration.value, 0);
+        const totalDistance = gRoute.legs.reduce((sum, leg) => sum + leg.distance.value, 0);
+
+        const steps = gRoute.legs.flatMap(leg =>
+          leg.steps.map(step => ({
+            maneuver: {
+              instruction: step.html_instructions.replace(/<[^>]*>/g, ''),
+              type: step.maneuver || null,
+            },
+            name: step.name || null,
+            distance: step.distance.value,
+            duration: step.duration.value,
+            travel_mode: step.travel_mode,
+            start_location: step.start_location ? [step.start_location.lng, step.start_location.lat] : null,
+            end_location: step.end_location ? [step.end_location.lng, step.end_location.lat] : null,
+            transit: step.transit_details ? {
+              vehicleType: step.transit_details.line?.vehicle?.type || 'BUS',
+              lineName: step.transit_details.line?.name || null,
+              lineShortName: step.transit_details.line?.short_name || null,
+              headsign: step.transit_details.headsign || null,
+              departureStop: step.transit_details.departure_stop?.name || null,
+              arrivalStop: step.transit_details.arrival_stop?.name || null,
+              numStops: step.transit_details.num_stops || null,
+              departureTime: step.transit_details.departure_time?.text || null,
+              arrivalTime: step.transit_details.arrival_time?.text || null,
+            } : null,
+          }))
+        );
+
+        setCurrentRoute({
+          geometry,
+          duration: totalDuration,
+          distance: totalDistance,
+          steps,
+          summary: {
+            totalDistance: (totalDistance / 1000).toFixed(2) + ' km',
+            totalDuration: formatDuration(totalDuration),
+            estimatedArrival: calculateArrivalTime(totalDuration),
+          },
+        });
+      }
+
+      // Set chapters and suggestions from smart route
+      setSmartChapters(result.chapters || []);
+      setSmartSuggestions(result.suggestions || []);
+    } catch (error) {
+      setRouteError(error.message || 'Unable to plan smart route.');
+      console.error('Smart route error:', error);
+    } finally {
+      setRouteLoading(false);
+    }
+  };
+
+  // Insert a stop at a specific index (for multi-modal leg splitting)
+  const [splitSearchIndex, setSplitSearchIndex] = useState(null);
+  const [splitSearchQuery, setSplitSearchQuery] = useState('');
+  const [splitSearchResults, setSplitSearchResults] = useState([]);
+  const [splitSearching, setSplitSearching] = useState(false);
+
+  const handleSplitSearch = async (query) => {
+    setSplitSearchQuery(query);
+    if (query.length < 2) { setSplitSearchResults([]); return; }
+    setSplitSearching(true);
+    try {
+      const results = await searchPlaces(query);
+      setSplitSearchResults(results.slice(0, 5));
+    } catch { setSplitSearchResults([]); }
+    finally { setSplitSearching(false); }
+  };
+
+  const handleInsertStop = (insertAfterIndex, place) => {
+    const newMarker = {
+      coordinates: [place.lng || place.lon, place.lat],
+      title: place.display_name?.split(',')[0] || place.name || 'Stop',
+      description: place.display_name || '',
+    };
+    setMarkers(prev => {
+      const next = [...prev];
+      next.splice(insertAfterIndex + 1, 0, newMarker);
+      return next;
+    });
+    // Reset split search
+    setSplitSearchIndex(null);
+    setSplitSearchQuery('');
+    setSplitSearchResults([]);
+  };
+
+  // Handle adding a smart-route suggestion as a waypoint
+  const handleAddSuggestionToRoute = (suggestion) => {
+    const newMarker = {
+      coordinates: suggestion.coordinates,
+      title: suggestion.name,
+      description: suggestion.vicinity || '',
+    };
+    setMarkers(prev => [...prev, newMarker]);
+  };
+
+  // Handle adding an approved nomination to the route
+  const handleAddNominationToRoute = (nomination) => {
+    if (!nomination.lat || !nomination.lng) return;
+    const newMarker = {
+      coordinates: [nomination.lng, nomination.lat],
+      title: nomination.place_name,
+      description: nomination.place_address || '',
+    };
+    setMarkers(prev => [...prev, newMarker]);
+  };
+
+  // Fetch interesting places along the calculated route
   const fetchAlongRouteSuggestions = async (route) => {
     if (!route?.geometry?.coordinates || !userPreferences?.preferred_categories?.length) return;
     setLoadingSuggestions(true);
@@ -928,88 +1096,186 @@ function Navigation() {
               )}
             </div>
 
-            {/* Waypoints */}
-            <div className="px-4 py-4 border-b" style={{ borderColor: '#d1d1c7' }}>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: '#160f29' }}>
-                  <MapPinIcon className="w-4 h-4" style={{ color: '#183a37' }} />
-                  Waypoints ({markers.length})
-                </h3>
-                {markers.length > 0 && (
-                  <button onClick={handleClearAll} className="text-xs flex items-center gap-1" style={{ color: '#ef4444' }}>
-                    <TrashIcon className="w-3 h-3" />Clear
-                  </button>
-                )}
-              </div>
-              <div className="max-h-56 overflow-y-auto">
-                {markers.length === 0 ? (
-                  <div className="text-center py-6" style={{ color: '#5c6b73' }}>
-                    <MapPinIcon className="w-7 h-7 mx-auto mb-2 opacity-40" />
-                    <p className="text-xs">No locations added yet</p>
-                  </div>
-                ) : (
-                  <DragDropContext onDragEnd={handleDragEnd}>
-                    <Droppable droppableId="waypoints">
-                      {(provided) => (
-                        <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-1.5">
-                          {markers.map((marker, index) => (
-                            <Draggable key={`marker-${index}`} draggableId={`marker-${index}`} index={index}>
-                              {(provided, snapshot) => (
-                                <div
-                                  ref={provided.innerRef}
-                                  {...provided.draggableProps}
-                                  className="p-2.5 rounded-xl group"
-                                  style={{
-                                    background: snapshot.isDragging ? '#fff' : '#f0f0e8',
-                                    border: snapshot.isDragging ? '2px solid #183a37' : '1px solid #d1d1c7',
-                                    boxShadow: snapshot.isDragging ? '0 12px 28px rgba(0,0,0,0.18), 0 4px 10px rgba(0,0,0,0.08)' : 'none',
-                                    transform: snapshot.isDragging ? 'scale(1.03) rotate(1deg)' : 'none',
-                                    transition: snapshot.isDragging ? 'box-shadow 0.2s, border 0.2s' : 'all 0.25s cubic-bezier(0.2, 0, 0, 1)',
-                                    zIndex: snapshot.isDragging ? 999 : 'auto',
-                                    ...provided.draggableProps.style,
-                                  }}
-                                >
-                                  <div className="flex items-start gap-2">
+              {/* Saved Locations */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <MapPinIcon className="w-4 h-4" />
+                    Waypoints ({markers.length})
+                  </h3>
+                  {markers.length > 0 && (
+                    <button
+                      onClick={handleClearAll}
+                      className="text-xs text-red-600 hover:text-red-700 flex items-center gap-1"
+                    >
+                      <TrashIcon className="w-3 h-3" />
+                      Clear All
+                    </button>
+                  )}
+                </div>
+                
+                <div className="max-h-64 overflow-y-auto">
+                  {markers.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">
+                      <MapPinIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No locations added yet</p>
+                    </div>
+                  ) : (
+                    <DragDropContext onDragEnd={handleDragEnd}>
+                      <Droppable droppableId="waypoints">
+                        {(provided) => (
+                          <div
+                            ref={provided.innerRef}
+                            {...provided.droppableProps}
+                            className="space-y-2"
+                          >
+                            {markers.map((marker, index) => (
+                              <div key={`marker-group-${index}`}>
+                                <Draggable key={`marker-${index}`} draggableId={`marker-${index}`} index={index}>
+                                  {(provided, snapshot) => (
                                     <div
-                                      {...provided.dragHandleProps}
-                                      className="flex flex-col items-center justify-center gap-px mt-0.5 cursor-grab active:cursor-grabbing select-none rounded p-0.5 hover:bg-black/5 transition"
-                                      style={{ color: snapshot.isDragging ? '#183a37' : '#9ca3af' }}
+                                      ref={provided.innerRef}
+                                      {...provided.draggableProps}
+                                      className={`p-3 rounded-lg transition group ${
+                                        snapshot.isDragging ? 'bg-blue-50 shadow-lg' : 'bg-gray-50 hover:bg-gray-100'
+                                      }`}
                                     >
-                                      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                                        <circle cx="4" cy="3" r="1.5"/><circle cx="10" cy="3" r="1.5"/>
-                                        <circle cx="4" cy="7" r="1.5"/><circle cx="10" cy="7" r="1.5"/>
-                                        <circle cx="4" cy="11" r="1.5"/><circle cx="10" cy="11" r="1.5"/>
-                                      </svg>
+                                      <div className="flex items-start justify-between">
+                                        <div className="flex gap-2 flex-1">
+                                          <div
+                                            {...provided.dragHandleProps}
+                                            className="flex items-center cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600"
+                                            title="Drag to reorder"
+                                          >
+                                            ⠿
+                                          </div>
+                                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
+                                            index === 0 ? 'bg-green-500' :
+                                            index === markers.length - 1 && markers.length > 1 ? 'bg-red-500' :
+                                            'bg-blue-500'
+                                          }`}>
+                                            {index === 0 ? 'A' : index === markers.length - 1 && markers.length > 1 ? 'B' : index + 1}
+                                          </div>
+                                          <div className="flex-1">
+                                            <div className="font-medium text-gray-900 text-sm">
+                                              {marker.title}
+                                            </div>
+                                            <div className="text-xs text-gray-500">
+                                              {marker.description}
+                                            </div>
+                                            <div className="text-xs text-gray-400 mt-1">
+                                              {marker.coordinates[1].toFixed(4)}, {marker.coordinates[0].toFixed(4)}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <button
+                                          onClick={() => handleRemoveMarker(index)}
+                                          className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded transition"
+                                          title="Remove location"
+                                        >
+                                          <TrashIcon className="w-4 h-4" />
+                                        </button>
+                                      </div>
                                     </div>
-                                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ${
-                                      index === 0 ? 'bg-green-500' : index === markers.length - 1 && markers.length > 1 ? 'bg-red-500' : 'bg-gray-500'
-                                    }`}>
-                                      {index === 0 ? 'A' : index === markers.length - 1 && markers.length > 1 ? 'B' : index + 1}
+                                  )}
+                                </Draggable>
+                                {/* Per-leg mode selector between waypoints */}
+                                {multiModalEnabled && index < markers.length - 1 && (
+                                  <div className="py-1 pl-6 pr-2">
+                                    <div className="flex items-center gap-1">
+                                      <div className="flex-shrink-0 w-0.5 h-full bg-gray-200 ml-3" />
+                                      <div className="flex gap-1 flex-1 justify-center">
+                                        {[
+                                          { id: 'driving', emoji: '🚗' },
+                                          { id: 'walking', emoji: '🚶' },
+                                          { id: 'cycling', emoji: '🚲' },
+                                          { id: 'transit', emoji: '🚌' },
+                                        ].map(m => (
+                                          <button
+                                            key={m.id}
+                                            onClick={() => setLegModes(prev => {
+                                              const next = [...prev];
+                                              next[index] = m.id;
+                                              return next;
+                                            })}
+                                            className={`w-8 h-8 rounded-md text-sm flex items-center justify-center transition ${
+                                              legModes[index] === m.id
+                                                ? 'bg-blue-600 shadow-sm ring-1 ring-blue-400'
+                                                : 'bg-gray-100 hover:bg-gray-200'
+                                            }`}
+                                            title={m.id}
+                                          >
+                                            {m.emoji}
+                                          </button>
+                                        ))}
+                                      </div>
+                                      {/* Split leg — add a stop in between */}
+                                      <button
+                                        onClick={() => setSplitSearchIndex(splitSearchIndex === index ? null : index)}
+                                        className={`w-8 h-8 rounded-md text-xs flex items-center justify-center transition ${
+                                          splitSearchIndex === index
+                                            ? 'bg-green-600 text-white'
+                                            : 'bg-green-50 text-green-700 hover:bg-green-100'
+                                        }`}
+                                        title="Add a stop to split this leg"
+                                      >
+                                        <PlusIcon className="w-4 h-4" />
+                                      </button>
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-xs font-medium truncate" style={{ color: '#160f29' }}>{marker.title}</div>
-                                      <div className="text-xs truncate" style={{ color: '#5c6b73' }}>{marker.description}</div>
-                                    </div>
-                                    <button
-                                      onClick={() => handleRemoveMarker(index)}
-                                      className="opacity-0 group-hover:opacity-100 p-1 rounded transition"
-                                      style={{ color: '#ef4444' }}
-                                    >
-                                      <TrashIcon className="w-3.5 h-3.5" />
-                                    </button>
+                                    {/* Inline search to insert a mode-switch stop */}
+                                    {splitSearchIndex === index && (
+                                      <div className="mt-1 ml-6 mr-1">
+                                        <div className="relative">
+                                          <input
+                                            type="text"
+                                            value={splitSearchQuery}
+                                            onChange={e => handleSplitSearch(e.target.value)}
+                                            placeholder="Search for a stop (e.g. bus station)..."
+                                            className="w-full text-xs border border-gray-300 rounded-lg px-3 py-2 pr-8 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                            autoFocus
+                                          />
+                                          {splitSearching && (
+                                            <ArrowPathIcon className="absolute right-2 top-2 w-3.5 h-3.5 text-gray-400 animate-spin" />
+                                          )}
+                                        </div>
+                                        {splitSearchResults.length > 0 && (
+                                          <div className="mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-36 overflow-y-auto">
+                                            {splitSearchResults.map((place, pi) => (
+                                              <button
+                                                key={pi}
+                                                onClick={() => handleInsertStop(index, place)}
+                                                className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 transition border-b border-gray-100 last:border-0"
+                                              >
+                                                <span className="font-medium text-gray-800">
+                                                  {place.display_name?.split(',')[0] || place.name}
+                                                </span>
+                                                <span className="text-gray-400 ml-1 truncate">
+                                                  {place.display_name?.split(',').slice(1, 3).join(',') || ''}
+                                                </span>
+                                              </button>
+                                            ))}
+                                          </div>
+                                        )}
+                                        <button
+                                          onClick={() => { setSplitSearchIndex(null); setSplitSearchQuery(''); setSplitSearchResults([]); }}
+                                          className="mt-1 text-xs text-gray-400 hover:text-gray-600"
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
-                                </div>
-                              )}
-                            </Draggable>
-                          ))}
-                          {provided.placeholder}
-                        </div>
-                      )}
-                    </Droppable>
-                  </DragDropContext>
-                )}
+                                )}
+                              </div>
+                            ))}
+                            {provided.placeholder}
+                          </div>
+                        )}
+                      </Droppable>
+                    </DragDropContext>
+                  )}
+                </div>
               </div>
-            </div>
 
             {/* Quick Actions */}
             <div className="px-4 py-4 border-b" style={{ borderColor: '#d1d1c7' }}>
@@ -1113,6 +1379,39 @@ function Navigation() {
                   <ShareIcon className="w-4 h-4" />
                   Share with Group
                 </button>
+                {activeGroupId && (
+                  <div className="grid grid-cols-2 gap-1.5 pt-1">
+                    <button
+                      onClick={() => setShowDiscovery(v => !v)}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition hover:opacity-80"
+                      style={{ background: showDiscovery ? '#183a37' : '#e8e8e0', color: showDiscovery ? '#fff' : '#160f29' }}
+                    >
+                      <Square3Stack3DIcon className="w-3.5 h-3.5" />Discover
+                    </button>
+                    <button
+                      onClick={() => setShowShortlist(v => !v)}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition hover:opacity-80"
+                      style={{ background: showShortlist ? '#183a37' : '#e8e8e0', color: showShortlist ? '#fff' : '#160f29' }}
+                    >
+                      <BookmarkIcon className="w-3.5 h-3.5" />Shortlist
+                    </button>
+                    <button
+                      onClick={() => setShowExpenseMarkers(v => !v)}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition hover:opacity-80"
+                      style={{ background: showExpenseMarkers ? '#183a37' : '#e8e8e0', color: showExpenseMarkers ? '#fff' : '#160f29' }}
+                    >
+                      <CurrencyDollarIcon className="w-3.5 h-3.5" />Expenses
+                    </button>
+                    <button
+                      onClick={() => setShowStoryMode(v => !v)}
+                      disabled={!currentRoute}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition disabled:opacity-40 hover:opacity-80"
+                      style={{ background: showStoryMode ? '#183a37' : '#e8e8e0', color: showStoryMode ? '#fff' : '#160f29' }}
+                    >
+                      <PlayIcon className="w-3.5 h-3.5" />Story
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1301,7 +1600,7 @@ function Navigation() {
               )}
             </div>
 
-            {/* Custom Pins */}
+            {/* Custom Pins Card */}
             {customPins.length > 0 && (
               <div className="px-4 py-4 border-b" style={{ borderColor: '#d1d1c7' }}>
                 <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: '#160f29' }}>
@@ -1370,20 +1669,6 @@ function Navigation() {
               </div>
             )}
 
-            {/* ── GCS: Group-Centric Tools Toggle ── */}
-            {activeGroupId && (
-              <div className="px-4 py-3 border-b" style={{ borderColor: '#d1d1c7' }}>
-                <button
-                  onClick={() => setShowGcsPanel(!showGcsPanel)}
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition hover:opacity-80"
-                  style={{ background: '#183a37', color: '#f9fafb' }}
-                >
-                  <span>Group Intelligence</span>
-                  <span>{showGcsPanel ? '▲' : '▼'}</span>
-                </button>
-              </div>
-            )}
-
             {/* ── GCS Panel ── */}
             {showGcsPanel && activeGroupId && (
               <div className="px-4 py-3 space-y-3 border-b" style={{ borderColor: '#d1d1c7' }}>
@@ -1439,22 +1724,35 @@ function Navigation() {
                     <ArrowsRightLeftIcon className="w-4 h-4" style={{ color: '#183a37' }} />
                     Route Overview
                   </h2>
-                  {!isNavigating ? (
-                    <button
-                      onClick={handleStartNavigation}
-                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition hover:opacity-80"
-                      style={{ background: '#183a37' }}
-                    >
-                      <MapPinIcon className="w-3.5 h-3.5" />Start
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleExitNavigation}
-                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-700 transition"
-                    >
-                      <XMarkIcon className="w-3.5 h-3.5" />Exit
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {activeGroupId && (
+                      <button
+                        onClick={() => setShowGcsPanel(!showGcsPanel)}
+                        className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold transition hover:opacity-80"
+                        style={{ background: showGcsPanel ? '#183a37' : '#e8e8e0', color: showGcsPanel ? '#f9fafb' : '#5c6b73' }}
+                        title="Group Intelligence"
+                      >
+                        <UserGroupIcon className="w-3 h-3" />
+                        <span>Group</span>
+                      </button>
+                    )}
+                    {!isNavigating ? (
+                      <button
+                        onClick={handleStartNavigation}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition hover:opacity-80"
+                        style={{ background: '#183a37' }}
+                      >
+                        <MapPinIcon className="w-3.5 h-3.5" />Start
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleExitNavigation}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-700 transition"
+                      >
+                        <XMarkIcon className="w-3.5 h-3.5" />Exit
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Summary */}
@@ -1672,7 +1970,45 @@ function Navigation() {
               currentStepIndex={currentStepIndex}
               onMapClick={handleMapClick}
               customPins={customPins}
+              discoveryPlaces={discoveryPlaces}
+              expenseMarkers={expenseMapMarkers}
             />
+
+            {/* Overlay components */}
+            {activeGroupId && (
+              <DiscoveryOverlay
+                groupId={activeGroupId}
+                onPlacesLoad={setDiscoveryPlaces}
+                visible={showDiscovery}
+                onClose={() => setShowDiscovery(false)}
+              />
+            )}
+            {activeGroupId && (
+              <ShortlistSidebar
+                groupId={activeGroupId}
+                tripId={activeGroupId}
+                visible={showShortlist}
+                onClose={() => setShowShortlist(false)}
+                onAddToRoute={(place) => setMarkers(prev => [...prev, place])}
+              />
+            )}
+            {activeGroupId && (
+              <ExpenseMarkers
+                tripId={activeGroupId}
+                onMarkersLoad={setExpenseMapMarkers}
+                visible={showExpenseMarkers}
+                onClose={() => setShowExpenseMarkers(false)}
+              />
+            )}
+            {currentRoute && (
+              <StoryMode
+                route={currentRoute}
+                waypoints={markers}
+                mapRef={mapRef}
+                visible={showStoryMode}
+                onClose={() => setShowStoryMode(false)}
+              />
+            )}
 
             {/* ── Mobile floating controls (hidden on desktop) ── */}
             {!isNavigating && (
