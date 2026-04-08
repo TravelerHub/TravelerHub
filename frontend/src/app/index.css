@@ -120,6 +120,10 @@ button:focus-visible {
   to   { transform: scaleX(1); transform-origin: left; }
 }
 
+@keyframes slideUp {
+  from { opacity: 0; transform: translate(-50%, 20px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
 
 .footer-btn {
   display: inline-flex;

@@ -63,6 +63,7 @@ import {
   ArrowUturnRightIcon,
   Bars3Icon,
   AdjustmentsHorizontalIcon,
+  ShareIcon,
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 
@@ -101,6 +102,13 @@ function Navigation() {
   // Mobile responsive state
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [showMobileTools, setShowMobileTools] = useState(false);
+
+  // Toast notification state
+  const [toast, setToast] = useState(null); // { message, type: 'success' | 'error' }
+  const showToast = useCallback((message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  }, []);
 
   const categories = [
     { id: 'all', label: 'All', Icon: MagnifyingGlassIcon },
@@ -163,6 +171,18 @@ function Navigation() {
     };
     boot();
   }, []);
+
+  // Auto-plan route when markers change (debounced 600ms)
+  const autoPlanTimerRef = useRef(null);
+  useEffect(() => {
+    if (markers.length < 2 || isNavigating) return;
+    clearTimeout(autoPlanTimerRef.current);
+    autoPlanTimerRef.current = setTimeout(() => {
+      handlePlanRoute();
+    }, 600);
+    return () => clearTimeout(autoPlanTimerRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markers.length]);
 
   useEffect(() => {
     loadSavedRoutes();
@@ -683,11 +703,13 @@ function Navigation() {
         setShowSaveModal(false);
         setRouteName('');
         loadSavedRoutes();
-        alert('Route saved successfully!');
+        showToast('Route saved!');
+      } else {
+        showToast('Failed to save route', 'error');
       }
     } catch (error) {
       console.error('Error saving route:', error);
-      alert('Failed to save route');
+      showToast('Failed to save route', 'error');
     } finally {
       setSavingRoute(false);
     }
@@ -719,6 +741,37 @@ function Navigation() {
       if (response.ok) loadSavedRoutes();
     } catch (error) {
       console.error('Error deleting route:', error);
+    }
+  };
+
+  const handleShareRoute = async () => {
+    if (!currentRoute || markers.length < 2) { showToast('Plan a route first', 'error'); return; }
+    if (!activeGroupId) { showToast('Select a trip group to share with', 'error'); return; }
+    try {
+      const token = localStorage.getItem('token');
+      const routeData = {
+        name: `Shared Route ${new Date().toLocaleDateString()}`,
+        waypoints: markers.map(m => ({ name: m.title, address: m.description, coordinates: m.coordinates })),
+        route_data: currentRoute.geometry,
+        total_distance: currentRoute.distance,
+        total_duration: currentRoute.duration,
+        trip_id: activeGroupId,
+      };
+      const response = await fetch(`${API_BASE}/routes/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(routeData),
+      });
+      if (response.ok) {
+        loadSavedRoutes();
+        showToast('Route shared with your group!');
+      } else {
+        const err = await response.json().catch(() => ({}));
+        showToast(err.detail || 'Failed to share route', 'error');
+      }
+    } catch (error) {
+      console.error('Error sharing route:', error);
+      showToast('Failed to share route', 'error');
     }
   };
 
@@ -951,11 +1004,29 @@ function Navigation() {
                                 <div
                                   ref={provided.innerRef}
                                   {...provided.draggableProps}
-                                  className="p-2.5 rounded-lg transition group"
-                                  style={{ ...provided.draggableProps.style, background: snapshot.isDragging ? '#e8e8e0' : '#f0f0e8', border: '1px solid #d1d1c7' }}
+                                  className="p-2.5 rounded-xl group"
+                                  style={{
+                                    background: snapshot.isDragging ? '#fff' : '#f0f0e8',
+                                    border: snapshot.isDragging ? '2px solid #183a37' : '1px solid #d1d1c7',
+                                    boxShadow: snapshot.isDragging ? '0 12px 28px rgba(0,0,0,0.18), 0 4px 10px rgba(0,0,0,0.08)' : 'none',
+                                    transform: snapshot.isDragging ? 'scale(1.03) rotate(1deg)' : 'none',
+                                    transition: snapshot.isDragging ? 'box-shadow 0.2s, border 0.2s' : 'all 0.25s cubic-bezier(0.2, 0, 0, 1)',
+                                    zIndex: snapshot.isDragging ? 999 : 'auto',
+                                    ...provided.draggableProps.style,
+                                  }}
                                 >
                                   <div className="flex items-start gap-2">
-                                    <div {...provided.dragHandleProps} className="text-gray-400 cursor-grab active:cursor-grabbing mt-0.5 text-sm select-none">⠿</div>
+                                    <div
+                                      {...provided.dragHandleProps}
+                                      className="flex flex-col items-center justify-center gap-px mt-0.5 cursor-grab active:cursor-grabbing select-none rounded p-0.5 hover:bg-black/5 transition"
+                                      style={{ color: snapshot.isDragging ? '#183a37' : '#9ca3af' }}
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                                        <circle cx="4" cy="3" r="1.5"/><circle cx="10" cy="3" r="1.5"/>
+                                        <circle cx="4" cy="7" r="1.5"/><circle cx="10" cy="7" r="1.5"/>
+                                        <circle cx="4" cy="11" r="1.5"/><circle cx="10" cy="11" r="1.5"/>
+                                      </svg>
+                                    </div>
                                     <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ${
                                       index === 0 ? 'bg-green-500' : index === markers.length - 1 && markers.length > 1 ? 'bg-red-500' : 'bg-gray-500'
                                     }`}>
@@ -1078,6 +1149,15 @@ function Navigation() {
                 >
                   <BookmarkIcon className="w-4 h-4" style={{ color: '#183a37' }} />
                   Save Route
+                </button>
+                <button
+                  onClick={handleShareRoute}
+                  disabled={!currentRoute || markers.length < 2 || !activeGroupId}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white transition disabled:opacity-40 hover:opacity-80"
+                  style={{ background: '#183a37' }}
+                >
+                  <ShareIcon className="w-4 h-4" />
+                  Share with Group
                 </button>
               </div>
             </div>
@@ -1671,7 +1751,8 @@ function Navigation() {
                   </div>
                   <button
                     onClick={handleStartNavigation}
-                    className="px-4 py-2 rounded-lg text-xs font-bold text-white shrink-0 transition hover:opacity-80"
+                    disabled={!currentRoute?.steps?.length}
+                    className="px-4 py-2 rounded-lg text-xs font-bold text-white shrink-0 transition hover:opacity-80 disabled:opacity-40"
                     style={{ background: '#183a37' }}
                   >
                     Start
@@ -1970,6 +2051,16 @@ function Navigation() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ══ TOAST NOTIFICATION ══════════════════════════════════════════════ */}
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-5 py-3 rounded-xl shadow-2xl text-sm font-medium text-white flex items-center gap-2 transition-all animate-[slideUp_0.3s_ease-out]`}
+          style={{ background: toast.type === 'error' ? '#dc2626' : '#183a37' }}
+        >
+          {toast.type === 'error' ? <XMarkIcon className="w-4 h-4" /> : <CheckIcon className="w-4 h-4" />}
+          {toast.message}
         </div>
       )}
 
