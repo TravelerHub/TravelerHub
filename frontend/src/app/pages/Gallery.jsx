@@ -59,6 +59,14 @@ export default function Gallery() {
   // Delete
   const [deletingId, setDeletingId] = useState(null);
 
+  // Social: likes, saves, share
+  const [likingId, setLikingId] = useState(null);
+  const [savingId, setSavingId] = useState(null);
+
+  // Multi-select for batch sharing
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
   // ── Data fetching ─────────────────────────────────────────────────────────
 
   const fetchAlbums = useCallback(async () => {
@@ -180,6 +188,109 @@ export default function Gallery() {
     finally { setDeletingId(null); }
   };
 
+  // ── Like toggle ────────────────────────────────────────────────────────────
+
+  const handleLike = async (mediaId, e) => {
+    if (e) e.stopPropagation();
+    setLikingId(mediaId);
+    try {
+      const res = await fetch(`${API_BASE}/trips/${activeTrip}/media/${mediaId}/like`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPhotos((prev) =>
+          prev.map((p) => (p.id === mediaId ? { ...p, liked_by_me: data.liked, like_count: data.like_count } : p))
+        );
+      }
+    } catch { /* silent */ }
+    finally { setLikingId(null); }
+  };
+
+  // ── Save/bookmark toggle ──────────────────────────────────────────────────
+
+  const handleSave = async (mediaId, e) => {
+    if (e) e.stopPropagation();
+    setSavingId(mediaId);
+    try {
+      const res = await fetch(`${API_BASE}/trips/${activeTrip}/media/${mediaId}/save`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPhotos((prev) =>
+          prev.map((p) => (p.id === mediaId ? { ...p, saved_by_me: data.saved } : p))
+        );
+      }
+    } catch { /* silent */ }
+    finally { setSavingId(null); }
+  };
+
+  // ── Share (Web Share API + fallback) ──────────────────────────────────────
+
+  const handleShare = async (photo, e) => {
+    if (e) e.stopPropagation();
+    const shareData = {
+      title: photo.caption || "Trip Photo",
+      text: `Check out this photo from our trip${photo.uploaded_by_name ? ` by ${photo.uploaded_by_name}` : ""}!`,
+      url: photo.public_url,
+    };
+
+    if (navigator.share) {
+      try { await navigator.share(shareData); } catch { /* user cancelled */ }
+    } else {
+      await navigator.clipboard.writeText(photo.public_url);
+      alert("Link copied to clipboard!");
+    }
+  };
+
+  // ── Multi-select batch share ──────────────────────────────────────────────
+
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBatchShare = async () => {
+    const selected = photos.filter((p) => selectedIds.has(p.id));
+    if (selected.length === 0) return;
+
+    const urls = selected.map((p) => p.public_url);
+    const text = `Check out ${selected.length} photo${selected.length > 1 ? "s" : ""} from our trip!\n\n${urls.join("\n")}`;
+
+    if (navigator.share) {
+      try {
+        // Try sharing with files if supported
+        const blobs = await Promise.all(
+          selected.slice(0, 10).map(async (p) => {
+            try {
+              const r = await fetch(p.public_url);
+              const blob = await r.blob();
+              return new File([blob], `trip-photo-${p.id.slice(0, 8)}.jpg`, { type: blob.type });
+            } catch { return null; }
+          })
+        );
+        const files = blobs.filter(Boolean);
+
+        if (files.length > 0 && navigator.canShare?.({ files })) {
+          await navigator.share({ text: `${selected.length} photos from our trip!`, files });
+        } else {
+          await navigator.share({ title: "Trip Photos", text });
+        }
+      } catch { /* user cancelled */ }
+    } else {
+      await navigator.clipboard.writeText(text);
+      alert(`${selected.length} photo link${selected.length > 1 ? "s" : ""} copied to clipboard!`);
+    }
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
   // ── Lightbox nav ──────────────────────────────────────────────────────────
 
   const lightboxPhoto = lightboxIdx >= 0 && lightboxIdx < photos.length ? photos[lightboxIdx] : null;
@@ -231,13 +342,49 @@ export default function Gallery() {
                     : "Share memories with your group"}
                 </p>
               </div>
-              <button
-                onClick={() => setShowUpload(true)}
-                className="px-6 py-3 rounded-2xl text-sm font-semibold transition active:scale-95"
-                style={{ background: "#fbfbf2", color: "#160f29", boxShadow: "0 4px 20px rgba(0,0,0,0.2)" }}
-              >
-                + Share Photo
-              </button>
+              <div className="flex items-center gap-2">
+                {selectMode ? (
+                  <>
+                    <span className="text-xs font-medium" style={{ color: "rgba(251,251,242,0.6)" }}>
+                      {selectedIds.size} selected
+                    </span>
+                    <button
+                      onClick={handleBatchShare}
+                      disabled={selectedIds.size === 0}
+                      className="px-5 py-2.5 rounded-xl text-sm font-semibold transition active:scale-95 disabled:opacity-40"
+                      style={{ background: "#fbfbf2", color: "#160f29" }}
+                    >
+                      Share {selectedIds.size > 0 ? `(${selectedIds.size})` : ""}
+                    </button>
+                    <button
+                      onClick={() => { setSelectMode(false); setSelectedIds(new Set()); }}
+                      className="px-4 py-2.5 rounded-xl text-sm font-medium transition"
+                      style={{ color: "rgba(251,251,242,0.7)", border: "1px solid rgba(251,251,242,0.2)" }}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {photos.length > 0 && (
+                      <button
+                        onClick={() => setSelectMode(true)}
+                        className="px-4 py-2.5 rounded-xl text-sm font-medium transition"
+                        style={{ color: "rgba(251,251,242,0.7)", border: "1px solid rgba(251,251,242,0.2)" }}
+                      >
+                        Select
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setShowUpload(true)}
+                      className="px-6 py-3 rounded-2xl text-sm font-semibold transition active:scale-95"
+                      style={{ background: "#fbfbf2", color: "#160f29", boxShadow: "0 4px 20px rgba(0,0,0,0.2)" }}
+                    >
+                      + Share Photo
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* ── Album tabs ──────────────────────────────────────────────── */}
@@ -289,12 +436,13 @@ export default function Gallery() {
               <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
                 {photos.map((photo, idx) => {
                   const bgColor = avatarColor(photo.uploaded_by_name);
+                  const isSelected = selectedIds.has(photo.id);
                   return (
                     <div
                       key={photo.id}
                       className="group relative break-inside-avoid rounded-2xl overflow-hidden cursor-pointer"
-                      style={{ background: "#e5e7eb" }}
-                      onClick={() => setLightboxIdx(idx)}
+                      style={{ background: "#e5e7eb", outline: isSelected ? "3px solid #183a37" : "none", outlineOffset: -3 }}
+                      onClick={() => selectMode ? toggleSelect(photo.id) : setLightboxIdx(idx)}
                     >
                       <img
                         src={photo.public_url}
@@ -303,24 +451,86 @@ export default function Gallery() {
                         loading="lazy"
                       />
 
+                      {/* Select checkbox */}
+                      {selectMode && (
+                        <div className="absolute top-3 left-3 z-10">
+                          <div
+                            className="w-7 h-7 rounded-full flex items-center justify-center border-2 transition"
+                            style={{
+                              background: isSelected ? "#183a37" : "rgba(0,0,0,0.3)",
+                              borderColor: isSelected ? "#183a37" : "rgba(255,255,255,0.6)",
+                            }}
+                          >
+                            {isSelected && (
+                              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Quick action buttons (top-right, visible on hover) */}
+                      {!selectMode && (
+                        <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+                          <button
+                            onClick={(e) => handleLike(photo.id, e)}
+                            className="w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-sm transition hover:scale-110"
+                            style={{ background: "rgba(0,0,0,0.4)" }}
+                            title={photo.liked_by_me ? "Unlike" : "Like"}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill={photo.liked_by_me ? "#ef4444" : "none"} stroke={photo.liked_by_me ? "#ef4444" : "white"} strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={(e) => handleSave(photo.id, e)}
+                            className="w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-sm transition hover:scale-110"
+                            style={{ background: "rgba(0,0,0,0.4)" }}
+                            title={photo.saved_by_me ? "Unsave" : "Save"}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill={photo.saved_by_me ? "white" : "none"} stroke="white" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={(e) => handleShare(photo, e)}
+                            className="w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-sm transition hover:scale-110"
+                            style={{ background: "rgba(0,0,0,0.4)" }}
+                            title="Share"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+
                       {/* Gradient overlay on hover */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
                       {/* Bottom info bar on hover */}
-                      <div className="absolute bottom-0 left-0 right-0 p-3 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-                            style={{ background: bgColor, color: "#fbfbf2" }}
-                          >
-                            {(photo.uploaded_by_name || "?")[0].toUpperCase()}
+                      <div className="absolute bottom-0 left-0 right-0 p-3 translate-y-full group-hover:translate-y-0 transition-transform duration-300 pointer-events-none">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div
+                              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                              style={{ background: bgColor, color: "#fbfbf2" }}
+                            >
+                              {(photo.uploaded_by_name || "?")[0].toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-white truncate">
+                                {photo.uploaded_by_name || "Group Member"}
+                              </p>
+                              <p className="text-[10px] text-white/50">{timeAgo(photo.created_at)}</p>
+                            </div>
                           </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-semibold text-white truncate">
-                              {photo.uploaded_by_name || "Group Member"}
-                            </p>
-                            <p className="text-[10px] text-white/50">{timeAgo(photo.created_at)}</p>
-                          </div>
+                          {(photo.like_count || 0) > 0 && (
+                            <span className="text-[10px] text-white/60 shrink-0">
+                              {photo.like_count} {photo.like_count === 1 ? "like" : "likes"}
+                            </span>
+                          )}
                         </div>
                         {photo.caption && (
                           <p className="text-xs text-white/80 mt-1.5 line-clamp-2">{photo.caption}</p>
@@ -392,19 +602,58 @@ export default function Gallery() {
                 </div>
 
                 {/* Action buttons */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  {/* Like */}
+                  <button
+                    onClick={() => handleLike(lightboxPhoto.id)}
+                    disabled={likingId === lightboxPhoto.id}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition hover:bg-white/10"
+                    style={{ color: lightboxPhoto.liked_by_me ? "#ef4444" : "rgba(255,255,255,0.6)" }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill={lightboxPhoto.liked_by_me ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+                    </svg>
+                    {(lightboxPhoto.like_count || 0) > 0 ? lightboxPhoto.like_count : "Like"}
+                  </button>
+
+                  {/* Save */}
+                  <button
+                    onClick={() => handleSave(lightboxPhoto.id)}
+                    disabled={savingId === lightboxPhoto.id}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition hover:bg-white/10"
+                    style={{ color: lightboxPhoto.saved_by_me ? "#fbbf24" : "rgba(255,255,255,0.6)" }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill={lightboxPhoto.saved_by_me ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
+                    </svg>
+                    {lightboxPhoto.saved_by_me ? "Saved" : "Save"}
+                  </button>
+
+                  {/* Share */}
+                  <button
+                    onClick={(e) => handleShare(lightboxPhoto, e)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white/60 hover:text-white hover:bg-white/10 transition"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+                    </svg>
+                    Share
+                  </button>
+
+                  <div className="w-px h-4 mx-1" style={{ background: "rgba(255,255,255,0.15)" }} />
+
                   <button
                     onClick={() => startEdit(lightboxPhoto)}
                     className="px-3 py-1.5 rounded-lg text-xs font-medium text-white/60 hover:text-white hover:bg-white/10 transition"
                   >
-                    Edit Caption
+                    Edit
                   </button>
                   <button
                     onClick={() => handleDelete(lightboxPhoto.id)}
                     disabled={deletingId === lightboxPhoto.id}
                     className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-400/60 hover:text-red-400 hover:bg-red-400/10 transition"
                   >
-                    {deletingId === lightboxPhoto.id ? "Deleting..." : "Delete"}
+                    {deletingId === lightboxPhoto.id ? "..." : "Delete"}
                   </button>
                 </div>
               </div>
