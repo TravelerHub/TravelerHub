@@ -62,22 +62,51 @@ const Map = forwardRef(function Map({
     // Navigation controls
     mapRef.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
-    // Geolocate control — stored in ref for programmatic triggering
+    // Geolocate control — high accuracy, faster updates for Waze-like feel
     const geolocate = new mapboxgl.GeolocateControl({
-      positionOptions: { enableHighAccuracy: true },
+      positionOptions: {
+        enableHighAccuracy: true,
+        maximumAge: 2000,       // Cache position for up to 2s (smoother)
+        timeout: 8000,          // 8s timeout
+      },
       trackUserLocation: true,
       showUserHeading: true,
+      showAccuracyCircle: true,
     });
     geolocateRef.current = geolocate;
     mapRef.current.addControl(geolocate, 'top-right');
 
-    // Forward position updates to parent (via ref to avoid stale closure)
+    // Forward position updates to parent with speed calculation
+    let lastPos = null;
+    let lastTime = null;
+
     geolocate.on('geolocate', (e) => {
+      const now = Date.now();
+      const pos = { lng: e.coords.longitude, lat: e.coords.latitude };
+
+      // Calculate speed in km/h from consecutive GPS readings
+      let speed = e.coords.speed; // m/s from GPS (may be null)
+      if (!speed && lastPos && lastTime) {
+        const dt = (now - lastTime) / 1000; // seconds
+        if (dt > 0 && dt < 10) { // Only if recent (< 10s)
+          const dLat = pos.lat - lastPos.lat;
+          const dLng = pos.lng - lastPos.lng;
+          const dist = Math.sqrt(dLat * dLat + dLng * dLng) * 111320; // rough meters
+          speed = dist / dt;
+        }
+      }
+
+      lastPos = pos;
+      lastTime = now;
+
       onPositionUpdateRef.current?.({
-        lng: e.coords.longitude,
-        lat: e.coords.latitude,
+        lng: pos.lng,
+        lat: pos.lat,
         heading: e.coords.heading,
         accuracy: e.coords.accuracy,
+        speed: speed ? Math.round(speed * 3.6) : null, // Convert m/s → km/h
+        altitude: e.coords.altitude,
+        timestamp: now,
       });
     });
 
@@ -105,19 +134,34 @@ const Map = forwardRef(function Map({
     };
   }, []);
 
-  // Handle navigation mode toggle
+  // Handle navigation mode toggle — Waze-like perspective
   useEffect(() => {
     if (!mapRef.current) return;
 
     if (navigationMode) {
-      // Enter navigation mode: pitch the map, zoom in, start tracking
-      mapRef.current.easeTo({ pitch: 50, zoom: 16, duration: 800 });
+      // Enter navigation mode: 3D perspective, zoom in, enable tracking
+      mapRef.current.easeTo({
+        pitch: 60,       // Steeper angle for driving perspective
+        zoom: 17,        // Closer zoom for turn-by-turn
+        duration: 1000,
+      });
+      // Start tracking user location
       if (geolocateRef.current) {
         geolocateRef.current.trigger();
       }
+      // Disable map rotation by user (auto-rotates with heading)
+      mapRef.current.dragRotate.disable();
+      mapRef.current.touchZoomRotate.disableRotation();
     } else {
-      // Exit navigation mode: reset pitch
-      mapRef.current.easeTo({ pitch: 0, duration: 800 });
+      // Exit navigation mode: reset to overhead view
+      mapRef.current.easeTo({
+        pitch: 0,
+        bearing: 0,
+        duration: 800,
+      });
+      // Re-enable user rotation
+      mapRef.current.dragRotate.enable();
+      mapRef.current.touchZoomRotate.enableRotation();
     }
   }, [navigationMode]);
 
@@ -338,48 +382,92 @@ const Map = forwardRef(function Map({
     });
   }, [expenseMarkers]);
 
-  // Draw route (with glow casing + completed segment coloring during navigation)
+  // Draw route with per-segment styling:
+  //   Walking  → dotted gray line (like Google Maps)
+  //   Driving  → solid blue line
+  //   Cycling  → solid green line
+  //   Transit  → solid colored line (uses transit line color if available)
+  // During navigation: completed segments are faded gray.
   useEffect(() => {
     if (!mapRef.current) return;
 
+    const SEGMENT_STYLES = {
+      WALKING: { color: '#6B7280', width: 5, dasharray: [2, 4] },
+      DRIVING: { color: '#3B82F6', width: 5, dasharray: null },
+      BICYCLING: { color: '#10B981', width: 5, dasharray: null },
+      TRANSIT: { color: '#8B5CF6', width: 6, dasharray: null },
+    };
+
     const drawRoute = () => {
-      // Clean up existing route layers
-      ['route-completed', 'route', 'route-glow', 'route-completed-glow'].forEach(id => {
-        if (mapRef.current.getLayer(id)) mapRef.current.removeLayer(id);
-        if (mapRef.current.getSource(id)) mapRef.current.removeSource(id);
-      });
+      const map = mapRef.current;
+      const mapStyle = map.getStyle();
+      if (mapStyle?.layers) {
+        mapStyle.layers.forEach(layer => {
+          if (layer.id.startsWith('route-seg-') || layer.id === 'route' || layer.id === 'route-completed') {
+            if (map.getLayer(layer.id)) {
+              map.removeLayer(layer.id);
+            }
+          }
+        });
+      }
+      if (mapStyle?.sources) {
+        Object.keys(mapStyle.sources).forEach(srcId => {
+          if (srcId.startsWith('route-seg-') || srcId === 'route' || srcId === 'route-completed') {
+            if (map.getSource(srcId)) {
+              map.removeSource(srcId);
+            }
+          }
+        });
+      }
 
       if (!route) return;
 
-      const coords = route.geometry.coordinates;
+      // ── Per-segment rendering (multi-modal) ──
+      if (route.segments && route.segments.length > 0) {
+        route.segments.forEach((segment, i) => {
+          if (!segment.coordinates || segment.coordinates.length < 2) return;
 
-      // Helper: add a route segment with glow casing
-      const addSegment = (id, geometry, color, opacity, isGlow = false) => {
-        const sourceId = isGlow ? `${id}-glow` : id;
-        mapRef.current.addSource(sourceId, {
-          type: 'geojson',
-          data: { type: 'Feature', properties: {}, geometry },
-        });
-        if (isGlow) {
-          // Outer glow casing layer
-          mapRef.current.addLayer({
-            id: sourceId,
+          const mode = (segment.mode || 'DRIVING').toUpperCase();
+          const segStyle = SEGMENT_STYLES[mode] || SEGMENT_STYLES.DRIVING;
+
+          let lineColor = segStyle.color;
+          if (mode === 'TRANSIT' && segment.transit?.lineColor) {
+            lineColor = segment.transit.lineColor;
+          }
+
+          const sourceId = `route-seg-${i}`;
+          const layerId = `route-seg-${i}`;
+
+          map.addSource(sourceId, {
+            type: 'geojson',
+            data: {
+              type: 'Feature',
+              properties: {},
+              geometry: { type: 'LineString', coordinates: segment.coordinates },
+            },
+          });
+
+          const paint = {
+            'line-color': lineColor,
+            'line-width': segStyle.width,
+            'line-opacity': 0.8,
+          };
+          if (segStyle.dasharray) {
+            paint['line-dasharray'] = segStyle.dasharray;
+          }
+
+          map.addLayer({
+            id: layerId,
             type: 'line',
             source: sourceId,
-            layout: { 'line-join': 'round', 'line-cap': 'round' },
-            paint: { 'line-color': color, 'line-width': 12, 'line-opacity': opacity * 0.25, 'line-blur': 4 },
+            layout: { 'line-join': 'round', 'line-cap': segStyle.dasharray ? 'butt' : 'round' },
+            paint,
           });
-        } else {
-          // Inner crisp route line
-          mapRef.current.addLayer({
-            id,
-            type: 'line',
-            source: id,
-            layout: { 'line-join': 'round', 'line-cap': 'round' },
-            paint: { 'line-color': color, 'line-width': 5, 'line-opacity': opacity },
-          });
-        }
-      };
+        });
+        return;
+      }
+
+      const coords = route.geometry.coordinates;
 
       if (navigationMode && currentStepIndex > 0 && route.steps) {
         const currentStep = route.steps[currentStepIndex];
@@ -394,20 +482,55 @@ const Map = forwardRef(function Map({
           });
         }
 
-        // Completed portion (muted gray)
         if (splitIdx > 0) {
-          const completedGeom = { type: 'LineString', coordinates: coords.slice(0, splitIdx + 1) };
-          addSegment('route-completed', completedGeom, '#9CA3AF', 0.45);
+          map.addSource('route-completed', {
+            type: 'geojson',
+            data: {
+              type: 'Feature',
+              properties: {},
+              geometry: { type: 'LineString', coordinates: coords.slice(0, splitIdx + 1) },
+            },
+          });
+          map.addLayer({
+            id: 'route-completed',
+            type: 'line',
+            source: 'route-completed',
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': '#9CA3AF', 'line-width': 5, 'line-opacity': 0.4 },
+          });
         }
 
-        // Remaining portion (teal with glow)
-        const remainingGeom = { type: 'LineString', coordinates: coords.slice(splitIdx) };
-        addSegment('route', remainingGeom, '#183a37', 0.3, true);  // glow
-        addSegment('route', remainingGeom, '#183a37', 0.9);        // line
+        map.addSource('route', {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'LineString', coordinates: coords.slice(splitIdx) },
+          },
+        });
+        map.addLayer({
+          id: 'route',
+          type: 'line',
+          source: 'route',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: { 'line-color': '#3B82F6', 'line-width': 5, 'line-opacity': 0.8 },
+        });
       } else {
-        // Normal mode — teal route with glow casing
-        addSegment('route', route.geometry, '#183a37', 0.25, true);  // glow
-        addSegment('route', route.geometry, '#183a37', 0.85);        // line
+        map.addSource('route', {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            properties: {},
+            geometry: route.geometry,
+          },
+        });
+        map.addLayer({
+          id: 'route',
+          type: 'line',
+          source: 'route',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: { 'line-color': '#3B82F6', 'line-width': 5, 'line-opacity': 0.8 },
+        });
       }
     };
 
