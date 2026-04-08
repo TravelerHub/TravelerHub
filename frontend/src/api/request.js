@@ -1,6 +1,6 @@
 // src/api/request.js
 
-const API_BASE = "http://127.0.0.1:8000"; // change if needed
+import { API_BASE } from "../config.js";
 
 export async function request(url, options = {}) {
   const { method = "GET", body, headers = {} } = options;

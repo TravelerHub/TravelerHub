@@ -6,6 +6,9 @@ import {
   createFinanceTransaction,
   deleteFinanceTransaction,
   getFinanceTransactions,
+  splitExpense,
+  getTripBalances,
+  recordSettlement,
 } from "../../services/financeService";
 import { chargeSavedCard, getSavedCards } from "../../services/billingService";
 import { ensureActiveGroupId, getActiveGroupId, getMyGroups, setActiveGroupId } from "../../services/groupService";
@@ -72,6 +75,12 @@ function Finance() {
   const [chargeSuccess, setChargeSuccess] = useState("");
   const [groups, setGroups] = useState([]);
   const [activeGroupId, setActiveGroupIdState] = useState("");
+  const [activeTab, setActiveTab] = useState("transactions"); // transactions | balances
+  const [balances, setBalances] = useState(null);
+  const [balancesLoading, setBalancesLoading] = useState(false);
+  const [splitModalExpense, setSplitModalExpense] = useState(null);
+  const [splitLoading, setSplitLoading] = useState(false);
+  const [settleLoading, setSettleLoading] = useState(null);
 
   const loadGroups = useCallback(async () => {
     try {
@@ -104,6 +113,19 @@ function Finance() {
     }
   }, [activeGroupId]);
 
+  const loadBalances = useCallback(async () => {
+    if (!activeGroupId) return;
+    setBalancesLoading(true);
+    try {
+      const data = await getTripBalances(activeGroupId);
+      setBalances(data);
+    } catch {
+      setBalances(null);
+    } finally {
+      setBalancesLoading(false);
+    }
+  }, [activeGroupId]);
+
   useEffect(() => {
     loadGroups();
   }, [loadGroups]);
@@ -111,6 +133,39 @@ function Finance() {
   useEffect(() => {
     loadTransactions();
   }, [loadTransactions]);
+
+  useEffect(() => {
+    if (activeTab === "balances") loadBalances();
+  }, [activeTab, loadBalances]);
+
+  const handleSplitExpense = async (expenseId) => {
+    setSplitLoading(true);
+    try {
+      await splitExpense(expenseId);
+      setSplitModalExpense(null);
+      if (activeTab === "balances") loadBalances();
+    } catch (error) {
+      setLoadError(error?.message || "Failed to split expense");
+    } finally {
+      setSplitLoading(false);
+    }
+  };
+
+  const handleSettle = async (transfer) => {
+    setSettleLoading(transfer.from_user_id + transfer.to_user_id);
+    try {
+      await recordSettlement({
+        tripId: activeGroupId,
+        toUserId: transfer.to_user_id,
+        amount: transfer.amount,
+      });
+      await loadBalances();
+    } catch (error) {
+      setLoadError(error?.message || "Failed to record settlement");
+    } finally {
+      setSettleLoading(null);
+    }
+  };
 
   const openChargeModal = async () => {
     setChargeError("");
@@ -366,6 +421,27 @@ function Finance() {
             </div>
           </div>
 
+          {/* ── Tab switcher ─────────────────────────────────────────────── */}
+          <div className="flex gap-1 mb-6 p-1 rounded-xl" style={{ background: "#e5e7eb", width: "fit-content" }}>
+            {[
+              { id: "transactions", label: "Transactions", icon: "💳" },
+              { id: "balances", label: "Balances & Splits", icon: "⚖️" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className="px-4 py-2 rounded-lg text-sm font-semibold transition"
+                style={
+                  activeTab === tab.id
+                    ? { background: "#fff", color: "#160f29", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }
+                    : { background: "transparent", color: "#6b7280" }
+                }
+              >
+                {tab.icon} {tab.label}
+              </button>
+            ))}
+          </div>
+
           {/* ── Summary cards ──────────────────────────────────────────────── */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             {/* Expenses */}
@@ -443,6 +519,8 @@ function Finance() {
             </div>
           </div>
 
+          {activeTab === "transactions" && (
+          <>
           {/* ── Spending breakdown bar ─────────────────────────────────────── */}
           {totalExpenses > 0 && (
             <div
@@ -598,30 +676,195 @@ function Finance() {
                       </span>
                     </div>
 
-                    {/* Delete */}
-                    <button
-                      onClick={() => handleDeleteTransaction(t.id)}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-sm transition shrink-0"
-                      style={{ color: "#9ca3af" }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "#fef2f2";
-                        e.currentTarget.style.color = "#dc2626";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "transparent";
-                        e.currentTarget.style.color = "#9ca3af";
-                      }}
-                      title="Delete"
-                    >
-                      🗑
-                    </button>
+                    {/* Actions */}
+                    <div className="flex items-center gap-1">
+                      {activeGroupId && t.type === "expense" && (
+                        <button
+                          onClick={() => setSplitModalExpense(t)}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-sm transition shrink-0"
+                          style={{ color: "#9ca3af" }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = "#eff6ff";
+                            e.currentTarget.style.color = "#2563eb";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = "transparent";
+                            e.currentTarget.style.color = "#9ca3af";
+                          }}
+                          title="Split with group"
+                        >
+                          ✂️
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDeleteTransaction(t.id)}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-sm transition shrink-0"
+                        style={{ color: "#9ca3af" }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "#fef2f2";
+                          e.currentTarget.style.color = "#dc2626";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "transparent";
+                          e.currentTarget.style.color = "#9ca3af";
+                        }}
+                        title="Delete"
+                      >
+                        🗑
+                      </button>
+                    </div>
                   </div>
                 );
               })
             )}
           </div>
+          </>
+          )}
+
+          {/* ── Balances & Splits tab ─────────────────────────────────────── */}
+          {activeTab === "balances" && (
+            <div className="space-y-6">
+              {!activeGroupId ? (
+                <div className="rounded-2xl p-12 text-center" style={{ background: "#fff", border: "1px solid #e5e7eb" }}>
+                  <p className="text-3xl mb-3">👥</p>
+                  <p className="text-sm font-medium" style={{ color: "#374151" }}>Select a group to view balances</p>
+                </div>
+              ) : balancesLoading ? (
+                <div className="rounded-2xl p-12 text-center" style={{ background: "#fff", border: "1px solid #e5e7eb" }}>
+                  <p className="text-sm font-medium" style={{ color: "#374151" }}>Loading balances...</p>
+                </div>
+              ) : !balances ? (
+                <div className="rounded-2xl p-12 text-center" style={{ background: "#fff", border: "1px solid #e5e7eb" }}>
+                  <p className="text-sm font-medium" style={{ color: "#374151" }}>No balance data available</p>
+                  <p className="text-xs mt-1" style={{ color: "#9ca3af" }}>Split some expenses first using the Transactions tab</p>
+                </div>
+              ) : (
+                <>
+                  {/* All settled banner */}
+                  {balances.all_settled && (
+                    <div className="rounded-2xl p-5 flex items-center gap-3" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+                      <span className="text-2xl">✅</span>
+                      <div>
+                        <p className="text-sm font-bold" style={{ color: "#15803d" }}>All settled up!</p>
+                        <p className="text-xs" style={{ color: "#16a34a" }}>No outstanding debts in this group.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Member balances */}
+                  <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid #e5e7eb" }}>
+                    <div className="px-5 py-4" style={{ borderBottom: "1px solid #f3f4f6" }}>
+                      <p className="text-sm font-bold" style={{ color: "#160f29" }}>Member Balances</p>
+                    </div>
+                    {(balances.member_balances || []).map((m) => (
+                      <div key={m.user_id} className="flex items-center justify-between px-5 py-3" style={{ borderBottom: "1px solid #f9fafb" }}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: "#f3f4f6", color: "#374151" }}>
+                            {(m.username || "?")[0].toUpperCase()}
+                          </div>
+                          <span className="text-sm font-medium" style={{ color: "#160f29" }}>{m.username}</span>
+                        </div>
+                        <div className="text-right">
+                          <span
+                            className="text-sm font-bold"
+                            style={{ color: m.status === "owed" ? "#16a34a" : m.status === "owes" ? "#dc2626" : "#6b7280" }}
+                          >
+                            {m.status === "owed" ? "+" : m.status === "owes" ? "-" : ""}${Math.abs(m.net_balance).toFixed(2)}
+                          </span>
+                          <p className="text-xs capitalize" style={{ color: "#9ca3af" }}>{m.status}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Suggested transfers */}
+                  {balances.suggested_transfers?.length > 0 && (
+                    <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid #e5e7eb" }}>
+                      <div className="px-5 py-4" style={{ borderBottom: "1px solid #f3f4f6" }}>
+                        <p className="text-sm font-bold" style={{ color: "#160f29" }}>Settle Up</p>
+                        <p className="text-xs mt-0.5" style={{ color: "#9ca3af" }}>Minimum transfers to settle all debts</p>
+                      </div>
+                      {balances.suggested_transfers.map((t, i) => {
+                        const isSettling = settleLoading === t.from_user_id + t.to_user_id;
+                        return (
+                          <div key={i} className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid #f9fafb" }}>
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="font-semibold" style={{ color: "#dc2626" }}>{t.from_username}</span>
+                              <span style={{ color: "#9ca3af" }}>pays</span>
+                              <span className="font-semibold" style={{ color: "#16a34a" }}>{t.to_username}</span>
+                              <span className="font-bold" style={{ color: "#160f29" }}>${t.amount.toFixed(2)}</span>
+                            </div>
+                            <button
+                              onClick={() => handleSettle(t)}
+                              disabled={isSettling}
+                              className="px-4 py-2 rounded-xl text-xs font-semibold transition"
+                              style={{ background: isSettling ? "#d1d5db" : "#183a37", color: "#fbfbf2" }}
+                            >
+                              {isSettling ? "Settling..." : "Mark Settled"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </main>
       </div>
+
+      {/* ── Split Expense Modal ───────────────────────────────────────────── */}
+      {splitModalExpense && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.4)" }}
+          onClick={() => setSplitModalExpense(null)}
+        >
+          <div
+            className="w-full rounded-2xl overflow-hidden"
+            style={{ maxWidth: 420, background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #f3f4f6" }}>
+              <h2 className="text-base font-bold" style={{ color: "#160f29" }}>Split Expense</h2>
+              <button
+                onClick={() => setSplitModalExpense(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-sm"
+                style={{ color: "#5c6b73" }}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div className="rounded-xl p-4" style={{ background: "#f9fafb" }}>
+                <p className="text-sm font-semibold" style={{ color: "#160f29" }}>{splitModalExpense.description}</p>
+                <p className="text-2xl font-bold mt-1" style={{ color: "#dc2626" }}>${splitModalExpense.amount.toFixed(2)}</p>
+              </div>
+              <p className="text-xs" style={{ color: "#6b7280" }}>
+                This will split the expense equally among all group members. The person who paid will be credited.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setSplitModalExpense(null)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
+                  style={{ background: "#f3f4f6", color: "#5c6b73" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleSplitExpense(splitModalExpense.id)}
+                  disabled={splitLoading}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
+                  style={{ background: splitLoading ? "#d1d5db" : "#160f29", color: "#fbfbf2" }}
+                >
+                  {splitLoading ? "Splitting..." : "Split Equally"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Add Transaction Modal ─────────────────────────────────────────── */}
       {showModal && (

@@ -67,31 +67,55 @@ def _is_trip_leader(group_id: str, user_id: str) -> bool:
 
 
 def _insert_trip_member(group_id: str, user_id: str, role: str) -> bool:
-    """Insert membership into trip_members first; fallback to legacy group_member."""
+    """Insert membership into trip_members. Falls back to group_member only with a conversation."""
     now_iso = datetime.utcnow().isoformat()
 
+    # Primary path: trip_members table (the correct table for group membership)
     try:
         supabase.table("trip_members").insert({
             "trip_id": group_id,
             "user_id": user_id,
             "role": role,
             "joined_at": now_iso,
-            "left_at": None,
         }).execute()
         return True
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"trip_members insert failed for trip={group_id}, user={user_id}: {e}")
 
+    # Fallback: group_member requires a conversation_id (it's part of the PK).
+    # Create or find a conversation for this trip first.
     try:
+        # Check if a conversation already exists for this trip
+        conv_res = (
+            supabase.table("conversation")
+            .select("conversation_id")
+            .eq("trip_id", group_id)
+            .limit(1)
+            .execute()
+        )
+        if conv_res.data:
+            conv_id = conv_res.data[0]["conversation_id"]
+        else:
+            # Create a conversation for this trip
+            conv_insert = supabase.table("conversation").insert({
+                "conversation_name": "Group Chat",
+                "trip_id": group_id,
+            }).execute()
+            if not conv_insert.data:
+                print(f"Failed to create conversation for trip {group_id}")
+                return False
+            conv_id = conv_insert.data[0]["conversation_id"]
+
         supabase.table("group_member").insert({
+            "conversation_id": conv_id,
             "group_id": group_id,
             "user_id": user_id,
             "role": role,
             "join_datetime": now_iso,
-            "left_datetime": None,
         }).execute()
         return True
-    except Exception:
+    except Exception as e:
+        print(f"group_member fallback insert failed for trip={group_id}, user={user_id}: {e}")
         return False
 
 def require_leader(group_id: str, user_id: str) -> None:
@@ -167,15 +191,12 @@ def create_group(
 
         trip = trip_res.data[0]
 
-        # Ensure creator is represented as an active group leader when schema supports it.
-        try:
-            if not _is_trip_member(trip["id"], current_user["id"]):
-                ok = _insert_trip_member(trip["id"], current_user["id"], "leader")
-                if not ok:
-                    print("Group membership bootstrap skipped: no supported membership table")
-        except Exception as member_err:
-            # Don't block group creation on legacy schemas.
-            print(f"Group membership bootstrap skipped: {member_err}")
+        # Add the creator as the leader of the group.
+        if not _is_trip_member(trip["id"], current_user["id"]):
+            ok = _insert_trip_member(trip["id"], current_user["id"], "leader")
+            if not ok:
+                print(f"WARNING: Group {trip['id']} created but leader membership failed. "
+                      f"The owner_id fallback in require_leader() will still grant access.")
 
         return {
             "trip": trip,
