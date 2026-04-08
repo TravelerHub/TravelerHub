@@ -23,9 +23,8 @@ def read_me(current_user =  Depends(oauth2.get_current_user)):
 #get all user lists
 
 @router.get("/", response_model=List[schemas.UserOut])
-def get_users():
+def get_users(current_user=Depends(oauth2.get_current_user)):
     try:
-        # SELECT * FROM users;
         response = supabase.table("users").select("*").execute()
         users = response.data  # list[dict]
         return users

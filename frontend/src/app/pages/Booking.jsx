@@ -10,7 +10,7 @@ import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
 // #183a37  dark teal   (accent)
 // #f3f4f6  light gray  (main bg)
 
-const API_BASE = "http://127.0.0.1:8000";
+import { API_BASE } from "../../config.js";
 
 const BOOKING_TABS = [
   { id: "all",        label: "All",        icon: "📋" },

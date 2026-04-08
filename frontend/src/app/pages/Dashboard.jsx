@@ -29,7 +29,7 @@ const FEATURES = [
   { icon: "🧾", label: "Scanner",      sub: "Scan receipts",    path: "/expenses",    accent: "#2d1b4e" },
   { icon: "📅", label: "Calendar",     sub: "Trip timeline",    path: "/calendar",    accent: "#1a3320" },
   { icon: "👥", label: "Group Vote",   sub: "Decide together",  path: "/vote",        accent: "#3b1f1f" },
-  { icon: "🌍", label: "Suggestions",  sub: "Travel ideas",     path: "/suggestions", accent: "#183a37" },
+  { icon: "🌍", label: "Suggestions",  sub: "Travel ideas",     path: "/navigation", accent: "#183a37" },
 ];
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────

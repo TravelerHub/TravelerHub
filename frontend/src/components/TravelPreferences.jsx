@@ -6,7 +6,7 @@ import {
   PRICE_OPTIONS,
   INTEREST_OPTIONS,
   DIETARY_OPTIONS,
-} from "../services/preferencesservice.js";
+} from "../services/preferencesService.js";
 
 export default function TravelPreferences() {
   const [loading, setLoading] = useState(true);
