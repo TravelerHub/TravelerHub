@@ -164,6 +164,7 @@ function Navigation() {
   const [showGcsPanel, setShowGcsPanel] = useState(false);
   const [routeDestination, setRouteDestination] = useState(null); // for Group Arrival Sync
   const lastSyncRef = useRef(0);
+  const isReroutingRef = useRef(false); // prevents re-route spam
 
   useEffect(() => {
     const boot = async () => {
@@ -232,6 +233,17 @@ function Navigation() {
     };
     fetchPreferences();
   }, []);
+
+  // Auto-replan when route preference changes (only if a route already exists)
+  const prevPreferenceRef = useRef(routePreference);
+  useEffect(() => {
+    if (prevPreferenceRef.current === routePreference) return;
+    prevPreferenceRef.current = routePreference;
+    if (currentRoute && markers.length >= 2) {
+      handlePlanRoute();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routePreference]);
 
   useEffect(() => {
     if (markers.length === 0) { setSuggestedPlaces([]); return; }
@@ -323,12 +335,43 @@ function Navigation() {
     if (!currentRoute?.steps) return;
     const userCoord = [pos.lng, pos.lat];
     const steps = currentRoute.steps;
-    const threshold = transportMode === 'walking' ? 30 : transportMode === 'cycling' ? 50 : 100;
+    const stepThreshold = transportMode === 'walking' ? 30 : transportMode === 'cycling' ? 50 : 100;
+
+    // ── Deviation detection ──
+    // Find the minimum distance from user to any point on the route polyline
+    if (isNavigating && currentRoute.geometry?.coordinates && !isReroutingRef.current) {
+      const coords = currentRoute.geometry.coordinates;
+      let minDist = Infinity;
+      // Sample every 5th coordinate for performance (polylines can have thousands of points)
+      for (let i = 0; i < coords.length; i += 5) {
+        const d = haversineDistance(userCoord, coords[i]);
+        if (d < minDist) minDist = d;
+        if (d < stepThreshold) break; // close enough, skip rest
+      }
+      // Reroute threshold: 3x the step-matching threshold
+      const deviationThreshold = transportMode === 'walking' ? 80 : transportMode === 'cycling' ? 150 : 300;
+      if (minDist > deviationThreshold) {
+        isReroutingRef.current = true;
+        // Replace the first marker with the user's current position and re-plan
+        setMarkers(prev => {
+          const updated = [...prev];
+          updated[0] = { coordinates: [pos.lng, pos.lat], title: 'Current Location', description: 'Rerouted' };
+          return updated;
+        });
+        handlePlanRoute().finally(() => {
+          // Cooldown: prevent another reroute for 15s
+          setTimeout(() => { isReroutingRef.current = false; }, 15000);
+        });
+        return;
+      }
+    }
+
+    // ── Step advancement ──
     setCurrentStepIndex(prev => {
       for (let i = prev + 1; i < steps.length; i++) {
         if (steps[i].start_location) {
           const dist = haversineDistance(userCoord, steps[i].start_location);
-          if (dist < threshold) {
+          if (dist < stepThreshold) {
             if (stepListRef.current) {
               const stepEl = stepListRef.current.querySelector(`[data-step-index="${i}"]`);
               if (stepEl) stepEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -339,7 +382,7 @@ function Navigation() {
       }
       return prev;
     });
-  }, [currentRoute, transportMode, activeGroupId]);
+  }, [currentRoute, transportMode, activeGroupId, isNavigating]);
 
   useEffect(() => {
     const dest = searchParams.get('destination');
@@ -904,23 +947,26 @@ function Navigation() {
     if (markers.length < 3) { alert('Need at least 3 stops to optimize'); return; }
     setRouteLoading(true);
     try {
-      const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
-      const coordinates = markers.map(m => m.coordinates.join(',')).join(';');
-      const response = await fetch(
-        `https://api.mapbox.com/optimized-trips/v1/mapbox/driving/${coordinates}?source=first&destination=last&roundtrip=false&access_token=${MAPBOX_TOKEN}`
-      );
-      const data = await response.json();
-      if (data.code === 'Ok' && data.trips && data.trips.length > 0) {
-        const newOrder = data.trips[0].waypoints.map(wp => markers[wp.waypoint_index]);
-        setMarkers(newOrder);
-        setTimeout(() => { handlePlanRoute(); }, 500);
-        alert('Route optimized successfully!');
-      } else {
-        alert('Could not optimize route. Try with different locations.');
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE}/navigation/optimize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          coordinates: markers.map(m => m.coordinates),
+          mode: transportMode === 'cycling' ? 'cycling' : transportMode === 'walking' ? 'walking' : 'driving',
+        }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || 'Optimization failed');
       }
+      const data = await response.json();
+      const newOrder = data.optimized_order.map(i => markers[i]);
+      setMarkers(newOrder);
+      setTimeout(() => { handlePlanRoute(); }, 300);
     } catch (error) {
       console.error('Optimization error:', error);
-      alert('Failed to optimize route. Please try again.');
+      alert(error.message || 'Failed to optimize route. Please try again.');
     } finally {
       setRouteLoading(false);
     }
