@@ -22,14 +22,15 @@ import BookingSummaryWidget from "../../components/dashboard/BookingSummaryWidge
 
 // ── Quick Access feature tiles ────────────────────────────────────────────────
 const FEATURES = [
-  { icon: "🗺️", label: "Navigation",  sub: "Maps & routes",    path: "/navigation",  accent: "#183a37" },
-  { icon: "💬", label: "Chat",         sub: "Group messages",   path: "/message",     accent: "#160f29" },
-  { icon: "🏨", label: "Booking",      sub: "Flights & hotels", path: "/booking",     accent: "#1e3a5f" },
-  { icon: "💰", label: "Wallet",       sub: "Expenses & splits",path: "/finance",     accent: "#3b2f00" },
   { icon: "🧾", label: "Scanner",      sub: "Scan receipts",    path: "/expenses",    accent: "#2d1b4e" },
-  { icon: "📅", label: "Calendar",     sub: "Trip timeline",    path: "/calendar",    accent: "#1a3320" },
   { icon: "👥", label: "Group Vote",   sub: "Decide together",  path: "/vote",        accent: "#3b1f1f" },
   { icon: "🌍", label: "Suggestions",  sub: "Travel ideas",     path: "/navigation", accent: "#183a37" },
+
+  // need to do
+  { icon: "📝", label: "To Do",  sub: "to do list",     path: "/todo", accent: "#183a37" },
+  { icon: "🟡", label: "Emergency",  sub: "Share emergency info",     path: "/emergency", accent: "#183a37" },
+
+  { icon: "🟡", label: "something",  sub: "coming soon",     path: "/dashboard", accent: "#183a37" },
 ];
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────

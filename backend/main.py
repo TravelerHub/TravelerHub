@@ -22,6 +22,7 @@ from routers import smart_route
 from routers import nominations
 from routers import polls
 from routers import finance
+from routers import settlements
 from routers import billing
 from routers import gcs
 from routers import weather
@@ -58,6 +59,7 @@ app.include_router(smart_route.router)   # /smart-route
 app.include_router(nominations.router)   # /nominations
 app.include_router(polls.router)         # /polls
 app.include_router(finance.router)       # /finance
+app.include_router(settlements.router)   # /finance (splitting & settlements)
 app.include_router(billing.router)       # /billing
 app.include_router(gcs.router)           # /gcs (Group-Centric Search)
 app.include_router(weather.router)       # /weather

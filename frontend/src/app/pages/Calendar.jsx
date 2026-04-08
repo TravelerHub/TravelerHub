@@ -19,9 +19,9 @@ import { SIDEBAR_ITEMS } from '../../constants/sidebarItems.js';
 
 // ── Event type config ─────────────────────────────────────────────────────────
 const TYPE_CONFIG = {
-  booking:   { label: "Booking",      color: "#16a34a", icon: CalendarDaysIcon },
-  route:     { label: "Saved Route",  color: "#2563eb", icon: MapPinIcon       },
-  checklist: { label: "Checklist",    color: "#ea580c", icon: CheckCircleIcon  },
+  booking:   { label: "Booking",      color: "#16a34a", icon: CalendarDaysIcon, path: "/booking"    },
+  route:     { label: "Saved Route",  color: "#2563eb", icon: MapPinIcon,       path: "/navigation" },
+  checklist: { label: "Checklist",    color: "#ea580c", icon: CheckCircleIcon,  path: "/todo"       },
 };
 
 // ── FullCalendar CSS overrides (scoped to .th-fc) ─────────────────────────────
@@ -153,29 +153,41 @@ function CalendarPage() {
   }, []);
 
   // ── Fetch calendar events ──────────────────────────────────────────────────
+  const fetchEvents = async () => {
+    setLoading(true);
+    try {
+      const data = await getCalendarEvents(selectedTripId);
+      setEvents(
+        data.map((evt) => ({
+          id:    evt.id,
+          title: evt.title,
+          start: evt.start,
+          end:   evt.end || undefined,
+          backgroundColor: evt.color,
+          borderColor:     evt.color,
+          extendedProps: { type: evt.type, metadata: evt.metadata },
+        }))
+      );
+    } catch (err) {
+      console.error('Failed to load events:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchEvents = async () => {
-      setLoading(true);
-      try {
-        const data = await getCalendarEvents(selectedTripId);
-        setEvents(
-          data.map((evt) => ({
-            id:    evt.id,
-            title: evt.title,
-            start: evt.start,
-            end:   evt.end || undefined,
-            backgroundColor: evt.color,
-            borderColor:     evt.color,
-            extendedProps: { type: evt.type, metadata: evt.metadata },
-          }))
-        );
-      } catch (err) {
-        console.error('Failed to load events:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchEvents();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTripId]);
+
+  // Re-fetch when todos change in another tab or from the Todo page
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === 'travel_todos') fetchEvents();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTripId]);
 
   // ── Upcoming events (next 6, sorted) ──────────────────────────────────────
@@ -575,10 +587,27 @@ function CalendarPage() {
               )}
             </div>
 
-            <div className="px-5 pb-5">
+            <div className="px-5 pb-5 flex gap-2">
+              {TYPE_CONFIG[selectedEvent.type]?.path && (
+                <button
+                  onClick={() => {
+                    navigate(TYPE_CONFIG[selectedEvent.type].path);
+                    setSelectedEvent(null);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition hover:opacity-80 active:scale-95 flex items-center justify-center gap-1.5"
+                  style={{
+                    background: TYPE_CONFIG[selectedEvent.type].color,
+                    color: '#ffffff',
+                  }}
+                >
+                  {selectedEvent.type === 'booking'   && '📋 Open Bookings'}
+                  {selectedEvent.type === 'checklist' && '✅ Open To-Do'}
+                  {selectedEvent.type === 'route'     && '🗺️ Open Navigation'}
+                </button>
+              )}
               <button
                 onClick={() => setSelectedEvent(null)}
-                className="w-full py-2.5 rounded-xl text-sm font-semibold transition hover:bg-gray-700 active:scale-95"
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition hover:bg-gray-700 active:scale-95"
                 style={{ background: '#000000', color: '#f9fafb' }}
               >
                 Close

@@ -18,11 +18,15 @@ import Expenses from "./app/pages/Expenses.jsx";
 import Message from "./app/pages/Message.jsx";
 import Booking from "./app/pages/Booking.jsx";
 import Calendar from "./app/pages/Calendar.jsx";
+import TravelSuggestion from "./app/pages/TravelSuggestion.jsx"; 
+import Todo from "./app/pages/Todo.jsx";
 
 import Finance from "./app/pages/Finance.jsx";
 import GroupVote from "./app/pages/GroupVote.jsx";
 import WelcomeAfterLogin from "./app/pages/WelcomeAfterLogin.jsx";
 import ChatWidget from "./components/ChatWidget.jsx";
+import Emergency from "./app/pages/Emergency.jsx";
+
 
 // Layout that injects the floating AI chat widget on authenticated pages
 function AuthLayout() {
@@ -62,6 +66,9 @@ const router = createBrowserRouter([
         { path: "/finance", element: <Finance /> },
         { path: "/vote",    element: <GroupVote /> },
         { path: "/welcome", element: <WelcomeAfterLogin /> },
+        { path: "/suggestions", element: <TravelSuggestion /> },
+        { path: "/todo", element: <Todo /> },
+        { path: "/emergency", element: <Emergency /> }
       ],
     },
 ]);
