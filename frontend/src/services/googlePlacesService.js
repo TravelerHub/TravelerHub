@@ -160,7 +160,7 @@ export const searchPlacesByText = async (query, latitude, longitude) => {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': GOOGLE_API_KEY,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.photos,places.types'
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.photos,places.types,places.regularOpeningHours,places.priceLevel'
       },
       body: JSON.stringify(requestBody)
     });
@@ -185,6 +185,9 @@ export const searchPlacesByText = async (query, latitude, longitude) => {
       rating: place.rating || null,
       ratingCount: place.userRatingCount || 0,
       types: place.types || [],
+      priceLevel: place.priceLevel || null,
+      openingHours: place.regularOpeningHours?.weekdayDescriptions || [],
+      isOpen: place.regularOpeningHours?.openNow ?? null,
       photos: place.photos ? place.photos.slice(0, 1).map(photo => ({
         name: photo.name,
         width: photo.widthPx,

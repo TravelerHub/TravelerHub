@@ -46,7 +46,7 @@ def ensure_trip_member(trip_id: str, user_id: str) -> None:
     Option B: trip -> group_id, and group_member table (group_id, user_id)
     """
     # Example assumes: trips table has id, group_id
-    trip = supabase.table("trip").select("id,group_id").eq("id", trip_id).maybe_single().execute()
+    trip = supabase.table("trips").select("id,group_id").eq("id", trip_id).maybe_single().execute()
     if not trip.data:
         raise HTTPException(status_code=404, detail="Trip not found")
 

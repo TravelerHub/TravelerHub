@@ -24,16 +24,13 @@ import BookingSummaryWidget from "../../components/dashboard/BookingSummaryWidge
 const FEATURES = [
   { icon: "🧾", label: "Scanner",      sub: "Scan receipts",    path: "/expenses",    accent: "#2d1b4e" },
   { icon: "👥", label: "Group Vote",   sub: "Decide together",  path: "/vote",        accent: "#3b1f1f" },
-  { icon: "🌍", label: "Suggestions",  sub: "Travel ideas",     path: "/suggestions", accent: "#183a37" },
+  { icon: "🌍", label: "Suggestions",  sub: "Travel ideas",     path: "/navigation", accent: "#183a37" },
 
-  // need to do 
+  // need to do
   { icon: "📝", label: "To Do",  sub: "to do list",     path: "/todo", accent: "#183a37" },
   { icon: "🟡", label: "Emergency",  sub: "Share emergency info",     path: "/emergency", accent: "#183a37" },
 
   { icon: "🟡", label: "something",  sub: "coming soon",     path: "/dashboard", accent: "#183a37" },
-
-
-
 ];
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
