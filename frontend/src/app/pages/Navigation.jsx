@@ -61,6 +61,8 @@ import {
   ArrowUpIcon,
   ArrowUturnLeftIcon,
   ArrowUturnRightIcon,
+  Bars3Icon,
+  AdjustmentsHorizontalIcon,
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 
@@ -95,6 +97,10 @@ function Navigation() {
   const [savingRoute, setSavingRoute] = useState(false);
   const [groups, setGroups] = useState([]);
   const [activeGroupId, setActiveGroupIdState] = useState('');
+
+  // Mobile responsive state
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  const [showMobileTools, setShowMobileTools] = useState(false);
 
   const categories = [
     { id: 'all', label: 'All', Icon: MagnifyingGlassIcon },
@@ -139,6 +145,7 @@ function Navigation() {
   const [showGcsPanel, setShowGcsPanel] = useState(false);
   const [routeDestination, setRouteDestination] = useState(null); // for Group Arrival Sync
   const lastSyncRef = useRef(0);
+  const isReroutingRef = useRef(false); // prevents re-route spam
 
   useEffect(() => {
     const boot = async () => {
@@ -182,6 +189,17 @@ function Navigation() {
     };
     fetchPreferences();
   }, []);
+
+  // Auto-replan when route preference changes (only if a route already exists)
+  const prevPreferenceRef = useRef(routePreference);
+  useEffect(() => {
+    if (prevPreferenceRef.current === routePreference) return;
+    prevPreferenceRef.current = routePreference;
+    if (currentRoute && markers.length >= 2) {
+      handlePlanRoute();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routePreference]);
 
   useEffect(() => {
     if (markers.length === 0) { setSuggestedPlaces([]); return; }
@@ -273,12 +291,43 @@ function Navigation() {
     if (!currentRoute?.steps) return;
     const userCoord = [pos.lng, pos.lat];
     const steps = currentRoute.steps;
-    const threshold = transportMode === 'walking' ? 30 : transportMode === 'cycling' ? 50 : 100;
+    const stepThreshold = transportMode === 'walking' ? 30 : transportMode === 'cycling' ? 50 : 100;
+
+    // ── Deviation detection ──
+    // Find the minimum distance from user to any point on the route polyline
+    if (isNavigating && currentRoute.geometry?.coordinates && !isReroutingRef.current) {
+      const coords = currentRoute.geometry.coordinates;
+      let minDist = Infinity;
+      // Sample every 5th coordinate for performance (polylines can have thousands of points)
+      for (let i = 0; i < coords.length; i += 5) {
+        const d = haversineDistance(userCoord, coords[i]);
+        if (d < minDist) minDist = d;
+        if (d < stepThreshold) break; // close enough, skip rest
+      }
+      // Reroute threshold: 3x the step-matching threshold
+      const deviationThreshold = transportMode === 'walking' ? 80 : transportMode === 'cycling' ? 150 : 300;
+      if (minDist > deviationThreshold) {
+        isReroutingRef.current = true;
+        // Replace the first marker with the user's current position and re-plan
+        setMarkers(prev => {
+          const updated = [...prev];
+          updated[0] = { coordinates: [pos.lng, pos.lat], title: 'Current Location', description: 'Rerouted' };
+          return updated;
+        });
+        handlePlanRoute().finally(() => {
+          // Cooldown: prevent another reroute for 15s
+          setTimeout(() => { isReroutingRef.current = false; }, 15000);
+        });
+        return;
+      }
+    }
+
+    // ── Step advancement ──
     setCurrentStepIndex(prev => {
       for (let i = prev + 1; i < steps.length; i++) {
         if (steps[i].start_location) {
           const dist = haversineDistance(userCoord, steps[i].start_location);
-          if (dist < threshold) {
+          if (dist < stepThreshold) {
             if (stepListRef.current) {
               const stepEl = stepListRef.current.querySelector(`[data-step-index="${i}"]`);
               if (stepEl) stepEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -289,7 +338,7 @@ function Navigation() {
       }
       return prev;
     });
-  }, [currentRoute, transportMode, activeGroupId]);
+  }, [currentRoute, transportMode, activeGroupId, isNavigating]);
 
   useEffect(() => {
     const dest = searchParams.get('destination');
@@ -677,23 +726,26 @@ function Navigation() {
     if (markers.length < 3) { alert('Need at least 3 stops to optimize'); return; }
     setRouteLoading(true);
     try {
-      const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
-      const coordinates = markers.map(m => m.coordinates.join(',')).join(';');
-      const response = await fetch(
-        `https://api.mapbox.com/optimized-trips/v1/mapbox/driving/${coordinates}?source=first&destination=last&roundtrip=false&access_token=${MAPBOX_TOKEN}`
-      );
-      const data = await response.json();
-      if (data.code === 'Ok' && data.trips && data.trips.length > 0) {
-        const newOrder = data.trips[0].waypoints.map(wp => markers[wp.waypoint_index]);
-        setMarkers(newOrder);
-        setTimeout(() => { handlePlanRoute(); }, 500);
-        alert('Route optimized successfully!');
-      } else {
-        alert('Could not optimize route. Try with different locations.');
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE}/navigation/optimize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          coordinates: markers.map(m => m.coordinates),
+          mode: transportMode === 'cycling' ? 'cycling' : transportMode === 'walking' ? 'walking' : 'driving',
+        }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || 'Optimization failed');
       }
+      const data = await response.json();
+      const newOrder = data.optimized_order.map(i => markers[i]);
+      setMarkers(newOrder);
+      setTimeout(() => { handlePlanRoute(); }, 300);
     } catch (error) {
       console.error('Optimization error:', error);
-      alert('Failed to optimize route. Please try again.');
+      alert(error.message || 'Failed to optimize route. Please try again.');
     } finally {
       setRouteLoading(false);
     }
@@ -723,11 +775,25 @@ function Navigation() {
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: '#f3f4f6' }}>
 
+      {/* ══ MOBILE SIDEBAR BACKDROP ═══════════════════════════════════════════ */}
+      {showMobileSidebar && (
+        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setShowMobileSidebar(false)} />
+      )}
+
       {/* ══ NAV SIDEBAR ══════════════════════════════════════════════════════════ */}
-      <aside className="w-52 shrink-0 flex flex-col" style={{ background: '#000000' }}>
-        <div className="px-5 pt-6 pb-5 border-b shrink-0" style={{ borderColor: '#374151' }}>
-          <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: '#6b7280' }}>TravelHub</p>
-          <p className="font-bold text-base leading-tight" style={{ color: '#f9fafb' }}>Navigation</p>
+      <aside className={`
+        fixed inset-y-0 left-0 z-50 w-52 flex flex-col transition-transform duration-300
+        lg:static lg:translate-x-0 lg:shrink-0
+        ${showMobileSidebar ? 'translate-x-0' : '-translate-x-full'}
+      `} style={{ background: '#000000' }}>
+        <div className="px-5 pt-6 pb-5 border-b shrink-0 flex items-center justify-between" style={{ borderColor: '#374151' }}>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: '#6b7280' }}>TravelHub</p>
+            <p className="font-bold text-base leading-tight" style={{ color: '#f9fafb' }}>Navigation</p>
+          </div>
+          <button onClick={() => setShowMobileSidebar(false)} className="lg:hidden p-1 rounded-lg hover:bg-white/10">
+            <XMarkIcon className="w-5 h-5" style={{ color: '#9ca3af' }} />
+          </button>
         </div>
         <nav className="flex flex-col gap-1 px-3 py-4 flex-1">
           {SIDEBAR_ITEMS.map((item) => {
@@ -735,7 +801,7 @@ function Navigation() {
             return (
               <button
                 key={item.label}
-                onClick={() => item.path && navigate(item.path)}
+                onClick={() => { item.path && navigate(item.path); setShowMobileSidebar(false); }}
                 className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition ${
                   isActive ? 'font-bold' : 'hover:bg-white/10'
                 }`}
@@ -750,13 +816,32 @@ function Navigation() {
 
       {/* ══ MAIN ═════════════════════════════════════════════════════════════════ */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Navbar_Dashboard />
+        <div className="hidden lg:block">
+          <Navbar_Dashboard />
+        </div>
 
         {/* Content: left tools panel + map */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden relative">
 
-          {/* ── Left Tools Panel ── */}
-          <div className="w-80 shrink-0 flex flex-col overflow-y-auto border-r" style={{ background: '#fbfbf2', borderColor: '#d1d1c7' }}>
+          {/* ── Mobile Tools Backdrop ── */}
+          {showMobileTools && (
+            <div className="fixed inset-0 bg-black/40 z-30 lg:hidden" onClick={() => setShowMobileTools(false)} />
+          )}
+
+          {/* ── Left Tools Panel (slide-over on mobile, static on desktop) ── */}
+          <div className={`
+            fixed inset-y-0 left-0 z-40 w-80 max-w-[85vw] flex flex-col overflow-y-auto border-r transition-transform duration-300
+            lg:static lg:translate-x-0 lg:shrink-0 lg:z-auto
+            ${showMobileTools ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+          `} style={{ background: '#fbfbf2', borderColor: '#d1d1c7' }}>
+
+            {/* Mobile drawer header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b shrink-0 lg:hidden" style={{ borderColor: '#d1d1c7' }}>
+              <h2 className="text-sm font-bold" style={{ color: '#160f29' }}>Route Planner</h2>
+              <button onClick={() => setShowMobileTools(false)} className="p-1.5 rounded-lg hover:bg-black/5">
+                <XMarkIcon className="w-5 h-5" style={{ color: '#5c6b73' }} />
+              </button>
+            </div>
 
             {/* Group Selector */}
             <div className="px-4 pt-4 pb-3 border-b shrink-0" style={{ borderColor: '#d1d1c7' }}>
@@ -867,7 +952,7 @@ function Navigation() {
                                   ref={provided.innerRef}
                                   {...provided.draggableProps}
                                   className="p-2.5 rounded-lg transition group"
-                                  style={{ background: snapshot.isDragging ? '#e8e8e0' : '#f0f0e8', border: '1px solid #d1d1c7' }}
+                                  style={{ ...provided.draggableProps.style, background: snapshot.isDragging ? '#e8e8e0' : '#f0f0e8', border: '1px solid #d1d1c7' }}
                                 >
                                   <div className="flex items-start gap-2">
                                     <div {...provided.dragHandleProps} className="text-gray-400 cursor-grab active:cursor-grabbing mt-0.5 text-sm select-none">⠿</div>
@@ -1554,6 +1639,52 @@ function Navigation() {
               onMapClick={handleMapClick}
               customPins={customPins}
             />
+
+            {/* ── Mobile floating controls (hidden on desktop) ── */}
+            {!isNavigating && (
+              <div className="absolute top-3 left-3 z-10 flex gap-2 lg:hidden">
+                <button
+                  onClick={() => setShowMobileSidebar(true)}
+                  className="w-10 h-10 rounded-xl shadow-lg flex items-center justify-center transition hover:opacity-80"
+                  style={{ background: '#000000' }}
+                >
+                  <Bars3Icon className="w-5 h-5 text-white" />
+                </button>
+                <button
+                  onClick={() => setShowMobileTools(true)}
+                  className="h-10 px-3 rounded-xl shadow-lg flex items-center gap-2 transition hover:opacity-80"
+                  style={{ background: '#183a37' }}
+                >
+                  <AdjustmentsHorizontalIcon className="w-5 h-5 text-white" />
+                  <span className="text-white text-xs font-semibold">Plan</span>
+                </button>
+              </div>
+            )}
+
+            {/* Mobile route summary pill */}
+            {!isNavigating && currentRoute && (
+              <div className="absolute bottom-4 left-3 right-3 z-10 lg:hidden">
+                <div className="rounded-xl shadow-lg p-3 flex items-center gap-3" style={{ background: '#160f29' }}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-semibold">{currentRoute.summary.totalDistance} · {currentRoute.summary.totalDuration}</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'rgba(251,251,242,0.6)' }}>{markers.length} stops · ETA {currentRoute.summary.estimatedArrival}</p>
+                  </div>
+                  <button
+                    onClick={handleStartNavigation}
+                    className="px-4 py-2 rounded-lg text-xs font-bold text-white shrink-0 transition hover:opacity-80"
+                    style={{ background: '#183a37' }}
+                  >
+                    Start
+                  </button>
+                  <button
+                    onClick={() => setShowMobileTools(true)}
+                    className="p-2 rounded-lg shrink-0 transition hover:bg-white/10"
+                  >
+                    <ChevronUpIcon className="w-4 h-4 text-white" />
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Add Pin mode banner */}
             {addPinMode && (
