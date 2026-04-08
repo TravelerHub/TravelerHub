@@ -26,6 +26,7 @@ import GroupVote from "./app/pages/GroupVote.jsx";
 import WelcomeAfterLogin from "./app/pages/WelcomeAfterLogin.jsx";
 import ChatWidget from "./components/ChatWidget.jsx";
 import Emergency from "./app/pages/Emergency.jsx";
+import Gallery from "./app/pages/Gallery.jsx";
 
 
 // Layout that injects the floating AI chat widget on authenticated pages
@@ -68,7 +69,8 @@ const router = createBrowserRouter([
         { path: "/welcome", element: <WelcomeAfterLogin /> },
         { path: "/suggestions", element: <TravelSuggestion /> },
         { path: "/todo", element: <Todo /> },
-        { path: "/emergency", element: <Emergency /> }
+        { path: "/emergency", element: <Emergency /> },
+        { path: "/gallery", element: <Gallery /> }
       ],
     },
 ]);
