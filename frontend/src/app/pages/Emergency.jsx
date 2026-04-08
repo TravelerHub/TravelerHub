@@ -218,7 +218,7 @@ export default function Emergency() {
           <div className="flex items-center justify-between mb-4 px-1">
             <div>
               <h2 className="text-xl font-bold flex items-center gap-2" style={{ color: "#160f29" }}>
-                🆘 Emergency Hub
+               Emergency Hub
               </h2>
               <p className="text-xs mt-0.5" style={{ color: "#6b7280" }}>
                 Emergency numbers, contacts, and medical info — always at hand.
@@ -246,7 +246,7 @@ export default function Emergency() {
                   }}
                   title="Tap to flash SOS alert"
                 >
-                  <span style={{ fontSize: 32, lineHeight: 1 }}>🆘</span>
+                  {/* <span style={{ fontSize: 32, lineHeight: 1 }}>🆘</span> */}
                   <span className="text-sm font-bold mt-1 tracking-widest">SOS</span>
                 </button>
                 <p className="text-[11px]" style={{ color: "#9ca3af" }}>
