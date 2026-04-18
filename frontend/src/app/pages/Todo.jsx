@@ -1,8 +1,10 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
 import MiniCalendar from "../../components/dashboard/MiniCalendar.jsx";
+import { API_BASE } from "../../config";
+import { logActivity } from "../../components/ActivityFeed.jsx";
 
 // ── Color palette (matches Dashboard / Booking)
 // #000000  sidebar bg
@@ -97,6 +99,28 @@ const uid = () => `t_${Math.random().toString(16).slice(2)}_${Date.now()}`;
 const loadTodos  = () => JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
 const saveTodos  = (todos) => localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
 
+function getToken() {
+  return localStorage.getItem("token") || sessionStorage.getItem("token") || "";
+}
+
+function getActiveTripId() {
+  return localStorage.getItem("active_group_id") || localStorage.getItem("activeGroupId") || null;
+}
+
+// Normalize a server todo to the local shape used in state
+function fromServer(t) {
+  return {
+    id:        t.id,
+    text:      t.text,
+    done:      t.done,
+    priority:  t.priority,
+    category:  t.category,
+    dueDate:   t.due_date || null,
+    createdAt: t.created_at,
+    _server:   true,
+  };
+}
+
 const isToday    = (dateStr) => {
   if (!dateStr) return false;
   const d = new Date(dateStr);
@@ -137,6 +161,8 @@ export default function Todo() {
   const [searchQuery, setSearch]      = useState("");
   const [editingId,   setEditingId]   = useState(null);
   const [editText,    setEditText]    = useState("");
+  const [syncing,     setSyncing]     = useState(false);
+  const [syncMode,    setSyncMode]    = useState(false);   // true = connected to server
 
   // Add-form state
   const [newText,     setNewText]     = useState("");
@@ -153,8 +179,30 @@ export default function Todo() {
   const [selectedDate, setSelectedDate] = useState(null);
 
   const inputRef = useRef(null);
+  const tripId   = getActiveTripId();
 
-  // ── Persist ──────────────────────────────────────────────────────────────
+  // ── Server sync ───────────────────────────────────────────────────────────
+  const fetchServerTodos = useCallback(async () => {
+    if (!tripId || !getToken()) return;
+    try {
+      setSyncing(true);
+      const res = await fetch(`${API_BASE}/todos/?trip_id=${tripId}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const normalized = data.map(fromServer);
+        setTodos(normalized);
+        saveTodos(normalized);
+        setSyncMode(true);
+      }
+    } catch { /* offline — use localStorage */ }
+    finally { setSyncing(false); }
+  }, [tripId]);
+
+  useEffect(() => { fetchServerTodos(); }, [fetchServerTodos]);
+
+  // ── Persist locally whenever todos change ──────────────────────────────────
   useEffect(() => { saveTodos(todos); }, [todos]);
 
   // Focus new-todo input when form opens
@@ -218,57 +266,131 @@ export default function Todo() {
   }, [todos, activeFilter, activeCategory, searchQuery, selectedDate]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
-  const addTodo = (e) => {
+  const addTodo = async (e) => {
     e?.preventDefault();
     if (!newText.trim()) return;
-    const todo = {
-      id:       uid(),
-      text:     newText.trim(),
-      done:     false,
-      priority: newPriority,
-      category: newCategory,
-      dueDate:  newDueDate || null,
-      createdAt: new Date().toISOString(),
+
+    // Optimistic local add
+    const tempId = uid();
+    const localTodo = {
+      id: tempId, text: newText.trim(), done: false,
+      priority: newPriority, category: newCategory,
+      dueDate: newDueDate || null, createdAt: new Date().toISOString(),
     };
-    setTodos((prev) => [todo, ...prev]);
+    setTodos((prev) => [localTodo, ...prev]);
     setNewText(""); setNewDueDate(""); setShowForm(false);
+
+    if (syncMode && tripId && getToken()) {
+      try {
+        const res = await fetch(`${API_BASE}/todos/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({
+            trip_id: tripId, text: localTodo.text,
+            priority: localTodo.priority, category: localTodo.category,
+            due_date: localTodo.dueDate || null,
+          }),
+        });
+        if (res.ok) {
+          const server = await res.json();
+          // Replace the temp id with the real server id
+          setTodos((prev) => prev.map((t) => t.id === tempId ? fromServer(server) : t));
+          logActivity(tripId, "added_todo", localTodo.text);
+        }
+      } catch { /* keep local copy */ }
+    }
   };
 
-  const toggleTodo = (id) =>
-    setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+  const toggleTodo = async (id) => {
+    const todo = todos.find((t) => t.id === id);
+    if (!todo) return;
+    const newDone = !todo.done;
+    setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, done: newDone } : t)));
 
-  const deleteTodo = (id) =>
+    if (syncMode && getToken()) {
+      try {
+        await fetch(`${API_BASE}/todos/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({ done: newDone }),
+        });
+        if (newDone) logActivity(tripId, "checked_task", todo.text);
+      } catch { /* keep local state */ }
+    }
+  };
+
+  const deleteTodo = async (id) => {
     setTodos((prev) => prev.filter((t) => t.id !== id));
+    if (syncMode && getToken()) {
+      try {
+        await fetch(`${API_BASE}/todos/${id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${getToken()}` },
+        });
+      } catch { /* already removed locally */ }
+    }
+  };
 
   const startEdit = (todo) => {
     setEditingId(todo.id);
     setEditText(todo.text);
   };
 
-  const saveEdit = (id) => {
+  const saveEdit = async (id) => {
     if (!editText.trim()) return;
     setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, text: editText.trim() } : t)));
     setEditingId(null);
+
+    if (syncMode && getToken()) {
+      try {
+        await fetch(`${API_BASE}/todos/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({ text: editText.trim() }),
+        });
+      } catch { /* local update already applied */ }
+    }
   };
 
-  const clearCompleted = () =>
+  const clearCompleted = async () => {
+    const completed = todos.filter((t) => t.done);
     setTodos((prev) => prev.filter((t) => !t.done));
+    if (syncMode && getToken()) {
+      await Promise.all(completed.map((t) =>
+        fetch(`${API_BASE}/todos/${t.id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${getToken()}` },
+        }).catch(() => {})
+      ));
+    }
+  };
 
   // Add a full template as todos
-  const addTemplate = (template) => {
+  const addTemplate = async (template) => {
     const now = new Date().toISOString();
     const newTodos = template.tasks.map((task) => ({
-      id:        uid(),
-      text:      task.text,
-      done:      false,
-      priority:  task.priority,
-      category:  task.category,
-      dueDate:   null,
-      createdAt: now,
+      id: uid(), text: task.text, done: false,
+      priority: task.priority, category: task.category,
+      dueDate: null, createdAt: now,
     }));
     setTodos((prev) => [...newTodos, ...prev]);
     setTemplateAdded((p) => ({ ...p, [template.id]: true }));
     setTimeout(() => setTemplateAdded((p) => ({ ...p, [template.id]: false })), 2000);
+
+    if (syncMode && tripId && getToken()) {
+      await Promise.all(newTodos.map((task) =>
+        fetch(`${API_BASE}/todos/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({
+            trip_id: tripId, text: task.text,
+            priority: task.priority, category: task.category,
+          }),
+        }).catch(() => {})
+      ));
+      // Re-fetch to get real server ids
+      fetchServerTodos();
+    }
   };
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -363,8 +485,19 @@ export default function Todo() {
           <div className="flex items-center justify-between mb-4 px-1">
             <div>
               <h2 className="text-xl font-bold" style={{ color: "#160f29" }}>To-Do Hub</h2>
-              <p className="text-xs mt-0.5" style={{ color: "#6b7280" }}>
-                Organize tasks, packing lists, and travel prep all in one place.
+              <p className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: "#6b7280" }}>
+                {syncMode ? (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                    Synced with your group
+                    {syncing && <span className="animate-pulse">…</span>}
+                  </>
+                ) : (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-400 inline-block" />
+                    Saved locally — select a trip to sync
+                  </>
+                )}
               </p>
             </div>
             <div className="flex items-center gap-2">

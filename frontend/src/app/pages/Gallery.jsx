@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE } from "../../config";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
+import { logActivity } from "../../components/ActivityFeed.jsx";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,12 @@ export default function Gallery() {
   // Multi-select for batch sharing
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
+
+  // Comments for lightbox
+  const [comments, setComments]       = useState([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [newComment, setNewComment]   = useState("");
+  const [postingComment, setPosting]  = useState(false);
 
   // ── Data fetching ─────────────────────────────────────────────────────────
 
@@ -133,6 +140,7 @@ export default function Gallery() {
       if (res.ok) {
         const newPhoto = await res.json();
         setPhotos((prev) => [newPhoto, ...prev]);
+        logActivity(activeTrip, "added_photo", uploadCaption.trim() || "a photo");
         closeUpload();
       } else {
         const err = await res.json().catch(() => ({}));
@@ -203,6 +211,7 @@ export default function Gallery() {
         setPhotos((prev) =>
           prev.map((p) => (p.id === mediaId ? { ...p, liked_by_me: data.liked, like_count: data.like_count } : p))
         );
+        if (data.liked) logActivity(activeTrip, "liked_photo");
       }
     } catch { /* silent */ }
     finally { setLikingId(null); }
@@ -244,6 +253,62 @@ export default function Gallery() {
       await navigator.clipboard.writeText(photo.public_url);
       alert("Link copied to clipboard!");
     }
+  };
+
+  // ── Comments ──────────────────────────────────────────────────────────────
+
+  const fetchComments = useCallback(async (mediaId) => {
+    if (!mediaId) return;
+    setCommentsLoading(true);
+    setComments([]);
+    try {
+      const res = await fetch(`${API_BASE}/media-comments/?media_id=${mediaId}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (res.ok) setComments(await res.json());
+    } catch { /* silent */ }
+    finally { setCommentsLoading(false); }
+  }, []);
+
+  // Fetch comments whenever the lightbox opens on a new photo
+  useEffect(() => {
+    if (lightboxIdx >= 0 && photos[lightboxIdx]) {
+      fetchComments(photos[lightboxIdx].id);
+      setNewComment("");
+    } else {
+      setComments([]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lightboxIdx]);
+
+  const postComment = async (e) => {
+    e?.preventDefault();
+    if (!newComment.trim() || !lightboxPhoto) return;
+    setPosting(true);
+    try {
+      const res = await fetch(`${API_BASE}/media-comments/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ media_id: lightboxPhoto.id, trip_id: activeTrip, body: newComment.trim() }),
+      });
+      if (res.ok) {
+        const c = await res.json();
+        setComments((prev) => [...prev, c]);
+        setNewComment("");
+        logActivity(activeTrip, "commented_photo", lightboxPhoto?.caption || "a photo");
+      }
+    } catch { /* silent */ }
+    finally { setPosting(false); }
+  };
+
+  const deleteComment = async (commentId) => {
+    setComments((prev) => prev.filter((c) => c.id !== commentId));
+    try {
+      await fetch(`${API_BASE}/media-comments/${commentId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+    } catch { /* already removed */ }
   };
 
   // ── Multi-select batch share ──────────────────────────────────────────────
@@ -676,6 +741,64 @@ export default function Gallery() {
               ) : lightboxPhoto.caption ? (
                 <p className="text-sm text-white/70 mt-2">{lightboxPhoto.caption}</p>
               ) : null}
+
+              {/* Comments section */}
+              <div className="mt-4 border-t border-white/10 pt-3">
+                <p className="text-xs font-semibold mb-2" style={{ color: "rgba(255,255,255,0.5)" }}>
+                  Comments {comments.length > 0 && `(${comments.length})`}
+                </p>
+
+                {commentsLoading && (
+                  <p className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>Loading…</p>
+                )}
+
+                {!commentsLoading && comments.length === 0 && (
+                  <p className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>Be the first to comment.</p>
+                )}
+
+                <div className="space-y-2 max-h-32 overflow-y-auto mb-3">
+                  {comments.map((c) => {
+                    const u = c.users;
+                    const name = u?.full_name || u?.username || "Member";
+                    return (
+                      <div key={c.id} className="flex items-start gap-2 group">
+                        <div
+                          className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 mt-0.5"
+                          style={{ background: avatarColor(name), color: "#fbfbf2" }}
+                        >
+                          {name[0]?.toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-semibold text-white/80">{name} </span>
+                          <span className="text-xs text-white/60">{c.body}</span>
+                        </div>
+                        <button
+                          onClick={() => deleteComment(c.id)}
+                          className="text-white/0 group-hover:text-white/30 hover:!text-red-400 transition text-xs shrink-0"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <form onSubmit={postComment} className="flex gap-2">
+                  <input
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    placeholder="Add a comment…"
+                    className="flex-1 px-3 py-1.5 rounded-xl text-xs bg-white/10 text-white border border-white/10 outline-none focus:border-white/30 placeholder:text-white/30"
+                  />
+                  <button
+                    type="submit"
+                    disabled={postingComment || !newComment.trim()}
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/20 text-white hover:bg-white/30 disabled:opacity-40 transition"
+                  >
+                    {postingComment ? "…" : "Post"}
+                  </button>
+                </form>
+              </div>
 
               {/* Counter */}
               <p className="text-xs text-white/30 mt-3 text-center">

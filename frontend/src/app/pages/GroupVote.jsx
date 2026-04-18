@@ -5,6 +5,7 @@ import { API_BASE } from "../../config";
 import { pollService } from "../../services/pollService";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
+import { logActivity } from "../../components/ActivityFeed.jsx";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -252,6 +253,9 @@ export default function GroupVote() {
         await pollService.removeVote(activePoll.id);
       } else {
         await pollService.vote(activePoll.id, optionId);
+        const optionLabel = activePoll.options?.find((o) => o.id === optionId)?.text;
+        const tripId = localStorage.getItem("active_group_id") || localStorage.getItem("activeGroupId");
+        logActivity(tripId, "voted", optionLabel || activePoll.question);
       }
       await refreshPoll();
     } catch (e) {
