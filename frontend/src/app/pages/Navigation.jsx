@@ -22,6 +22,9 @@ import DiscoveryOverlay from '../../components/DiscoveryOverlay';
 import ShortlistSidebar from '../../components/ShortlistSidebar';
 import ExpenseMarkers from '../../components/ExpenseMarkers';
 import StoryMode from '../../components/StoryMode';
+import SharedMapPins from '../../components/SharedMapPins';
+import GroupGeofenceAlert from '../../components/GroupGeofenceAlert';
+import GroupLocationSharing from '../../components/GroupLocationSharing';
 import {
   searchNearbyPlaces,
   searchPlacesByText,
@@ -159,6 +162,14 @@ function Navigation() {
   const [expenseMapMarkers, setExpenseMapMarkers] = useState([]);
   const [activeTripId] = useState(null);
 
+  // Group live tracking (replaces old memberMarkers state)
+  const [groupMemberMarkers, setGroupMemberMarkers] = useState([]);
+
+  // Shared collaborative map pins (visible to all group members in real-time)
+  const [sharedPins, setSharedPins] = useState([]);
+  const [sharedPinAddMode, setSharedPinAddMode] = useState(false);
+  const [pendingSharedPinCoords, setPendingSharedPinCoords] = useState(null);
+
   // GCS state
   const [activePollId, setActivePollId] = useState(null);
   const [showGcsPanel, setShowGcsPanel] = useState(false);
@@ -295,12 +306,17 @@ function Navigation() {
   };
 
   const handleMapClick = useCallback((lngLat) => {
+    // Shared pin mode takes priority over private pin mode
+    if (sharedPinAddMode) {
+      setPendingSharedPinCoords({ lat: lngLat.lat, lng: lngLat.lng });
+      return;
+    }
     if (!addPinMode) return;
     setPendingPin(lngLat);
     setPinLabel('');
     setShowPinPrompt(true);
     setAddPinMode(false);
-  }, [addPinMode]);
+  }, [addPinMode, sharedPinAddMode]);
 
   const handleConfirmPin = () => {
     if (pendingPin) {
@@ -1718,6 +1734,43 @@ function Navigation() {
             {/* ── GCS Panel ── */}
             {showGcsPanel && activeGroupId && (
               <div className="px-4 py-3 space-y-3 border-b" style={{ borderColor: '#d1d1c7' }}>
+
+                {/* Live group member tracking */}
+                <GroupLocationSharing
+                  tripId={activeGroupId}
+                  onFlyTo={(lat, lng) => mapRef.current?.flyTo([lng, lat], { zoom: 15 })}
+                  memberMarkers={setGroupMemberMarkers}
+                />
+
+                <div className="border-t pt-3" style={{ borderColor: '#e8e8e0' }}>
+                  {/* Shared collaborative pins */}
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold" style={{ color: '#160f29' }}>Shared Pins</span>
+                    <button
+                      onClick={() => setSharedPinAddMode((v) => !v)}
+                      className="text-xs px-2 py-1 rounded-lg font-medium transition"
+                      style={{
+                        background: sharedPinAddMode ? '#183a37' : '#e8e8e0',
+                        color: sharedPinAddMode ? 'white' : '#5c6b73',
+                      }}
+                    >
+                      {sharedPinAddMode ? '✕ Cancel' : '+ Drop Pin'}
+                    </button>
+                  </div>
+                  <SharedMapPins
+                    tripId={activeGroupId}
+                    onPinsChange={setSharedPins}
+                    onFlyTo={(lat, lng) => mapRef.current?.flyTo([lng, lat], { zoom: 15 })}
+                    addPinMode={sharedPinAddMode}
+                    pendingCoords={pendingSharedPinCoords}
+                    onPendingConsumed={() => {
+                      setPendingSharedPinCoords(null);
+                      setSharedPinAddMode(false);
+                    }}
+                  />
+                </div>
+
+                <div className="border-t pt-3" style={{ borderColor: '#e8e8e0' }}>
                 <FairPointFinder
                   tripId={activeGroupId}
                   onSelectPlace={(place) => {
@@ -1744,6 +1797,7 @@ function Navigation() {
                   tripId={activeGroupId}
                   isLeader={true}
                 />
+                </div>{/* end border-t pt-3 wrapper */}
               </div>
             )}
 
@@ -2018,6 +2072,14 @@ function Navigation() {
               customPins={customPins}
               discoveryPlaces={discoveryPlaces}
               expenseMarkers={expenseMapMarkers}
+              groupMemberMarkers={groupMemberMarkers}
+              sharedPins={sharedPins}
+            />
+
+            {/* Group arrival geofence toasts — appears when a member reaches a waypoint */}
+            <GroupGeofenceAlert
+              memberMarkers={groupMemberMarkers}
+              waypoints={markers}
             />
 
             {/* Overlay components */}

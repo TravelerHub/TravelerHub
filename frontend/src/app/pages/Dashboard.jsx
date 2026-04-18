@@ -14,6 +14,7 @@ import MiniCalendar        from "../../components/dashboard/MiniCalendar.jsx";
 import LocalInfoWidget     from "../../components/dashboard/LocalInfoWidget.jsx";
 import BookingSummaryWidget from "../../components/dashboard/BookingSummaryWidget.jsx";
 import GalleryWidget       from "../../components/dashboard/GalleryWidget.jsx";
+import ActivityFeed        from "../../components/ActivityFeed.jsx";
 
 // ── Color palette ─────────────────────────────────────────────────────────────
 // #160f29  deep dark   (sidebar, widget backgrounds)
@@ -59,6 +60,9 @@ export default function Dashboard() {
 
   const [latestConversations, setLatestConversations] = useState([]);
   const [upcomingBookings,    setUpcomingBookings]    = useState([]);
+  const [activeTripId,        setActiveTripId]        = useState(
+    () => localStorage.getItem("active_group_id") || localStorage.getItem("activeGroupId") || null
+  );
 
   useEffect(() => {
     if (!user) return;
@@ -113,6 +117,7 @@ export default function Dashboard() {
       const tripsData = await tripsRes.json();
       if (!tripsData?.length) return;
       const tripId = tripsData[0]?.group_id || tripsData[0]?.id;
+      if (tripId) setActiveTripId(tripId);
       const bRes = await fetch(`${API_BASE}/api/bookings?trip_id=${tripId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -487,6 +492,18 @@ export default function Dashboard() {
             {/* ── ROW 5 · Trip Gallery ──────────────────────────────────────── */}
             <Widget title="Trip Gallery" className="col-span-2" style={{ minHeight: "260px" }}>
               <GalleryWidget />
+            </Widget>
+
+            {/* ── ROW 6 · Group Activity Feed ──────────────────────────────── */}
+            <Widget title="Group Activity" className="col-span-3" style={{ minHeight: "200px" }}>
+              {activeTripId ? (
+                <ActivityFeed tripId={activeTripId} limit={15} />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 gap-2">
+                  <span className="text-2xl">🌱</span>
+                  <p className="text-xs" style={{ color: "#9ca3af" }}>Create or join a trip to see group activity.</p>
+                </div>
+              )}
             </Widget>
 
           </div>

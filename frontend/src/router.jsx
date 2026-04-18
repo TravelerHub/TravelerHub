@@ -27,12 +27,14 @@ import WelcomeAfterLogin from "./app/pages/WelcomeAfterLogin.jsx";
 import ChatWidget from "./components/ChatWidget.jsx";
 import Emergency from "./app/pages/Emergency.jsx";
 import Gallery from "./app/pages/Gallery.jsx";
+import OfflineBanner from "./components/OfflineBanner.jsx";
 
 
-// Layout that injects the floating AI chat widget on authenticated pages
+// Layout that injects the floating AI chat widget and network status on authenticated pages
 function AuthLayout() {
   return (
     <>
+      <OfflineBanner />
       <Outlet />
       <ChatWidget />
     </>

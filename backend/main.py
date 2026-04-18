@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -27,12 +28,20 @@ from routers import billing
 from routers import gcs
 from routers import weather
 from routers import gallery
+from routers import map_pins
+from routers import activity
+from routers import trip_todos
+from routers import media_comments
+from routers import cards
 
 app = FastAPI()
 
+_cors_env = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+_allowed_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,6 +74,12 @@ app.include_router(billing.router)       # /billing
 app.include_router(gcs.router)           # /gcs (Group-Centric Search)
 app.include_router(weather.router)       # /weather
 app.include_router(gallery.router)       # /trips/{trip_id}/media|upload (gallery)
+app.include_router(map_pins.router)      # /map-pins (shared collaborative map annotations)
+app.include_router(activity.router)      # /activity (social activity feed)
+app.include_router(trip_todos.router)    # /todos (group-synced trip todos)
+app.include_router(media_comments.router)  # /media-comments (photo comments)
+app.include_router(cards.router)           # /cards (credit card optimizer)
+app.include_router(cards.budget_router)    # /finance/budget (trip budgets)
 
 
 
