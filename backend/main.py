@@ -32,6 +32,7 @@ from routers import map_pins
 from routers import activity
 from routers import trip_todos
 from routers import media_comments
+from routers import cards
 
 app = FastAPI()
 
@@ -77,6 +78,8 @@ app.include_router(map_pins.router)      # /map-pins (shared collaborative map a
 app.include_router(activity.router)      # /activity (social activity feed)
 app.include_router(trip_todos.router)    # /todos (group-synced trip todos)
 app.include_router(media_comments.router)  # /media-comments (photo comments)
+app.include_router(cards.router)           # /cards (credit card optimizer)
+app.include_router(cards.budget_router)    # /finance/budget (trip budgets)
 
 
 
