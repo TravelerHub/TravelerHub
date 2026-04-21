@@ -17,6 +17,7 @@ from typing import Optional, List
 from utils import oauth2
 from supabase_client import supabase
 from dotenv import load_dotenv
+from services.waypoint_predictor import WaypointPredictor
 
 load_dotenv()
 
@@ -92,7 +93,8 @@ async def _fetch_user_preferences(user_id: str) -> dict:
             .execute()
         )
         return res.data or {}
-    except Exception:
+    except Exception as e:
+        print(f"[smart_route] user preferences fetch error: {e}")
         return {}
 
 
@@ -148,7 +150,8 @@ async def _check_weather_for_suggestions(suggestions: list, api_key: str = None)
 
                 if temp is not None:
                     sug["temperature_f"] = round(temp)
-            except Exception:
+            except Exception as e:
+                print(f"[smart_route] weather check error: {e}")
                 sug["weather_safe"] = True  # Default to safe if check fails
 
     return suggestions
@@ -253,7 +256,8 @@ async def _search_pois_along_route(legs: list, preference: str, api_key: str, ke
                             "leg_index": i,
                             "preference_match": preference,
                         })
-                except Exception:
+                except Exception as e:
+                    print(f"[smart_route] POI search error: {e}")
                     continue
 
     # Deduplicate by name
@@ -407,8 +411,8 @@ async def plan_smart_route(
                         .is_("left_at", None)
                         .execute()
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"[smart_route] trip_members lookup error: {e}")
 
                 if not members_res or not members_res.data:
                     members_res = (
@@ -430,8 +434,8 @@ async def plan_smart_route(
                     for p in (prefs_res.data or []):
                         for t in (p.get("avoid_types") or []):
                             avoid_types.add(t.lower())
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[smart_route] group preferences error: {e}")
 
         # 5. Filter suggestions by avoid_types
         if avoid_types:
@@ -499,8 +503,8 @@ async def plan_smart_route(
                 pw_result = await park_and_walk(pw_body, current_user)
                 if pw_result.get("recommendation") == "park_and_walk":
                     park_walk_suggestion = pw_result
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[smart_route] park_and_walk error: {e}")
 
         response = {
             "route": {
@@ -539,8 +543,8 @@ async def plan_smart_route(
                     },
                     "updated_at": datetime.now().isoformat(),
                 }, on_conflict="trip_id").execute()
-            except Exception:
-                pass  # Don't fail the route if broadcast fails
+            except Exception as e:
+                print(f"[smart_route] broadcast error: {e}")
 
         return response
 
@@ -577,8 +581,8 @@ async def update_group_position(
             .maybe_single()
             .execute()
         )
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[smart_route] trip_members membership check error: {e}")
 
     if not membership or not membership.data:
         try:
@@ -591,8 +595,8 @@ async def update_group_position(
                 .maybe_single()
                 .execute()
             )
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[smart_route] group_member membership check error: {e}")
 
     # Also check if user is the trip owner
     if not membership or not membership.data:
@@ -607,8 +611,8 @@ async def update_group_position(
             )
             if owner and owner.data:
                 membership = owner
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[smart_route] trip owner check error: {e}")
 
     if not membership or not membership.data:
         raise HTTPException(status_code=403, detail="Not a member of this group")
@@ -652,8 +656,8 @@ async def get_group_positions(
             .is_("left_at", None)
             .execute()
         )
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[smart_route] trip_members positions lookup error: {e}")
 
     if not members_res or not members_res.data:
         members_res = (
@@ -703,3 +707,82 @@ async def get_group_positions(
         })
 
     return {"members": members}
+
+
+# ---- Next Waypoint Prediction ----
+
+class WaypointCandidate(BaseModel):
+    name: str
+    place_type: str
+    lat: float
+    lng: float
+
+
+class PredictNextWaypointRequest(BaseModel):
+    current_lat: float
+    current_lng: float
+    current_place_type: str
+    candidates: List[WaypointCandidate]
+
+
+@router.post("/trips/{trip_id}/predict-next-waypoint")
+async def predict_next_waypoint(
+    trip_id: str,
+    body: PredictNextWaypointRequest,
+    current_user=Depends(oauth2.get_current_user),
+):
+    """
+    Predict the most likely next waypoint using a Markov Chain trained on the
+    trip's historical checkpoint/pin visit sequences.
+
+    Body: { current_lat, current_lng, current_place_type, candidates: [{name, place_type, lat, lng}] }
+    Returns candidates sorted by predicted likelihood (highest first).
+    """
+    user_id = current_user.get("id") or current_user.get("user_id")
+
+    # Fetch visit history from shared_map_pins ordered by creation time
+    visit_sequences: list[list[str]] = []
+    try:
+        pins_res = (
+            supabase.table("shared_map_pins")
+            .select("trip_id, place_type, created_at")
+            .eq("trip_id", trip_id)
+            .order("created_at", desc=False)
+            .execute()
+        )
+        pins = pins_res.data or []
+        if pins:
+            sequence = [p["place_type"] for p in pins if p.get("place_type")]
+            if len(sequence) >= 2:
+                visit_sequences.append(sequence)
+    except Exception as e:
+        print(f"[smart_route] shared_map_pins history fetch error: {e}")
+
+    # Also try trip_checkpoints if it exists
+    try:
+        checkpoints_res = (
+            supabase.table("trip_checkpoints")
+            .select("trip_id, place_type, visited_at")
+            .eq("trip_id", trip_id)
+            .order("visited_at", desc=False)
+            .execute()
+        )
+        checkpoints = checkpoints_res.data or []
+        if checkpoints:
+            sequence = [c["place_type"] for c in checkpoints if c.get("place_type")]
+            if len(sequence) >= 2:
+                visit_sequences.append(sequence)
+    except Exception as e:
+        print(f"[smart_route] trip_checkpoints history fetch error: {e}")
+
+    predictor = WaypointPredictor()
+    predictor.train(visit_sequences)
+
+    candidates_dicts = [c.model_dump() for c in body.candidates]
+    sorted_candidates = predictor.predict_next(body.current_place_type, candidates_dicts)
+
+    return {
+        "current_place_type": body.current_place_type,
+        "candidates": sorted_candidates,
+        "history_sequences_used": len(visit_sequences),
+    }
