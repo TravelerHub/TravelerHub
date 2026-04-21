@@ -60,6 +60,7 @@ export default function Dashboard() {
 
   const [latestConversations, setLatestConversations] = useState([]);
   const [upcomingBookings,    setUpcomingBookings]    = useState([]);
+  const [loadingBookings,     setLoadingBookings]     = useState(true);
   const [activeTripId,        setActiveTripId]        = useState(
     () => localStorage.getItem("active_group_id") || localStorage.getItem("activeGroupId") || null
   );
@@ -109,13 +110,13 @@ export default function Dashboard() {
   const fetchUpcomingBookings = async () => {
     try {
       const token = localStorage.getItem("token");
-      if (!token) return;
+      if (!token) { setLoadingBookings(false); return; }
       const tripsRes = await fetch(`${API_BASE}/groups/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!tripsRes.ok) return;
+      if (!tripsRes.ok) { setLoadingBookings(false); return; }
       const tripsData = await tripsRes.json();
-      if (!tripsData?.length) return;
+      if (!tripsData?.length) { setLoadingBookings(false); return; }
       const tripId = tripsData[0]?.group_id || tripsData[0]?.id;
       if (tripId) setActiveTripId(tripId);
       const bRes = await fetch(`${API_BASE}/api/bookings?trip_id=${tripId}`, {
@@ -140,6 +141,8 @@ export default function Dashboard() {
       }
     } catch (err) {
       console.error("fetchUpcomingBookings:", err);
+    } finally {
+      setLoadingBookings(false);
     }
   };
 
@@ -372,7 +375,20 @@ export default function Dashboard() {
 
             <Widget title="Upcoming Event" style={{ minHeight: "220px" }}>
               <div className="h-full flex flex-col gap-2 p-4 overflow-y-auto">
-                {upcomingBookings.length === 0 ? (
+                {loadingBookings ? (
+                  <div className="flex flex-col gap-3">
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} className="flex items-start gap-3 px-3 py-3 rounded-xl" style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
+                        <div className="animate-pulse bg-gray-200 rounded w-6 h-6 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                          <div className="animate-pulse bg-gray-200 rounded w-3/4 h-4" />
+                          <div className="animate-pulse bg-gray-200 rounded w-1/2 h-3" />
+                        </div>
+                        <div className="animate-pulse bg-gray-200 rounded-full w-16 h-5 shrink-0" />
+                      </div>
+                    ))}
+                  </div>
+                ) : upcomingBookings.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center gap-2">
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="#9ca3af" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
