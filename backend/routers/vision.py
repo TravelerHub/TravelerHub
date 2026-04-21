@@ -90,15 +90,13 @@ async def analyze_receipt(
         return {
             "success": True,
             "data": parsed_data,
-            "raw_text": response.text
         }
 
     except json.JSONDecodeError:
-        return {
-            "success": False,
-            "error": "Could not parse receipt data",
-            "raw_text": response.text
-        }
+        raise HTTPException(
+            status_code=422,
+            detail="Could not parse receipt. Please try a clearer image."
+        )
     except Exception as e:
         print(f"Gemini API error: {e}")
         raise HTTPException(
@@ -171,15 +169,13 @@ async def analyze_document(
         return {
             "success": True,
             "data": parsed_data,
-            "raw_text": response.text
         }
 
     except json.JSONDecodeError:
-        return {
-            "success": False,
-            "error": "Could not parse document data",
-            "raw_text": response.text
-        }
+        raise HTTPException(
+            status_code=422,
+            detail="Could not parse receipt. Please try a clearer image."
+        )
     except Exception as e:
         print(f"Gemini API error: {e}")
         raise HTTPException(
