@@ -27,6 +27,7 @@
     "react-dom": "^19.2.0",
     "react-map-gl": "^8.1.0",
     "react-router-dom": "^7.10.1",
+    "supercluster": "^8.0.1",
     "tailwindcss": "^4.1.17"
   },
   "devDependencies": {
