@@ -74,8 +74,30 @@ export default function WeatherWidget() {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center p-4">
-        <span className="text-xs animate-pulse" style={{ color: "#9ca3af" }}>Fetching weather…</span>
+      <div className="h-full flex items-center gap-6 px-5 py-3">
+        {/* Icon + temp skeleton */}
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="animate-pulse bg-gray-200 rounded-full w-10 h-10" />
+          <div className="flex flex-col gap-1.5">
+            <div className="animate-pulse bg-gray-200 rounded w-16 h-7" />
+            <div className="animate-pulse bg-gray-200 rounded w-20 h-3" />
+          </div>
+        </div>
+        {/* Divider */}
+        <div className="h-10 w-px shrink-0" style={{ background: "rgba(0,0,0,0.08)" }} />
+        {/* City + stats skeleton */}
+        <div className="flex-1 min-w-0 flex flex-col gap-2">
+          <div className="animate-pulse bg-gray-200 rounded w-32 h-4" />
+          <div className="flex gap-4">
+            <div className="animate-pulse bg-gray-200 rounded w-16 h-3" />
+            <div className="animate-pulse bg-gray-200 rounded w-20 h-3" />
+          </div>
+        </div>
+        {/* Day skeleton */}
+        <div className="shrink-0 flex flex-col gap-1.5 items-end">
+          <div className="animate-pulse bg-gray-200 rounded w-16 h-3" />
+          <div className="animate-pulse bg-gray-200 rounded w-12 h-3" />
+        </div>
       </div>
     );
   }

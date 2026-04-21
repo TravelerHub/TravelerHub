@@ -1,6 +1,7 @@
 import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import Supercluster from 'supercluster';
 import { haptic } from '../utils/haptic';
 
 const _token = (import.meta.env.VITE_MAPBOX_TOKEN || '').trim();
@@ -363,7 +364,8 @@ const Map = forwardRef(function Map({
     });
   }, [discoveryPlaces]);
 
-  // Render expense markers (size/color based on amount/category)
+  // Render expense markers (size/color based on amount/category).
+  // Uses Supercluster when there are more than 10 expense markers total.
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -372,7 +374,9 @@ const Map = forwardRef(function Map({
 
     if (!expenseMarkers || expenseMarkers.length === 0) return;
 
-    expenseMarkers.forEach((exp) => {
+    const useClustering = expenseMarkers.length > 10;
+
+    const renderSingleExpense = (exp, map) => {
       const size = exp.size === 'large' ? 28 : exp.size === 'medium' ? 22 : 16;
       const color = exp.color || '#10B981';
       const el = document.createElement('div');
@@ -392,13 +396,83 @@ const Map = forwardRef(function Map({
         </div>
       `;
 
-      const marker = new mapboxgl.Marker({ element: el, draggable: false })
+      return new mapboxgl.Marker({ element: el, draggable: false })
         .setLngLat(exp.coordinates)
         .setPopup(new mapboxgl.Popup({ offset: 10 }).setHTML(popupHTML))
-        .addTo(mapRef.current);
+        .addTo(map);
+    };
 
-      expenseMarkersRef.current.push(marker);
-    });
+    if (!useClustering) {
+      // ── Simple rendering (≤10 expense markers) ───────────────────────────
+      expenseMarkers.forEach((exp) => {
+        expenseMarkersRef.current.push(renderSingleExpense(exp, mapRef.current));
+      });
+      return;
+    }
+
+    // ── Cluster rendering (>10 expense markers) ───────────────────────────
+    const sc = new Supercluster({ radius: 60, maxZoom: 16 });
+    sc.load(
+      expenseMarkers.map((exp) => ({
+        type: 'Feature',
+        properties: { exp },
+        geometry: { type: 'Point', coordinates: exp.coordinates },
+      }))
+    );
+
+    const renderExpenseClusters = () => {
+      const map = mapRef.current;
+      if (!map) return;
+
+      expenseMarkersRef.current.forEach(m => m.remove());
+      expenseMarkersRef.current = [];
+
+      const bounds = map.getBounds();
+      const zoom   = Math.floor(map.getZoom());
+      const clusters = sc.getClusters(
+        [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+        zoom
+      );
+
+      clusters.forEach((cluster) => {
+        const [lng, lat] = cluster.geometry.coordinates;
+
+        if (cluster.properties.cluster) {
+          // ── Cluster bubble ─────────────────────────────────────────────
+          const count = cluster.properties.point_count;
+          const el    = document.createElement('div');
+          el.innerHTML = `
+            <div style="width:38px;height:38px;background:#183a37;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);cursor:pointer;">
+              <span style="color:white;font-weight:700;font-size:12px;">${count}</span>
+            </div>
+          `;
+          el.addEventListener('click', () => {
+            const expansionZoom = Math.min(sc.getClusterExpansionZoom(cluster.properties.cluster_id), 16);
+            map.easeTo({ center: [lng, lat], zoom: expansionZoom, duration: 500 });
+          });
+
+          const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+            .setLngLat([lng, lat])
+            .addTo(map);
+
+          expenseMarkersRef.current.push(marker);
+        } else {
+          // ── Individual expense marker ──────────────────────────────────
+          expenseMarkersRef.current.push(renderSingleExpense(cluster.properties.exp, map));
+        }
+      });
+    };
+
+    renderExpenseClusters();
+    mapRef.current.on('moveend', renderExpenseClusters);
+    mapRef.current.on('zoomend', renderExpenseClusters);
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.off('moveend', renderExpenseClusters);
+        mapRef.current.off('zoomend', renderExpenseClusters);
+      }
+    };
   }, [expenseMarkers]);
 
   // Render live group member avatar markers.
@@ -472,54 +546,150 @@ const Map = forwardRef(function Map({
     });
   }, [groupMemberMarkers]);
 
-  // Render shared collaborative pins (visible to all group members in real-time)
+  // Render shared collaborative pins (visible to all group members in real-time).
+  // Uses Supercluster when there are more than 10 pins total.
   useEffect(() => {
     if (!mapRef.current) return;
 
-    const currentIds = new Set(sharedPins.map((p) => p.id));
+    // Clear all existing shared-pin markers (we re-render on every move/zoom when clustering)
+    sharedPinsMarkersRef.current.forEach((marker) => marker.remove());
+    sharedPinsMarkersRef.current.clear();
 
-    // Remove stale pin markers
-    sharedPinsMarkersRef.current.forEach((marker, pinId) => {
-      if (!currentIds.has(pinId)) {
-        marker.remove();
-        sharedPinsMarkersRef.current.delete(pinId);
-      }
-    });
+    if (!sharedPins || sharedPins.length === 0) return;
 
-    sharedPins.forEach((pin) => {
-      if (sharedPinsMarkersRef.current.has(pin.id)) return; // already rendered
+    const useClustering = sharedPins.length > 10;
 
-      const color = pin.color || '#183a37';
-      const emoji = pin.emoji || '📍';
-      const upvoteCount = (pin.upvoters || []).length;
+    if (!useClustering) {
+      // ── Simple rendering (≤10 pins) ───────────────────────────────────────
+      sharedPins.forEach((pin) => {
+        const color = pin.color || '#183a37';
+        const emoji = pin.emoji || '📍';
+        const upvoteCount = (pin.upvoters || []).length;
 
-      const el = document.createElement('div');
-      el.innerHTML = `
-        <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;">
-          <div style="width:34px;height:34px;background:${color};border-radius:50%;display:flex;align-items:center;justify-content:center;border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-size:16px;">
-            ${emoji}
+        const el = document.createElement('div');
+        el.innerHTML = `
+          <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;">
+            <div style="width:34px;height:34px;background:${color};border-radius:50%;display:flex;align-items:center;justify-content:center;border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-size:16px;">
+              ${emoji}
+            </div>
+            ${upvoteCount > 0 ? `<div style="background:${color};color:white;font-size:9px;font-weight:700;padding:1px 4px;border-radius:99px;margin-top:2px;">+${upvoteCount}</div>` : ''}
+            <div style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid ${color};"></div>
           </div>
-          ${upvoteCount > 0 ? `<div style="background:${color};color:white;font-size:9px;font-weight:700;padding:1px 4px;border-radius:99px;margin-top:2px;">+${upvoteCount}</div>` : ''}
-          <div style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid ${color};"></div>
-        </div>
-      `;
+        `;
 
-      const popupHTML = `
-        <div style="padding:8px;max-width:220px;">
-          <div style="font-weight:700;font-size:13px;">${pin.emoji || '📍'} ${pin.title}</div>
-          ${pin.note ? `<div style="font-size:12px;color:#4b5563;margin-top:4px;">${pin.note}</div>` : ''}
-          <div style="font-size:11px;color:#9ca3af;margin-top:4px;">by ${pin.username || 'Member'}</div>
-          ${upvoteCount > 0 ? `<div style="font-size:11px;color:#16a34a;margin-top:2px;">👍 ${upvoteCount} upvote${upvoteCount !== 1 ? 's' : ''}</div>` : ''}
-        </div>
-      `;
+        const popupHTML = `
+          <div style="padding:8px;max-width:220px;">
+            <div style="font-weight:700;font-size:13px;">${pin.emoji || '📍'} ${pin.title}</div>
+            ${pin.note ? `<div style="font-size:12px;color:#4b5563;margin-top:4px;">${pin.note}</div>` : ''}
+            <div style="font-size:11px;color:#9ca3af;margin-top:4px;">by ${pin.username || 'Member'}</div>
+            ${upvoteCount > 0 ? `<div style="font-size:11px;color:#16a34a;margin-top:2px;">👍 ${upvoteCount} upvote${upvoteCount !== 1 ? 's' : ''}</div>` : ''}
+          </div>
+        `;
 
-      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
-        .setLngLat([pin.lng, pin.lat])
-        .setPopup(new mapboxgl.Popup({ offset: 10 }).setHTML(popupHTML))
-        .addTo(mapRef.current);
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([pin.lng, pin.lat])
+          .setPopup(new mapboxgl.Popup({ offset: 10 }).setHTML(popupHTML))
+          .addTo(mapRef.current);
 
-      sharedPinsMarkersRef.current.set(pin.id, marker);
-    });
+        sharedPinsMarkersRef.current.set(pin.id, marker);
+      });
+      return;
+    }
+
+    // ── Cluster rendering (>10 pins) ─────────────────────────────────────────
+    const sc = new Supercluster({ radius: 60, maxZoom: 16 });
+    sc.load(
+      sharedPins.map((pin) => ({
+        type: 'Feature',
+        properties: { pin },
+        geometry: { type: 'Point', coordinates: [pin.lng, pin.lat] },
+      }))
+    );
+
+    const renderSharedPinClusters = () => {
+      const map = mapRef.current;
+      if (!map) return;
+
+      // Remove previous markers
+      sharedPinsMarkersRef.current.forEach((m) => m.remove());
+      sharedPinsMarkersRef.current.clear();
+
+      const bounds = map.getBounds();
+      const zoom   = Math.floor(map.getZoom());
+      const clusters = sc.getClusters(
+        [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+        zoom
+      );
+
+      clusters.forEach((cluster) => {
+        const [lng, lat] = cluster.geometry.coordinates;
+
+        if (cluster.properties.cluster) {
+          // ── Cluster marker ────────────────────────────────────────────────
+          const count = cluster.properties.point_count;
+          const el    = document.createElement('div');
+          el.innerHTML = `
+            <div style="width:40px;height:40px;background:#183a37;border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);cursor:pointer;">
+              <span style="color:white;font-weight:700;font-size:13px;">${count}</span>
+            </div>
+          `;
+          el.addEventListener('click', () => {
+            const expansionZoom = Math.min(sc.getClusterExpansionZoom(cluster.properties.cluster_id), 16);
+            map.easeTo({ center: [lng, lat], zoom: expansionZoom, duration: 500 });
+          });
+
+          const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+            .setLngLat([lng, lat])
+            .addTo(map);
+
+          sharedPinsMarkersRef.current.set(`cluster-${cluster.properties.cluster_id}`, marker);
+        } else {
+          // ── Individual pin marker ─────────────────────────────────────────
+          const pin        = cluster.properties.pin;
+          const color      = pin.color || '#183a37';
+          const emoji      = pin.emoji || '📍';
+          const upvoteCount = (pin.upvoters || []).length;
+
+          const el = document.createElement('div');
+          el.innerHTML = `
+            <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;">
+              <div style="width:34px;height:34px;background:${color};border-radius:50%;display:flex;align-items:center;justify-content:center;border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-size:16px;">
+                ${emoji}
+              </div>
+              ${upvoteCount > 0 ? `<div style="background:${color};color:white;font-size:9px;font-weight:700;padding:1px 4px;border-radius:99px;margin-top:2px;">+${upvoteCount}</div>` : ''}
+              <div style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid ${color};"></div>
+            </div>
+          `;
+
+          const popupHTML = `
+            <div style="padding:8px;max-width:220px;">
+              <div style="font-weight:700;font-size:13px;">${emoji} ${pin.title}</div>
+              ${pin.note ? `<div style="font-size:12px;color:#4b5563;margin-top:4px;">${pin.note}</div>` : ''}
+              <div style="font-size:11px;color:#9ca3af;margin-top:4px;">by ${pin.username || 'Member'}</div>
+              ${upvoteCount > 0 ? `<div style="font-size:11px;color:#16a34a;margin-top:2px;">👍 ${upvoteCount} upvote${upvoteCount !== 1 ? 's' : ''}</div>` : ''}
+            </div>
+          `;
+
+          const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+            .setLngLat([lng, lat])
+            .setPopup(new mapboxgl.Popup({ offset: 10 }).setHTML(popupHTML))
+            .addTo(map);
+
+          sharedPinsMarkersRef.current.set(pin.id, marker);
+        }
+      });
+    };
+
+    renderSharedPinClusters();
+    mapRef.current.on('moveend', renderSharedPinClusters);
+    mapRef.current.on('zoomend', renderSharedPinClusters);
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.off('moveend', renderSharedPinClusters);
+        mapRef.current.off('zoomend', renderSharedPinClusters);
+      }
+    };
   }, [sharedPins]);
 
   // Draw route with per-segment styling:
