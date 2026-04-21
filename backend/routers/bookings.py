@@ -16,10 +16,15 @@ Activity Search (Google Places Nearby Search):
 Car Rentals:
   GET  /api/bookings/cars/search        — stub (add manually)
 
+Flight Search (Amadeus):
+  GET  /api/bookings/flights/search     — search flight offers
+  GET  /api/bookings/flights/{offer_id} — flight offer details
+
 Persistence:
   POST /api/bookings/hotels/save
   POST /api/bookings/cars/save
   POST /api/bookings/attractions/save
+  POST /api/bookings/flights/save
 
 Trip queries:
   GET   /api/bookings/trips/{trip_id}/summary
@@ -35,13 +40,14 @@ from pydantic import BaseModel
 from services.booking.hotels_service import search_city, search_hotels, get_hotel_offer
 from services.booking.cars_service import search_cars, get_car_details
 from services.booking.attractions_service import search_activities, get_activity_details
+from services.booking.flights_service import search_flights, get_flight_details
 from services.booking.booking_orchestrator import (
     save_hotel_booking,
     save_car_booking,
     save_attraction_booking,
     get_trip_bookings_summary,
 )
-from services.booking.booking_repository import update_booking_status
+from services.booking.booking_repository import update_booking_status, create_booking, add_participants
 
 router = APIRouter(prefix="/api/bookings", tags=["bookings-search"])
 
@@ -187,6 +193,84 @@ async def attractions_save(body: AttractionSaveBody):
         currency=body.currency,
         participants=body.participants,
     )
+
+
+# ── Search: Flights ───────────────────────────────────────────────────────────
+
+@router.get("/flights/search")
+async def flights_search(
+    origin: str = Query(..., description="Origin airport IATA code, e.g. LAX"),
+    destination: str = Query(..., description="Destination airport IATA code, e.g. JFK"),
+    date: str = Query(..., description="Departure date YYYY-MM-DD"),
+    adults: int = Query(1, ge=1),
+    cabin_class: str = Query("ECONOMY", description="ECONOMY | PREMIUM_ECONOMY | BUSINESS | FIRST"),
+):
+    return await search_flights(
+        origin=origin,
+        destination=destination,
+        departure_date=date,
+        adults=adults,
+        travel_class=cabin_class,
+    )
+
+
+@router.get("/flights/{offer_id}")
+async def flights_details(offer_id: str):
+    return await get_flight_details(offer_id)
+
+
+# ── Save: Flights ──────────────────────────────────────────────────────────────
+
+class FlightSaveBody(BaseModel):
+    trip_id: str
+    created_by: str
+    flight_data: Dict[str, Any]
+    departure_date: str
+    arrival_date: str
+    adults: int = 1
+    price: Optional[float] = None
+    currency: str = "USD"
+    participants: List[str] = []
+
+
+@router.post("/flights/save")
+async def flights_save(body: FlightSaveBody):
+    flight = body.flight_data
+    title = (
+        f"{flight.get('airline', '')} {flight.get('origin', '')} → {flight.get('destination', '')}"
+    ).strip() or "Flight"
+    details = {
+        "flight_id":      flight.get("id"),
+        "origin":         flight.get("origin"),
+        "destination":    flight.get("destination"),
+        "departure_time": flight.get("departure_time"),
+        "arrival_time":   flight.get("arrival_time"),
+        "duration":       flight.get("duration"),
+        "stops":          flight.get("stops"),
+        "airline":        flight.get("airline"),
+        "cabin_class":    flight.get("cabin_class"),
+        "adults":         body.adults,
+    }
+    resolved_price = body.price or (float(flight["price"]) if flight.get("price") else None)
+    resolved_currency = body.currency or flight.get("currency", "USD")
+
+    result = await create_booking(
+        trip_id=body.trip_id,
+        created_by=body.created_by,
+        type="flight",
+        title=title,
+        vendor=flight.get("airline") or None,
+        source="amadeus",
+        external_id=str(flight.get("id") or ""),
+        start_time=body.departure_date if "T" in body.departure_date else f"{body.departure_date}T00:00:00",
+        end_time=body.arrival_date if "T" in body.arrival_date else f"{body.arrival_date}T23:59:59",
+        price=resolved_price,
+        currency=resolved_currency,
+        details=details,
+    )
+    if result["data"] and body.participants:
+        await add_participants(result["data"]["id"], body.participants)
+    return result
 
 
 # ── Trip summary ───────────────────────────────────────────────────────────────
