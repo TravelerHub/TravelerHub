@@ -43,7 +43,7 @@ function Navbar_Dashboard() {
   return (
     <header
       className="h-14 shrink-0 flex items-center gap-4 px-6 border-b"
-      style={{ background: "#fbfbf2", borderColor: "#d1d1c7" }}
+      style={{ background: "#fbfbf2", borderColor: "#d1d1c7", paddingTop: "var(--sat, 0px)" }}
     >
       {/* ── Search ── */}
       <div className="flex-1 max-w-md">

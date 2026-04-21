@@ -1,6 +1,7 @@
 import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import { haptic } from '../utils/haptic';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -121,10 +122,13 @@ const Map = forwardRef(function Map({
 
     // Click-to-add-pin: forward map clicks to parent (via ref)
     mapRef.current.on('click', (e) => {
-      onMapClickRef.current?.({
-        lng: e.lngLat.lng,
-        lat: e.lngLat.lat,
-      });
+      if (onMapClickRef.current) {
+        haptic('medium');
+        onMapClickRef.current({
+          lng: e.lngLat.lng,
+          lat: e.lngLat.lat,
+        });
+      }
     });
 
     return () => {
