@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE } from '../../config';
+import { haptic } from '../../utils/haptic';
 import { analyzeReceipt, analyzeDocument } from "../../services/visionService.js";
 import { saveChecklist } from "../../services/checklistService.js";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
@@ -121,6 +122,7 @@ function Expenses() {
         body: JSON.stringify(data),
       });
       if (response.ok) {
+        haptic('light');
         alert("Expense saved successfully!");
         handleClear();
       } else {
