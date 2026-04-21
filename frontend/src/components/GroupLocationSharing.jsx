@@ -1,4 +1,20 @@
+/**
+ * GroupLocationSharing — live group member positions with Supabase Realtime.
+ *
+ * Key upgrade over the old polling approach:
+ *   Before: HTTP poll every 10 seconds → positions stale by up to 10s
+ *   After:  Supabase Realtime subscription → positions update in < 200 ms
+ *
+ * Falls back to 30-second HTTP polling when Supabase is unavailable.
+ *
+ * Props:
+ *   tripId        — active group/trip UUID
+ *   onFlyTo       — (lat, lng) → void — center map on a member
+ *   memberMarkers — setter for member position markers shown on the map
+ */
+
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { supabase } from '../lib/supabaseClient';
 import { getGroupPositions, syncMyPosition } from '../services/smartRouteService';
 import {
   MapPinIcon,
@@ -9,24 +25,36 @@ import {
   ClockIcon,
 } from '@heroicons/react/24/outline';
 
-/**
- * GroupLocationSharing — shows all group members' live positions
- * and lets the current user toggle sharing their own location.
- *
- * Props:
- *   tripId       – active group/trip ID
- *   onFlyTo      – (lat, lng) callback to center the map on a member
- *   memberMarkers – setter for member position markers shown on the map
- */
 export default function GroupLocationSharing({ tripId, onFlyTo, memberMarkers }) {
   const [sharing, setSharing] = useState(false);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
   const watchIdRef = useRef(null);
-  const intervalRef = useRef(null);
+  const fallbackTimerRef = useRef(null);
+  const channelRef = useRef(null);
 
-  // Fetch group positions from backend
+  // Push member markers up to the parent for map rendering
+  const pushMarkers = useCallback((memberList) => {
+    if (!memberMarkers) return;
+    const markers = memberList
+      .filter((m) => m.lat != null && m.lng != null)
+      .map((m) => ({
+        user_id: m.user_id,
+        username: m.username,
+        role: m.role,
+        is_me: m.is_me,
+        lat: m.lat,
+        lng: m.lng,
+        heading: m.heading,
+        accuracy: m.accuracy,
+        updated_at: m.position_updated_at,
+      }));
+    memberMarkers(markers);
+  }, [memberMarkers]);
+
+  // Full HTTP fetch (used for initial load and fallback polling)
   const fetchPositions = useCallback(async () => {
     if (!tripId) return;
     setLoading(true);
@@ -35,48 +63,74 @@ export default function GroupLocationSharing({ tripId, onFlyTo, memberMarkers })
       const data = await getGroupPositions(tripId);
       const memberList = data.members || [];
       setMembers(memberList);
-
-      // Push markers up to the parent for rendering on the map
-      if (memberMarkers) {
-        const markers = memberList
-          .filter((m) => m.lat != null && m.lng != null)
-          .map((m) => ({
-            user_id: m.user_id,
-            username: m.username,
-            role: m.role,
-            is_me: m.is_me,
-            lat: m.lat,
-            lng: m.lng,
-            heading: m.heading,
-            updated_at: m.position_updated_at,
-          }));
-        memberMarkers(markers);
-      }
+      pushMarkers(memberList);
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [tripId, memberMarkers]);
+  }, [tripId, pushMarkers]);
 
-  // Initial fetch + poll every 10s
+  // Supabase Realtime subscription on member_positions for this trip
   useEffect(() => {
+    if (!tripId || !supabase) {
+      // No Realtime available — fall back to polling
+      fetchPositions();
+      fallbackTimerRef.current = setInterval(fetchPositions, 30000);
+      return () => clearInterval(fallbackTimerRef.current);
+    }
+
+    // Initial fetch to populate the list before any realtime events
     fetchPositions();
-    intervalRef.current = setInterval(fetchPositions, 10000);
-    return () => clearInterval(intervalRef.current);
-  }, [fetchPositions]);
+
+    const channel = supabase
+      .channel(`member_positions:trip:${tripId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'member_positions',
+          filter: `trip_id=eq.${tripId}`,
+        },
+        (payload) => {
+          // Any INSERT or UPDATE refreshes the full member list to keep
+          // "is_me" and username lookups consistent.
+          fetchPositions();
+        }
+      )
+      .subscribe((status) => {
+        setRealtimeConnected(status === 'SUBSCRIBED');
+        if (status !== 'SUBSCRIBED') {
+          // Degraded — fall back to 30s polling
+          if (!fallbackTimerRef.current) {
+            fallbackTimerRef.current = setInterval(fetchPositions, 30000);
+          }
+        } else {
+          clearInterval(fallbackTimerRef.current);
+          fallbackTimerRef.current = null;
+        }
+      });
+
+    channelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+      setRealtimeConnected(false);
+    };
+  }, [tripId, fetchPositions]);
 
   // Start / stop sharing own location
   const toggleSharing = () => {
     if (sharing) {
-      // Stop sharing
       if (watchIdRef.current != null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
       setSharing(false);
     } else {
-      // Start sharing
       if (!navigator.geolocation) {
         setError('Geolocation not supported by your browser');
         return;
@@ -96,12 +150,11 @@ export default function GroupLocationSharing({ tripId, onFlyTo, memberMarkers })
           setError('Location access denied');
           setSharing(false);
         },
-        { enableHighAccuracy: true, maximumAge: 5000 }
+        { enableHighAccuracy: true, maximumAge: 3000 }
       );
     }
   };
 
-  // Cleanup watcher on unmount
   useEffect(() => {
     return () => {
       if (watchIdRef.current != null) {
@@ -113,7 +166,7 @@ export default function GroupLocationSharing({ tripId, onFlyTo, memberMarkers })
   const timeAgo = (iso) => {
     if (!iso) return 'never';
     const diff = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
-    if (diff < 10) return 'just now';
+    if (diff < 5) return 'just now';
     if (diff < 60) return `${diff}s ago`;
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
     return `${Math.floor(diff / 3600)}h ago`;
@@ -142,15 +195,27 @@ export default function GroupLocationSharing({ tripId, onFlyTo, memberMarkers })
             </span>
           )}
         </div>
-        <button
-          onClick={fetchPositions}
-          disabled={loading}
-          className="text-xs flex items-center gap-1 transition hover:opacity-70 disabled:opacity-40"
-          style={{ color: '#183a37' }}
-        >
-          <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+
+        <div className="flex items-center gap-2">
+          {/* Realtime indicator */}
+          <span className="flex items-center gap-0.5">
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${realtimeConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}
+            />
+            <span className="text-xs" style={{ color: realtimeConnected ? '#16a34a' : '#9ca3af' }}>
+              {realtimeConnected ? 'LIVE' : 'polling'}
+            </span>
+          </span>
+
+          <button
+            onClick={fetchPositions}
+            disabled={loading}
+            className="text-xs flex items-center gap-1 transition hover:opacity-70 disabled:opacity-40"
+            style={{ color: '#183a37' }}
+          >
+            <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {/* Share toggle */}
@@ -162,17 +227,11 @@ export default function GroupLocationSharing({ tripId, onFlyTo, memberMarkers })
           color: sharing ? '#ffffff' : '#160f29',
         }}
       >
-        {sharing ? (
-          <SignalIcon className="w-4 h-4" />
-        ) : (
-          <SignalSlashIcon className="w-4 h-4" />
-        )}
+        {sharing ? <SignalIcon className="w-4 h-4" /> : <SignalSlashIcon className="w-4 h-4" />}
         {sharing ? 'Sharing Your Location' : 'Start Sharing Location'}
       </button>
 
-      {error && (
-        <p className="text-xs text-red-600 px-1">{error}</p>
-      )}
+      {error && <p className="text-xs text-red-600 px-1">{error}</p>}
 
       {/* Active members */}
       {activeMembers.length > 0 && (
@@ -182,9 +241,11 @@ export default function GroupLocationSharing({ tripId, onFlyTo, memberMarkers })
               key={m.user_id}
               onClick={() => onFlyTo && onFlyTo(m.lat, m.lng)}
               className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition hover:opacity-80"
-              style={{ background: m.is_me ? '#f0fdf4' : '#f0f0e8', borderColor: m.is_me ? '#bbf7d0' : '#d1d1c7' }}
+              style={{
+                background: m.is_me ? '#f0fdf4' : '#f0f0e8',
+                borderColor: m.is_me ? '#bbf7d0' : '#d1d1c7',
+              }}
             >
-              {/* Avatar circle */}
               <div
                 className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
                 style={{ background: m.role === 'leader' ? '#d97706' : '#183a37' }}
@@ -195,7 +256,9 @@ export default function GroupLocationSharing({ tripId, onFlyTo, memberMarkers })
                 <div className="text-xs font-medium truncate" style={{ color: '#160f29' }}>
                   {m.username || 'Unknown'}
                   {m.is_me && (
-                    <span className="ml-1 text-xs font-normal" style={{ color: '#5c6b73' }}>(you)</span>
+                    <span className="ml-1 text-xs font-normal" style={{ color: '#5c6b73' }}>
+                      (you)
+                    </span>
                   )}
                   {m.role === 'leader' && (
                     <span className="ml-1 text-xs font-normal text-amber-600">leader</span>
@@ -245,7 +308,6 @@ export default function GroupLocationSharing({ tripId, onFlyTo, memberMarkers })
         </div>
       )}
 
-      {/* Empty state */}
       {members.length === 0 && !loading && (
         <div className="text-center py-4" style={{ color: '#5c6b73' }}>
           <UserGroupIcon className="w-6 h-6 mx-auto mb-1.5 opacity-40" />
