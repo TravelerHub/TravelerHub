@@ -2,7 +2,8 @@ import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
+const _token = (import.meta.env.VITE_MAPBOX_TOKEN || '').trim();
+mapboxgl.accessToken = _token;
 
 const Map = forwardRef(function Map({
   markers = [],
@@ -57,6 +58,10 @@ const Map = forwardRef(function Map({
   // Initialize map
   useEffect(() => {
     if (!mapContainer.current) return;
+    if (!_token) {
+      console.error('Map: VITE_MAPBOX_TOKEN is not set');
+      return;
+    }
 
     mapRef.current = new mapboxgl.Map({
       container: mapContainer.current,
