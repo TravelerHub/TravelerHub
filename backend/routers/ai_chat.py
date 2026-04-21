@@ -1,4 +1,8 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, Request, status, Depends
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 from pydantic import BaseModel
 from typing import Optional, List
 from utils import oauth2
@@ -323,7 +327,9 @@ class ChatHistoryItem(BaseModel):
 # --- Endpoints ---
 
 @router.post("/send")
+@limiter.limit("30/minute")
 async def send_message(
+    request: Request,
     payload: ChatMessage,
     current_user: dict = Depends(oauth2.get_current_user),
 ):
