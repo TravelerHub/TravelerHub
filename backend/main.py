@@ -1,6 +1,10 @@
 import os
-from fastapi import FastAPI
+import time
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from routers import auth
 from routers import user
@@ -33,11 +37,24 @@ from routers import activity
 from routers import trip_todos
 from routers import media_comments
 from routers import cards
+from routers import suggestion
 
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 _cors_env = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
 _allowed_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    ms = round((time.time() - start) * 1000)
+    print(f"{request.method} {request.url.path} → {response.status_code} ({ms}ms)")
+    return response
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -80,6 +97,7 @@ app.include_router(trip_todos.router)    # /todos (group-synced trip todos)
 app.include_router(media_comments.router)  # /media-comments (photo comments)
 app.include_router(cards.router)           # /cards (credit card optimizer)
 app.include_router(cards.budget_router)    # /finance/budget (trip budgets)
+app.include_router(suggestion.router)     # /suggestions (POI ranking)
 
 
 

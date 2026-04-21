@@ -4,13 +4,12 @@ from typing import List, Optional, Literal, Dict, Any
 import requests
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
 
-from models import Trip              # <-- adjust import if needed
-from database import get_db          # <-- adjust import if needed
+from supabase_client import supabase
+from services.poi_ranker import POIRanker
 
 
-router = APIRouter(prefix="/trips", tags=["Suggestions"])
+router = APIRouter(prefix="/suggestions", tags=["Suggestions"])
 
 
 # -------------------------
@@ -101,35 +100,122 @@ def format_places(results: List[Dict[str, Any]]) -> List[SuggestionCard]:
 
 
 # -------------------------
-# Endpoint
+# Rank Request / Response
 # -------------------------
 
-@router.post("/{trip_id}/suggestions", response_model=List[SuggestionCard])
-def generate_suggestions(
-    trip_id: int,
-    body: SuggestionsRequest,
-    db: Session = Depends(get_db)
-):
-    # 1️ Get trip from DB
-    trip = db.query(Trip).filter(Trip.id == trip_id).first()
-    if not trip:
-        raise HTTPException(status_code=404, detail="Trip not found")
+class RankCandidate(BaseModel):
+    name: str
+    place_type: str
+    # allow any extra fields to pass through
+    class Config:
+        extra = "allow"
 
-    # 2️ Build search query
-    keywords = " ".join(body.interests) if body.interests else "top things to do"
-    query = f"{keywords} in {trip.location}"
 
+class RankRequest(BaseModel):
+    trip_id: str
+    candidates: List[RankCandidate]
+
+
+# -------------------------
+# Endpoints
+# -------------------------
+
+@router.post("/rank")
+def rank_suggestions(body: RankRequest):
+    """
+    Rank candidate POIs by collaborative filtering on the group's nomination/upvote history.
+
+    Body: { "trip_id": str, "candidates": [{"name": str, "place_type": str, ...}] }
+
+    Returns candidates sorted by rank_score descending.
+    """
+    trip_id = body.trip_id
+
+    # 1. Fetch this trip's upvoted nominations from supabase
+    #    An upvote is a place_vote with vote=1
     try:
-        # 3️ Call Google Places
-        results = fetch_places(query, body.budget)
+        nominations_res = (
+            supabase.table("place_nominations")
+            .select("id, category, group_id")
+            .eq("trip_id", trip_id)
+            .execute()
+        )
+        nominations = nominations_res.data or []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching nominations: {e}")
 
-        # 4️ Format results
-        suggestions = format_places(results)
+    # Get nomination IDs for this trip
+    nom_ids = [n["id"] for n in nominations]
+    nom_category_map = {n["id"]: n.get("category", "") for n in nominations}
+    # Collect all unique group IDs for fetching other groups' history
+    all_group_ids = list(set(n["group_id"] for n in nominations if n.get("group_id")))
 
-        return suggestions[:6]  # limit to 6 cards
+    # 2. Get upvoted nomination IDs for this trip
+    group_upvoted_types: List[str] = []
+    if nom_ids:
+        try:
+            votes_res = (
+                supabase.table("place_votes")
+                .select("nomination_id, vote")
+                .in_("nomination_id", nom_ids)
+                .eq("vote", 1)
+                .execute()
+            )
+            for v in (votes_res.data or []):
+                category = nom_category_map.get(v["nomination_id"], "")
+                if category:
+                    group_upvoted_types.append(category)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error fetching votes: {e}")
 
-    except requests.RequestException as e:
-        raise HTTPException(status_code=502, detail=f"Places API error: {str(e)}")
+    # 3. Fetch other groups' nomination history for collaborative filtering
+    all_groups_history: List[List[str]] = []
+    try:
+        # Get all nominations across all groups (for history — limit to recent 200)
+        all_noms_res = (
+            supabase.table("place_nominations")
+            .select("id, category, group_id, trip_id")
+            .not_.is_("group_id", "null")
+            .not_.is_("category", "null")
+            .order("created_at", desc=True)
+            .limit(200)
+            .execute()
+        )
+        all_noms = all_noms_res.data or []
 
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        if all_noms:
+            # Get all upvoted nomination IDs from that set
+            all_nom_ids = [n["id"] for n in all_noms]
+            all_votes_res = (
+                supabase.table("place_votes")
+                .select("nomination_id")
+                .in_("nomination_id", all_nom_ids)
+                .eq("vote", 1)
+                .execute()
+            )
+            upvoted_ids = set(v["nomination_id"] for v in (all_votes_res.data or []))
+
+            # Group upvoted categories by (group_id, trip_id)
+            group_trip_types: Dict[str, List[str]] = {}
+            for n in all_noms:
+                if n["id"] in upvoted_ids and n.get("category"):
+                    key = f"{n['group_id']}::{n['trip_id']}"
+                    if key not in group_trip_types:
+                        group_trip_types[key] = []
+                    group_trip_types[key].append(n["category"])
+
+            all_groups_history = list(group_trip_types.values())
+    except Exception:
+        # Non-fatal: fall back to simple dot product
+        all_groups_history = []
+
+    # 4. Run POIRanker
+    ranker = POIRanker()
+    candidates = [c.model_dump() for c in body.candidates]
+    ranked = ranker.rank_candidates(
+        group_upvoted_types=group_upvoted_types,
+        candidates=candidates,
+        all_groups_history=all_groups_history if all_groups_history else None,
+    )
+
+    return {"ranked_candidates": ranked}

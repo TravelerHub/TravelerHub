@@ -34,8 +34,12 @@ All responses: { "data": ..., "error": ... }
 """
 
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 from services.booking.hotels_service import search_city, search_hotels, get_hotel_offer
 from services.booking.cars_service import search_cars, get_car_details
@@ -198,7 +202,9 @@ async def attractions_save(body: AttractionSaveBody):
 # ── Search: Flights ───────────────────────────────────────────────────────────
 
 @router.get("/flights/search")
+@limiter.limit("30/minute")
 async def flights_search(
+    request: Request,
     origin: str = Query(..., description="Origin airport IATA code, e.g. LAX"),
     destination: str = Query(..., description="Destination airport IATA code, e.g. JFK"),
     date: str = Query(..., description="Departure date YYYY-MM-DD"),

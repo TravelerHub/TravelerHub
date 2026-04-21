@@ -1,4 +1,8 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Request, status, Depends
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 from pydantic import BaseModel
 from typing import Optional
 from utils import oauth2
@@ -20,7 +24,9 @@ router = APIRouter(
 )
 
 @router.post("/analyze-receipt")
+@limiter.limit("20/minute")
 async def analyze_receipt(
+    request: Request,
     file: UploadFile = File(...),
     current_user: dict = Depends(oauth2.get_current_user)
 ):
