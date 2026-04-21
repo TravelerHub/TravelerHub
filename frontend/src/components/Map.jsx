@@ -16,8 +16,10 @@ const Map = forwardRef(function Map({
   currentStepIndex = 0,
   onMapClick,
   customPins = [],
-  discoveryPlaces = [],   // Friend activity markers from Discovery overlay
-  expenseMarkers = [],    // Geo-tagged expense markers
+  discoveryPlaces = [],     // Friend activity markers from Discovery overlay
+  expenseMarkers = [],      // Geo-tagged expense markers
+  groupMemberMarkers = [],  // Live group member positions — rendered as avatar markers
+  sharedPins = [],          // Collaborative shared pins from SharedMapPins
 }, ref) {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
@@ -29,6 +31,10 @@ const Map = forwardRef(function Map({
   const customPinsRef = useRef([]);
   const discoveryMarkersRef = useRef([]);
   const expenseMarkersRef = useRef([]);
+  // group member markers: Map<user_id, mapboxgl.Marker> for smooth live updates
+  const groupMemberMarkersRef = useRef(new Map());
+  // shared pins: Map<pin_id, mapboxgl.Marker>
+  const sharedPinsMarkersRef = useRef(new Map());
 
   // Keep callback refs fresh on every render
   useEffect(() => {
@@ -128,6 +134,10 @@ const Map = forwardRef(function Map({
       discoveryMarkersRef.current = [];
       expenseMarkersRef.current.forEach(marker => marker.remove());
       expenseMarkersRef.current = [];
+      groupMemberMarkersRef.current.forEach(marker => marker.remove());
+      groupMemberMarkersRef.current.clear();
+      sharedPinsMarkersRef.current.forEach(marker => marker.remove());
+      sharedPinsMarkersRef.current.clear();
       if (mapRef.current) {
         mapRef.current.remove();
       }
@@ -382,6 +392,127 @@ const Map = forwardRef(function Map({
     });
   }, [expenseMarkers]);
 
+  // Render live group member avatar markers.
+  // Uses a Map<user_id, marker> so we can update position in place (smooth animation)
+  // rather than destroying and recreating markers on every position update.
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    const currentIds = new Set(groupMemberMarkers.map((m) => m.user_id));
+
+    // Remove markers for members no longer in the list
+    groupMemberMarkersRef.current.forEach((marker, userId) => {
+      if (!currentIds.has(userId)) {
+        marker.remove();
+        groupMemberMarkersRef.current.delete(userId);
+      }
+    });
+
+    groupMemberMarkers.forEach((member) => {
+      if (member.lat == null || member.lng == null) return;
+
+      const existing = groupMemberMarkersRef.current.get(member.user_id);
+
+      if (existing) {
+        // Smooth position update — no flicker
+        existing.setLngLat([member.lng, member.lat]);
+        // Update heading rotation if available
+        if (member.heading != null) {
+          const el = existing.getElement();
+          const inner = el.querySelector('.gm-avatar-inner');
+          if (inner) inner.style.transform = `rotate(${member.heading}deg)`;
+        }
+        return;
+      }
+
+      // Create a new custom HTML marker for this member
+      const bgColor = member.is_me ? '#16a34a' : member.role === 'leader' ? '#d97706' : '#183a37';
+      const initial = (member.username || '?')[0].toUpperCase();
+      const el = document.createElement('div');
+      el.style.position = 'relative';
+      el.innerHTML = `
+        <div style="position:relative;display:flex;flex-direction:column;align-items:center;">
+          ${member.is_me
+            ? '<div style="position:absolute;inset:-4px;border-radius:50%;border:2px solid rgba(22,163,74,0.4);animation:gm-ping 2s cubic-bezier(0,0,0.2,1) infinite;"></div>'
+            : ''}
+          <div class="gm-avatar-inner" style="width:32px;height:32px;background:${bgColor};border-radius:50%;color:white;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35);cursor:pointer;transition:transform 0.3s ease;">
+            ${initial}
+          </div>
+          <div style="background:${bgColor};color:white;font-size:9px;font-weight:600;padding:1px 5px;border-radius:99px;margin-top:2px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.2);">
+            ${member.username || 'Member'}
+          </div>
+          <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid ${bgColor};margin-top:-1px;"></div>
+        </div>
+      `;
+
+      const popupHTML = `
+        <div style="padding:8px;min-width:140px;">
+          <div style="font-weight:700;font-size:13px;">${member.username || 'Member'}</div>
+          ${member.role === 'leader' ? '<div style="font-size:11px;color:#d97706;">👑 Group Leader</div>' : ''}
+          ${member.is_me ? '<div style="font-size:11px;color:#16a34a;">📍 Your location</div>' : ''}
+          ${member.accuracy != null ? `<div style="font-size:11px;color:#6b7280;">~${Math.round(member.accuracy)}m accuracy</div>` : ''}
+        </div>
+      `;
+
+      const mapboxMarker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+        .setLngLat([member.lng, member.lat])
+        .setPopup(new mapboxgl.Popup({ offset: 10 }).setHTML(popupHTML))
+        .addTo(mapRef.current);
+
+      groupMemberMarkersRef.current.set(member.user_id, mapboxMarker);
+    });
+  }, [groupMemberMarkers]);
+
+  // Render shared collaborative pins (visible to all group members in real-time)
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    const currentIds = new Set(sharedPins.map((p) => p.id));
+
+    // Remove stale pin markers
+    sharedPinsMarkersRef.current.forEach((marker, pinId) => {
+      if (!currentIds.has(pinId)) {
+        marker.remove();
+        sharedPinsMarkersRef.current.delete(pinId);
+      }
+    });
+
+    sharedPins.forEach((pin) => {
+      if (sharedPinsMarkersRef.current.has(pin.id)) return; // already rendered
+
+      const color = pin.color || '#183a37';
+      const emoji = pin.emoji || '📍';
+      const upvoteCount = (pin.upvoters || []).length;
+
+      const el = document.createElement('div');
+      el.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;">
+          <div style="width:34px;height:34px;background:${color};border-radius:50%;display:flex;align-items:center;justify-content:center;border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-size:16px;">
+            ${emoji}
+          </div>
+          ${upvoteCount > 0 ? `<div style="background:${color};color:white;font-size:9px;font-weight:700;padding:1px 4px;border-radius:99px;margin-top:2px;">+${upvoteCount}</div>` : ''}
+          <div style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid ${color};"></div>
+        </div>
+      `;
+
+      const popupHTML = `
+        <div style="padding:8px;max-width:220px;">
+          <div style="font-weight:700;font-size:13px;">${pin.emoji || '📍'} ${pin.title}</div>
+          ${pin.note ? `<div style="font-size:12px;color:#4b5563;margin-top:4px;">${pin.note}</div>` : ''}
+          <div style="font-size:11px;color:#9ca3af;margin-top:4px;">by ${pin.username || 'Member'}</div>
+          ${upvoteCount > 0 ? `<div style="font-size:11px;color:#16a34a;margin-top:2px;">👍 ${upvoteCount} upvote${upvoteCount !== 1 ? 's' : ''}</div>` : ''}
+        </div>
+      `;
+
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+        .setLngLat([pin.lng, pin.lat])
+        .setPopup(new mapboxgl.Popup({ offset: 10 }).setHTML(popupHTML))
+        .addTo(mapRef.current);
+
+      sharedPinsMarkersRef.current.set(pin.id, marker);
+    });
+  }, [sharedPins]);
+
   // Draw route with per-segment styling:
   //   Walking  → dotted gray line (like Google Maps)
   //   Driving  → solid blue line
@@ -547,6 +678,10 @@ const Map = forwardRef(function Map({
         @keyframes ping {
           0% { transform: scale(1); opacity: 0.75; }
           75%, 100% { transform: scale(1.8); opacity: 0; }
+        }
+        @keyframes gm-ping {
+          0% { transform: scale(1); opacity: 0.6; }
+          75%, 100% { transform: scale(2.2); opacity: 0; }
         }
       `}</style>
       <div ref={mapContainer} className="w-full h-full" />

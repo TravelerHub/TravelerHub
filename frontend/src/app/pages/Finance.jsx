@@ -12,6 +12,9 @@ import {
 } from "../../services/financeService";
 import { chargeSavedCard, getSavedCards } from "../../services/billingService";
 import { ensureActiveGroupId, getActiveGroupId, getMyGroups, setActiveGroupId } from "../../services/groupService";
+import CardRecommendation from "../../components/CardRecommendation.jsx";
+import BudgetTracker from "../../components/BudgetTracker.jsx";
+import CardWallet from "../../components/CardWallet.jsx";
 
 // ── Color palette (matches Dashboard / Booking / Expenses)
 // #160f29  deep dark   (sidebar, headings)
@@ -422,10 +425,12 @@ function Finance() {
           </div>
 
           {/* ── Tab switcher ─────────────────────────────────────────────── */}
-          <div className="flex gap-1 mb-6 p-1 rounded-xl" style={{ background: "#e5e7eb", width: "fit-content" }}>
+          <div className="flex gap-1 mb-6 p-1 rounded-xl flex-wrap" style={{ background: "#e5e7eb", width: "fit-content" }}>
             {[
               { id: "transactions", label: "Transactions", icon: "💳" },
-              { id: "balances", label: "Balances & Splits", icon: "⚖️" },
+              { id: "balances",     label: "Balances & Splits", icon: "⚖️" },
+              { id: "budget",       label: "Budget", icon: "📊" },
+              { id: "cards",        label: "Card Wallet", icon: "🪪" },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -811,6 +816,21 @@ function Finance() {
               )}
             </div>
           )}
+
+          {/* ── Budget tab ───────────────────────────────────────────────── */}
+          {activeTab === "budget" && (
+            <div className="rounded-2xl p-5" style={{ background: "#fff", border: "1px solid #e5e7eb", maxWidth: 640 }}>
+              <BudgetTracker tripId={activeGroupId} />
+            </div>
+          )}
+
+          {/* ── Card Wallet tab ──────────────────────────────────────────── */}
+          {activeTab === "cards" && (
+            <div className="rounded-2xl p-5" style={{ background: "#fff", border: "1px solid #e5e7eb", maxWidth: 720 }}>
+              <CardWallet />
+            </div>
+          )}
+
         </main>
       </div>
 
@@ -1019,6 +1039,14 @@ function Finance() {
                   ))}
                 </div>
               </div>
+
+              {/* Card recommendation — shown when amount > 0 */}
+              {formData.type === "expense" && parseFloat(formData.amount) > 0 && (
+                <CardRecommendation
+                  category={formData.category}
+                  amount={parseFloat(formData.amount)}
+                />
+              )}
 
               <div className="flex gap-3 pt-1">
                 <button
