@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { API_BASE } from "../../config";
+import { apiFetch } from "../../services/api.js";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
 import { setActiveGroupId } from "../../services/groupService";
@@ -58,93 +60,79 @@ export default function Dashboard() {
   const [members,          setMembers]          = useState([]);
   const [loadingMembers,   setLoadingMembers]   = useState(false);
 
-  const [latestConversations, setLatestConversations] = useState([]);
-  const [upcomingBookings,    setUpcomingBookings]    = useState([]);
-  const [loadingBookings,     setLoadingBookings]     = useState(true);
-  const [activeTripId,        setActiveTripId]        = useState(
+  const [activeTripId, setActiveTripId] = useState(
     () => localStorage.getItem("active_group_id") || localStorage.getItem("activeGroupId") || null
   );
 
+  const queryClient = useQueryClient();
+
+  // ── React Query: available users for invite modal ─────────────────────────
+  const { data: usersData } = useQuery({
+    queryKey: ["users-list"],
+    queryFn: () => apiFetch("/users/"),
+    enabled: !!user,
+  });
+  const availableUsersFromQuery = Array.isArray(usersData)
+    ? usersData.filter((u) => u.id !== user?.id)
+    : [];
+  // Merge with manually-set availableUsers so the modal checkbox list works
   useEffect(() => {
-    if (!user) return;
-    fetchLatestChat();
-    fetchUpcomingBookings();
-    fetchUsersForInvites();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const fetchUsersForInvites = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) return;
-      const res = await fetch(`${API_BASE}/users/`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return;
-      const users = await res.json();
-      const others = (Array.isArray(users) ? users : []).filter((u) => u.id !== user?.id);
-      setAvailableUsers(others);
-    } catch (err) {
-      console.error("fetchUsersForInvites:", err);
-      setAvailableUsers([]);
+    if (availableUsersFromQuery.length > 0) {
+      setAvailableUsers(availableUsersFromQuery);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usersData]);
 
-  // ── Data fetching ──────────────────────────────────────────────────────────
-  const fetchLatestChat = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) return;
-      const res = await fetch(`${API_BASE}/api/conversations`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setLatestConversations(Array.isArray(data) ? data.slice(0, 3) : []);
-      }
-    } catch (err) {
-      console.error("fetchLatestChat:", err);
-    }
-  };
+  // ── React Query: latest conversations ─────────────────────────────────────
+  const { data: conversationsData } = useQuery({
+    queryKey: ["conversations"],
+    queryFn: () => apiFetch("/api/conversations"),
+    enabled: !!user,
+  });
+  const latestConversations = Array.isArray(conversationsData)
+    ? conversationsData.slice(0, 3)
+    : [];
 
-  const fetchUpcomingBookings = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) { setLoadingBookings(false); return; }
-      const tripsRes = await fetch(`${API_BASE}/groups/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!tripsRes.ok) { setLoadingBookings(false); return; }
-      const tripsData = await tripsRes.json();
-      if (!tripsData?.length) { setLoadingBookings(false); return; }
-      const tripId = tripsData[0]?.group_id || tripsData[0]?.id;
+  // ── React Query: upcoming bookings (depends on my groups first) ───────────
+  const { data: myGroupsData } = useQuery({
+    queryKey: ["my-groups"],
+    queryFn: () => apiFetch("/groups/me"),
+    enabled: !!user,
+  });
+
+  // Derive activeTripId from groups query result and keep it in sync
+  useEffect(() => {
+    if (myGroupsData?.length > 0) {
+      const tripId = myGroupsData[0]?.group_id || myGroupsData[0]?.id;
       if (tripId) setActiveTripId(tripId);
-      const bRes = await fetch(`${API_BASE}/api/bookings?trip_id=${tripId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (bRes.ok) {
-        const bData = await bRes.json();
-        const bookings = Array.isArray(bData?.data) ? bData.data : Array.isArray(bData) ? bData : [];
-        const now = new Date();
-        const upcoming = bookings
-          .filter((b) => {
-            const d = new Date(b.check_in || b.pickup_datetime || b.start_date || b.created_at);
-            return d >= now;
-          })
-          .sort((a, b) => {
-            const da = new Date(a.check_in || a.pickup_datetime || a.start_date || a.created_at);
-            const db = new Date(b.check_in || b.pickup_datetime || b.start_date || b.created_at);
-            return da - db;
-          })
-          .slice(0, 3);
-        setUpcomingBookings(upcoming);
-      }
-    } catch (err) {
-      console.error("fetchUpcomingBookings:", err);
-    } finally {
-      setLoadingBookings(false);
     }
-  };
+  }, [myGroupsData]);
+
+  const derivedTripId = myGroupsData?.length > 0
+    ? (myGroupsData[0]?.group_id || myGroupsData[0]?.id)
+    : activeTripId;
+
+  const { data: bookingsData, isLoading: loadingBookings } = useQuery({
+    queryKey: ["bookings", derivedTripId],
+    queryFn: async () => {
+      const bData = await apiFetch(`/api/bookings?trip_id=${derivedTripId}`);
+      const bookings = Array.isArray(bData?.data) ? bData.data : Array.isArray(bData) ? bData : [];
+      const now = new Date();
+      return bookings
+        .filter((b) => {
+          const d = new Date(b.check_in || b.pickup_datetime || b.start_date || b.created_at);
+          return d >= now;
+        })
+        .sort((a, b) => {
+          const da = new Date(a.check_in || a.pickup_datetime || a.start_date || a.created_at);
+          const db = new Date(b.check_in || b.pickup_datetime || b.start_date || b.created_at);
+          return da - db;
+        })
+        .slice(0, 3);
+    },
+    enabled: !!derivedTripId,
+  });
+  const upcomingBookings = bookingsData ?? [];
 
   // ── Create trip ────────────────────────────────────────────────────────────
   const handleCreateTrip = async (e) => {
@@ -178,6 +166,9 @@ export default function Dashboard() {
         if (createdGroupId) {
           setActiveGroupId(createdGroupId);
         }
+
+        queryClient.invalidateQueries({ queryKey: ["my-groups"] });
+        queryClient.invalidateQueries({ queryKey: ["bookings"] });
 
         setShowCreateModal(false);
         setNewTripName("");
