@@ -1,7 +1,43 @@
+import { isNative } from './platform';
+
+/**
+ * Subscribe to push notifications.
+ * On native: uses Capacitor PushNotifications plugin (FCM/APNs)
+ * On web: uses Web Push API with VAPID
+ */
 export async function subscribeToPush() {
+  if (isNative()) {
+    return subscribeNative();
+  }
+  return subscribeWeb();
+}
+
+async function subscribeNative() {
+  const { PushNotifications } = await import('@capacitor/push-notifications');
+
+  let permStatus = await PushNotifications.checkPermissions();
+  if (permStatus.receive === 'prompt') {
+    permStatus = await PushNotifications.requestPermissions();
+  }
+  if (permStatus.receive !== 'granted') return null;
+
+  await PushNotifications.register();
+
+  return new Promise((resolve) => {
+    PushNotifications.addListener('registration', (token) => {
+      console.log('[Push] Native token:', token.value);
+      resolve({ type: 'native', token: token.value });
+    });
+    PushNotifications.addListener('registrationError', (err) => {
+      console.error('[Push] Registration error:', err);
+      resolve(null);
+    });
+  });
+}
+
+async function subscribeWeb() {
   if (!('PushManager' in window)) return null;
   const reg = await navigator.serviceWorker.ready;
-  // VAPID public key placeholder — replace with real key when backend generates one
   const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY ?? '';
   if (!VAPID_PUBLIC_KEY) return null;
   try {
@@ -9,7 +45,7 @@ export async function subscribeToPush() {
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
     });
-    return sub;
+    return { type: 'web', subscription: sub };
   } catch { return null; }
 }
 

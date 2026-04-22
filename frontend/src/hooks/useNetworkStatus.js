@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
+import { addNetworkListener } from '../utils/network';
 
 /**
- * useNetworkStatus — tracks browser online/offline state.
+ * useNetworkStatus — tracks network online/offline state.
+ *
+ * On native (Capacitor): uses @capacitor/network plugin for reliable status.
+ * On web: uses window online/offline events.
  *
  * Returns:
- *   isOnline     — true when the browser has network access
+ *   isOnline     — true when the device has network access
  *   wasOffline   — true after the first offline→online transition this session
  *                  (use to trigger "back online, syncing…" banner)
  *   effectiveType — '4g'|'3g'|'2g'|'slow-2g'|null (Network Information API where supported)
@@ -17,24 +21,27 @@ export function useNetworkStatus() {
   );
 
   useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true);
-      setWasOffline(true);
-    };
-    const handleOffline = () => {
-      setIsOnline(false);
-    };
+    let cleanup;
+
+    addNetworkListener(({ connected }) => {
+      if (connected) {
+        setIsOnline(true);
+        setWasOffline(true);
+      } else {
+        setIsOnline(false);
+      }
+    }).then((removeFn) => {
+      cleanup = removeFn;
+    });
+
+    // effectiveType is web-only (Network Information API); no Capacitor equivalent
     const handleConnectionChange = () => {
       setEffectiveType(navigator.connection?.effectiveType ?? null);
     };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
     navigator.connection?.addEventListener('change', handleConnectionChange);
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      cleanup?.();
       navigator.connection?.removeEventListener('change', handleConnectionChange);
     };
   }, []);
