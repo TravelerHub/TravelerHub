@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { API_BASE } from "../../config";
+import { apiFetch, getToken, authHeaders } from "../../services/api.js";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import { logActivity } from "../../components/ActivityFeed.jsx";
 
@@ -26,27 +28,20 @@ function avatarColor(name) {
   return colors[Math.abs(hash) % colors.length];
 }
 
-function getToken() { return localStorage.getItem("token"); }
-
 // ── Main Component ──────────────────────────────────────────────────────────
 
 export default function Gallery() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  // Albums
-  const [albums, setAlbums] = useState([]);
+  // Active trip selection
   const [activeTrip, setActiveTrip] = useState(localStorage.getItem("active_group_id") || localStorage.getItem("activeGroupId") || "");
-
-  // Photos
-  const [photos, setPhotos] = useState([]);
-  const [loading, setLoading] = useState(true);
 
   // Upload
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadPreview, setUploadPreview] = useState(null);
   const [uploadCaption, setUploadCaption] = useState("");
-  const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const fileRef = useRef(null);
 
@@ -57,12 +52,10 @@ export default function Gallery() {
   const [editingId, setEditingId] = useState(null);
   const [editCaption, setEditCaption] = useState("");
 
-  // Delete
-  const [deletingId, setDeletingId] = useState(null);
-
-  // Social: likes, saves, share
+  // Social: likes, saves, share — track which item is in-flight
   const [likingId, setLikingId] = useState(null);
   const [savingId, setSavingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   // View mode: 'grid' | 'grouped'
   const [viewMode, setViewMode] = useState('grid');
@@ -81,55 +74,109 @@ export default function Gallery() {
   const [newComment, setNewComment]   = useState("");
   const [postingComment, setPosting]  = useState(false);
 
-  // ── Data fetching ─────────────────────────────────────────────────────────
+  // ── React Query: albums ───────────────────────────────────────────────────
 
-  const fetchAlbums = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/trips/my-albums`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setAlbums(data.albums || []);
-        if (!activeTrip && data.albums?.length > 0) {
-          setActiveTrip(data.albums[0].trip_id);
-        }
-      }
-    } catch { /* silent */ }
-  }, [activeTrip]);
+  const { data: albumsData } = useQuery({
+    queryKey: ["my-albums"],
+    queryFn: () => apiFetch("/trips/my-albums"),
+  });
+  const albums = albumsData?.albums || [];
 
-  const fetchPhotos = useCallback(async () => {
-    if (!activeTrip) { setPhotos([]); setLoading(false); return; }
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/trips/${activeTrip}/media`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
+  // Auto-select first album when none is active
+  useEffect(() => {
+    if (!activeTrip && albums.length > 0) {
+      setActiveTrip(albums[0].trip_id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [albumsData]);
+
+  // ── React Query: photos for the active trip ───────────────────────────────
+
+  const { data: photosData, isLoading: loading } = useQuery({
+    queryKey: ["trip-media", activeTrip],
+    queryFn: () => apiFetch(`/trips/${activeTrip}/media`),
+    enabled: !!activeTrip,
+  });
+  const photos = Array.isArray(photosData) ? photosData : [];
+
+  // ── useMutation: upload photo ─────────────────────────────────────────────
+
+  const uploadMutation = useMutation({
+    mutationFn: async ({ file, caption, tripId }) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      if (caption.trim()) formData.append("caption", caption.trim());
+      const res = await fetch(`${API_BASE}/trips/${tripId}/upload`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: formData,
       });
-      if (res.ok) {
-        const data = await res.json();
-        setPhotos(Array.isArray(data) ? data : []);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Upload failed");
       }
-    } catch { setPhotos([]); }
-    finally { setLoading(false); }
-  }, [activeTrip]);
+      return res.json();
+    },
+    onSuccess: (newPhoto) => {
+      queryClient.invalidateQueries({ queryKey: ["trip-media", activeTrip] });
+      queryClient.invalidateQueries({ queryKey: ["my-albums"] });
+      logActivity(activeTrip, "added_photo", uploadCaption.trim() || "a photo");
+      closeUpload();
+    },
+    onError: (err) => {
+      setUploadError(err.message || "Network error");
+    },
+  });
+  const uploading = uploadMutation.isPending;
+
+  // ── useMutation: like toggle ──────────────────────────────────────────────
+
+  const likeMutation = useMutation({
+    mutationFn: ({ mediaId }) =>
+      apiFetch(`/trips/${activeTrip}/media/${mediaId}/like`, { method: "POST" }),
+    onSuccess: (data) => {
+      if (data?.liked) logActivity(activeTrip, "liked_photo");
+      queryClient.invalidateQueries({ queryKey: ["trip-media", activeTrip] });
+    },
+    onSettled: () => setLikingId(null),
+  });
+
+  // ── useMutation: save toggle ──────────────────────────────────────────────
+
+  const saveMutation = useMutation({
+    mutationFn: ({ mediaId }) =>
+      apiFetch(`/trips/${activeTrip}/media/${mediaId}/save`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trip-media", activeTrip] });
+    },
+    onSettled: () => setSavingId(null),
+  });
+
+  // ── useMutation: delete photo ─────────────────────────────────────────────
+
+  const deleteMutation = useMutation({
+    mutationFn: ({ mediaId }) =>
+      apiFetch(`/trips/${activeTrip}/media/${mediaId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trip-media", activeTrip] });
+      queryClient.invalidateQueries({ queryKey: ["my-albums"] });
+      if (lightboxIdx >= 0) setLightboxIdx(-1);
+    },
+    onSettled: () => setDeletingId(null),
+  });
+
+  // ── Grouped photos fetch ──────────────────────────────────────────────────
 
   const fetchGroupedPhotos = useCallback(async () => {
     if (!activeTrip) { setGroupedData([]); return; }
     setGroupedLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/trips/${activeTrip}/media/grouped`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setGroupedData(data.groups || []);
-      }
+      const data = await apiFetch(`/trips/${activeTrip}/media/grouped`);
+      setGroupedData(data.groups || []);
     } catch { setGroupedData([]); }
     finally { setGroupedLoading(false); }
   }, [activeTrip]);
 
-  useEffect(() => { fetchAlbums(); }, [fetchAlbums]);
-  useEffect(() => { fetchPhotos(); }, [fetchPhotos]);
   useEffect(() => {
     if (viewMode === 'grouped') fetchGroupedPhotos();
   }, [viewMode, fetchGroupedPhotos]);
@@ -146,33 +193,11 @@ export default function Gallery() {
     reader.readAsDataURL(file);
   };
 
-  const handleUpload = async (e) => {
+  const handleUpload = (e) => {
     e.preventDefault();
     if (!uploadFile || !activeTrip) return;
-    setUploading(true);
     setUploadError("");
-
-    const formData = new FormData();
-    formData.append("file", uploadFile);
-    if (uploadCaption.trim()) formData.append("caption", uploadCaption.trim());
-
-    try {
-      const res = await fetch(`${API_BASE}/trips/${activeTrip}/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${getToken()}` },
-        body: formData,
-      });
-      if (res.ok) {
-        const newPhoto = await res.json();
-        setPhotos((prev) => [newPhoto, ...prev]);
-        logActivity(activeTrip, "added_photo", uploadCaption.trim() || "a photo");
-        closeUpload();
-      } else {
-        const err = await res.json().catch(() => ({}));
-        setUploadError(err.detail || "Upload failed");
-      }
-    } catch { setUploadError("Network error"); }
-    finally { setUploading(false); }
+    uploadMutation.mutate({ file: uploadFile, caption: uploadCaption, tripId: activeTrip });
   };
 
   const closeUpload = () => {
@@ -193,12 +218,12 @@ export default function Gallery() {
   const saveCaption = async () => {
     if (!editingId) return;
     try {
-      await fetch(`${API_BASE}/trips/${activeTrip}/media/${editingId}`, {
+      await apiFetch(`/trips/${activeTrip}/media/${editingId}`, {
         method: "PATCH",
-        headers: { Authorization: `Bearer ${getToken()}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ caption: editCaption }),
       });
-      setPhotos((prev) => prev.map((p) => (p.id === editingId ? { ...p, caption: editCaption } : p)));
+      queryClient.invalidateQueries({ queryKey: ["trip-media", activeTrip] });
     } catch { /* silent */ }
     setEditingId(null);
     setEditCaption("");
@@ -206,60 +231,25 @@ export default function Gallery() {
 
   // ── Delete ────────────────────────────────────────────────────────────────
 
-  const handleDelete = async (mediaId) => {
+  const handleDelete = (mediaId) => {
     setDeletingId(mediaId);
-    try {
-      const res = await fetch(`${API_BASE}/trips/${activeTrip}/media/${mediaId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (res.ok) {
-        setPhotos((prev) => prev.filter((p) => p.id !== mediaId));
-        if (lightboxIdx >= 0) setLightboxIdx(-1);
-      }
-    } catch { /* silent */ }
-    finally { setDeletingId(null); }
+    deleteMutation.mutate({ mediaId });
   };
 
   // ── Like toggle ────────────────────────────────────────────────────────────
 
-  const handleLike = async (mediaId, e) => {
+  const handleLike = (mediaId, e) => {
     if (e) e.stopPropagation();
     setLikingId(mediaId);
-    try {
-      const res = await fetch(`${API_BASE}/trips/${activeTrip}/media/${mediaId}/like`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPhotos((prev) =>
-          prev.map((p) => (p.id === mediaId ? { ...p, liked_by_me: data.liked, like_count: data.like_count } : p))
-        );
-        if (data.liked) logActivity(activeTrip, "liked_photo");
-      }
-    } catch { /* silent */ }
-    finally { setLikingId(null); }
+    likeMutation.mutate({ mediaId });
   };
 
   // ── Save/bookmark toggle ──────────────────────────────────────────────────
 
-  const handleSave = async (mediaId, e) => {
+  const handleSave = (mediaId, e) => {
     if (e) e.stopPropagation();
     setSavingId(mediaId);
-    try {
-      const res = await fetch(`${API_BASE}/trips/${activeTrip}/media/${mediaId}/save`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPhotos((prev) =>
-          prev.map((p) => (p.id === mediaId ? { ...p, saved_by_me: data.saved } : p))
-        );
-      }
-    } catch { /* silent */ }
-    finally { setSavingId(null); }
+    saveMutation.mutate({ mediaId });
   };
 
   // ── Share (Web Share API + fallback) ──────────────────────────────────────
@@ -287,10 +277,8 @@ export default function Gallery() {
     setCommentsLoading(true);
     setComments([]);
     try {
-      const res = await fetch(`${API_BASE}/media-comments/?media_id=${mediaId}`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (res.ok) setComments(await res.json());
+      const data = await apiFetch(`/media-comments/?media_id=${mediaId}`);
+      setComments(Array.isArray(data) ? data : []);
     } catch { /* silent */ }
     finally { setCommentsLoading(false); }
   }, []);
@@ -311,17 +299,14 @@ export default function Gallery() {
     if (!newComment.trim() || !lightboxPhoto) return;
     setPosting(true);
     try {
-      const res = await fetch(`${API_BASE}/media-comments/`, {
+      const c = await apiFetch("/media-comments/", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ media_id: lightboxPhoto.id, trip_id: activeTrip, body: newComment.trim() }),
       });
-      if (res.ok) {
-        const c = await res.json();
-        setComments((prev) => [...prev, c]);
-        setNewComment("");
-        logActivity(activeTrip, "commented_photo", lightboxPhoto?.caption || "a photo");
-      }
+      setComments((prev) => [...prev, c]);
+      setNewComment("");
+      logActivity(activeTrip, "commented_photo", lightboxPhoto?.caption || "a photo");
     } catch { /* silent */ }
     finally { setPosting(false); }
   };
@@ -329,10 +314,7 @@ export default function Gallery() {
   const deleteComment = async (commentId) => {
     setComments((prev) => prev.filter((c) => c.id !== commentId));
     try {
-      await fetch(`${API_BASE}/media-comments/${commentId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
+      await apiFetch(`/media-comments/${commentId}`, { method: "DELETE" });
     } catch { /* already removed */ }
   };
 
