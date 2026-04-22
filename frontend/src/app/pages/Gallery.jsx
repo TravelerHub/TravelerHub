@@ -5,6 +5,7 @@ import { API_BASE } from "../../config";
 import { apiFetch, getToken, authHeaders } from "../../services/api.js";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import { logActivity } from "../../components/ActivityFeed.jsx";
+import EmptyState from "../../components/EmptyState.jsx";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -512,22 +513,12 @@ export default function Gallery() {
                   <div className="w-8 h-8 border-3 border-gray-300 border-t-gray-800 rounded-full animate-spin" />
                 </div>
               ) : groupedData.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-24 rounded-3xl" style={{ border: "2px dashed #d1d5db" }}>
-                  <div className="w-20 h-20 rounded-full flex items-center justify-center mb-4" style={{ background: "#f3f4f6" }}>
-                    <span className="text-4xl">📸</span>
-                  </div>
-                  <p className="text-lg font-semibold" style={{ color: "#374151" }}>No photos yet</p>
-                  <p className="text-sm mt-1 mb-5" style={{ color: "#9ca3af" }}>
-                    Be the first to share a memory from this trip
-                  </p>
-                  <button
-                    onClick={() => setShowUpload(true)}
-                    className="px-6 py-2.5 rounded-xl text-sm font-semibold transition"
-                    style={{ background: "#160f29", color: "#fbfbf2" }}
-                  >
-                    Upload Photo
-                  </button>
-                </div>
+                <EmptyState
+                  icon="📸"
+                  title="No photos yet"
+                  subtitle="Upload your first memory from this trip."
+                  action={{ label: "Upload Photo", onClick: () => setShowUpload(true) }}
+                />
               ) : (
                 <div className="space-y-8">
                   {groupedData.map((group) => (
@@ -584,22 +575,12 @@ export default function Gallery() {
                 <div className="w-8 h-8 border-3 border-gray-300 border-t-gray-800 rounded-full animate-spin" />
               </div>
             ) : photos.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-24 rounded-3xl" style={{ border: "2px dashed #d1d5db" }}>
-                <div className="w-20 h-20 rounded-full flex items-center justify-center mb-4" style={{ background: "#f3f4f6" }}>
-                  <span className="text-4xl">📸</span>
-                </div>
-                <p className="text-lg font-semibold" style={{ color: "#374151" }}>No photos yet</p>
-                <p className="text-sm mt-1 mb-5" style={{ color: "#9ca3af" }}>
-                  Be the first to share a memory from this trip
-                </p>
-                <button
-                  onClick={() => setShowUpload(true)}
-                  className="px-6 py-2.5 rounded-xl text-sm font-semibold transition"
-                  style={{ background: "#160f29", color: "#fbfbf2" }}
-                >
-                  Upload Photo
-                </button>
-              </div>
+              <EmptyState
+                icon="📸"
+                title="No photos yet"
+                subtitle="Upload your first memory from this trip."
+                action={{ label: "Upload Photo", onClick: () => setShowUpload(true) }}
+              />
             ) : (
               <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
                 {photos.map((photo, idx) => {

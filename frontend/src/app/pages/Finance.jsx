@@ -16,6 +16,7 @@ import { ensureActiveGroupId, getActiveGroupId, getMyGroups, setActiveGroupId } 
 import CardRecommendation from "../../components/CardRecommendation.jsx";
 import BudgetTracker from "../../components/BudgetTracker.jsx";
 import CardWallet from "../../components/CardWallet.jsx";
+import EmptyState from "../../components/EmptyState.jsx";
 
 // ── Color palette (matches Dashboard / Booking / Expenses)
 // #160f29  deep dark   (sidebar, headings)
@@ -659,11 +660,11 @@ function Finance() {
                 </button>
               </div>
             ) : sortedTransactions.length === 0 ? (
-              <div className="py-16 text-center">
-                <p className="text-3xl mb-3">💳</p>
-                <p className="text-sm font-medium" style={{ color: "#374151" }}>No transactions</p>
-                <p className="text-xs mt-1" style={{ color: "#9ca3af" }}>Add your first transaction to get started</p>
-              </div>
+              <EmptyState
+                icon="💸"
+                title="No expenses yet"
+                subtitle="Add your first expense to start tracking the group budget."
+              />
             ) : (
               sortedTransactions.map((t, idx) => {
                 const meta = CATEGORY_META[t.category] || CATEGORY_META.Other;
