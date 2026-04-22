@@ -39,6 +39,7 @@ from routers import media_comments
 from routers import cards
 from routers import suggestion
 from routers import story
+from routers import invites
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
@@ -100,6 +101,7 @@ app.include_router(cards.router)           # /cards (credit card optimizer)
 app.include_router(cards.budget_router)    # /finance/budget (trip budgets)
 app.include_router(suggestion.router)     # /suggestions (POI ranking)
 app.include_router(story.router)          # /trips/{trip_id}/story (shareable timeline)
+app.include_router(invites.router)        # /groups/invite/* (invite links)
 
 
 
