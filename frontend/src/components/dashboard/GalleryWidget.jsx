@@ -15,8 +15,11 @@ export default function GalleryWidget() {
     fetch(`${API_BASE}/trips/${tripId}/media`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) => setPhotos(Array.isArray(data) ? data.slice(0, 4) : []))
+      .then((r) => (r.ok ? r.json() : { photos: [] }))
+      .then((data) => {
+        const list = Array.isArray(data) ? data : (data.photos || []);
+        setPhotos(list.slice(0, 4));
+      })
       .catch(() => setPhotos([]))
       .finally(() => setLoading(false));
   }, []);
@@ -76,10 +79,11 @@ export default function GalleryWidget() {
                 style={{ border: "1px solid rgba(0,0,0,0.05)" }}
               >
                 <img
-                  src={photo.public_url || photo.url}
+                  src={photo.thumbnail_url || photo.public_url || photo.url}
                   alt={photo.caption || "Trip photo"}
                   className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                   loading="lazy"
+                  decoding="async"
                 />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
               </div>
