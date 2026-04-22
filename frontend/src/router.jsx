@@ -31,6 +31,7 @@ import OfflineBanner from "./components/OfflineBanner.jsx";
 import InstallPrompt from "./components/InstallPrompt.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import StoryMode from "./components/StoryMode.jsx";
+import JoinTrip from "./app/pages/JoinTrip.jsx";
 
 
 // Layout that injects the floating AI chat widget and network status on authenticated pages
@@ -65,6 +66,7 @@ const router = createBrowserRouter([
         { path: "/resetpassword", element: <ResetPassword /> },
         { path: "/otp", element: <OTP /> },
         { path: "/newpassword", element: <NewPassword /> },
+        { path: "/join/:token", element: <JoinTrip /> },
 
         // Authenticated routes (chat widget available)
         {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { API_BASE } from '../../config';
 import Navbar_empty from "../../components/navbar/Navbar_empty";
 import Footer from "../../components/Footer";
@@ -9,6 +9,7 @@ import { chatApi } from "../../components/chatbox/chatAPI";
 
 function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -57,7 +58,9 @@ function Login() {
         }
       }
 
-      navigate("/welcome");
+      const params = new URLSearchParams(location.search);
+      const redirectTo = params.get("redirect");
+      navigate(redirectTo || "/welcome");
     }
     else {
       setError(data.detail || "Error logging in. Please try again!");
