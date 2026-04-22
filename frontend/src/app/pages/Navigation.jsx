@@ -74,6 +74,122 @@ import { StarIcon as StarIconSolid, UserGroupIcon, PlayIcon } from '@heroicons/r
 
 import { searchByCategory } from '../../services/placesService';
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatDistance(meters) {
+  if (meters == null) return '';
+  const feet = meters * 3.28084;
+  if (feet < 1000) return `${Math.round(feet / 10) * 10} ft`;
+  return `${(meters / 1609.34).toFixed(1)} mi`;
+}
+
+function ManeuverIcon({ type, className = 'w-7 h-7' }) {
+  const t = (type || '').toLowerCase();
+  if (t.includes('left') && !t.includes('slight') && !t.includes('uturn')) {
+    return <ArrowLeftIcon className={className} />;
+  }
+  if (t.includes('right') && !t.includes('slight') && !t.includes('uturn')) {
+    return <ArrowRightIcon className={className} />;
+  }
+  if (t.includes('uturn') || t.includes('u-turn')) {
+    return t.includes('left')
+      ? <ArrowUturnLeftIcon className={className} />
+      : <ArrowUturnRightIcon className={className} />;
+  }
+  if (t.includes('arrive') || t.includes('destination')) {
+    return <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>🏁</span>;
+  }
+  return <ArrowUpIcon className={className} />;
+}
+
+// Floating turn-by-turn instruction card — absolutely positioned over the map
+function NavInstructionCard({ isNavigating, currentRoute, currentStepIndex, userPosition, onExit }) {
+  if (!isNavigating || !currentRoute?.steps?.[currentStepIndex]) return null;
+
+  const step = currentRoute.steps[currentStepIndex];
+  const nextStep = currentRoute.steps[currentStepIndex + 1];
+  const progress = Math.round(((currentStepIndex + 1) / currentRoute.steps.length) * 100);
+  const maneuverType = step.maneuver?.type || '';
+
+  return (
+    <div className="absolute top-0 left-0 right-0 z-20 pointer-events-none">
+      <div
+        className="pointer-events-auto text-white"
+        style={{ background: 'rgba(24, 58, 55, 0.92)', backdropFilter: 'blur(6px)' }}
+      >
+        {/* Progress bar */}
+        <div className="h-1 w-full" style={{ background: 'rgba(255,255,255,0.15)' }}>
+          <div
+            className="h-full transition-all duration-500"
+            style={{ width: `${progress}%`, background: '#4ade80' }}
+          />
+        </div>
+
+        {/* Main instruction row */}
+        <div className="flex items-center gap-3 px-4 py-3">
+          <div
+            className="shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center"
+            style={{ background: 'rgba(255,255,255,0.12)' }}
+          >
+            <ManeuverIcon type={maneuverType} className="w-8 h-8" />
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <p className="text-lg font-bold leading-tight">
+              {step.maneuver?.instruction || `Step ${currentStepIndex + 1}`}
+            </p>
+            <div className="flex items-center gap-3 mt-1">
+              <span className="text-base font-bold" style={{ color: '#86efac' }}>
+                {formatDistance(step.distance)}
+              </span>
+              <span className="text-sm" style={{ color: 'rgba(255,255,255,0.65)' }}>
+                {step.duration >= 60
+                  ? `${Math.round(step.duration / 60)} min`
+                  : `${Math.round(step.duration)} sec`}
+              </span>
+              <span className="text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                {currentStepIndex + 1}/{currentRoute.steps.length}
+              </span>
+            </div>
+          </div>
+
+          <button
+            onClick={onExit}
+            className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition hover:bg-white/20"
+            style={{ background: 'rgba(255,255,255,0.12)' }}
+            title="Exit Navigation"
+          >
+            <XMarkIcon className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Next step preview */}
+        {nextStep && (
+          <div
+            className="flex items-center gap-2 px-4 py-2 text-xs"
+            style={{ borderTop: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}
+          >
+            <span className="font-semibold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem' }}>
+              Then
+            </span>
+            <ManeuverIcon type={nextStep.maneuver?.type || ''} className="w-3.5 h-3.5 shrink-0" />
+            <span className="flex-1 truncate">{nextStep.maneuver?.instruction || 'Continue'}</span>
+            <span className="ml-auto shrink-0 font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>
+              {formatDistance(nextStep.distance)}
+            </span>
+          </div>
+        )}
+
+        {userPosition?.accuracy != null && (
+          <div className="px-4 pb-1.5 text-right text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
+            GPS ~{Math.round(userPosition.accuracy)}m
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Navigation() {
   const navigate = useNavigate();
   const mapRef = useRef(null);
@@ -176,6 +292,12 @@ function Navigation() {
   const [routeDestination, setRouteDestination] = useState(null); // for Group Arrival Sync
   const lastSyncRef = useRef(0);
   const isReroutingRef = useRef(false); // prevents re-route spam
+
+  // On-map search bar state
+  const [mapSearchQuery, setMapSearchQuery] = useState('');
+  const [mapSearchResults, setMapSearchResults] = useState([]);
+  const [mapSearchLoading, setMapSearchLoading] = useState(false);
+  const mapSearchRef = useRef(null);
 
   useEffect(() => {
     const boot = async () => {
@@ -399,6 +521,44 @@ function Navigation() {
       return prev;
     });
   }, [currentRoute, transportMode, activeGroupId, isNavigating]);
+
+  // Close on-map search dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (mapSearchRef.current && !mapSearchRef.current.contains(e.target)) {
+        setMapSearchResults([]);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // On-map search handler
+  const handleMapSearchInput = async (value) => {
+    setMapSearchQuery(value);
+    if (value.length < 2) { setMapSearchResults([]); return; }
+    setMapSearchLoading(true);
+    try {
+      const results = await searchPlaces(value);
+      setMapSearchResults(results.slice(0, 5));
+    } catch {
+      setMapSearchResults([]);
+    } finally {
+      setMapSearchLoading(false);
+    }
+  };
+
+  const handleMapSearchSelect = (place) => {
+    const coords = place.coordinates || (place.lng && place.lat ? [place.lng, place.lat] : null);
+    if (!coords) return;
+    setMarkers(prev => [...prev, {
+      coordinates: coords,
+      title: place.name || place.display_name?.split(',')[0] || 'Place',
+      description: place.address || place.display_name || '',
+    }]);
+    setMapSearchQuery('');
+    setMapSearchResults([]);
+  };
 
   useEffect(() => {
     const dest = searchParams.get('destination');
@@ -2176,60 +2336,72 @@ function Navigation() {
               </div>
             )}
 
-            {/* Navigation overlay */}
-            {isNavigating && currentRoute?.steps?.[currentStepIndex] && (() => {
-              const step = currentRoute.steps[currentStepIndex];
-              const nextStep = currentRoute.steps[currentStepIndex + 1];
-              const progress = Math.round(((currentStepIndex + 1) / currentRoute.steps.length) * 100);
-              return (
-                <div className="absolute top-4 left-4 right-4 z-10">
-                  <div className="w-full h-1 rounded-full mb-1 overflow-hidden" style={{ background: '#d1d1c7' }}>
-                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progress}%`, background: '#183a37' }} />
-                  </div>
-                  <div className="rounded-xl shadow-xl p-4 text-white" style={{ background: '#160f29' }}>
-                    <div className="flex items-center gap-3">
-                      <div className="shrink-0 w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.15)' }}>
-                        <ArrowUpIcon className="w-7 h-7" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-base font-bold leading-tight">
-                          {step.maneuver?.instruction || `Step ${currentStepIndex + 1}`}
-                        </p>
-                        <div className="flex items-center gap-3 mt-1 text-sm" style={{ color: 'rgba(251,251,242,0.7)' }}>
-                          <span className="font-semibold text-white">
-                            {step.distance >= 1000 ? `${(step.distance / 1000).toFixed(1)} km` : `${Math.round(step.distance)} m`}
-                          </span>
-                          <span>{step.duration >= 60 ? `${Math.round(step.duration / 60)} min` : `${Math.round(step.duration)} sec`}</span>
-                          <span className="text-xs">Step {currentStepIndex + 1}/{currentRoute.steps.length}</span>
-                        </div>
-                      </div>
-                      <button
-                        onClick={handleExitNavigation}
-                        className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition hover:bg-white/20"
-                        style={{ background: 'rgba(255,255,255,0.15)' }}
-                        title="Exit Navigation"
-                      >
-                        <XMarkIcon className="w-5 h-5 text-white" />
-                      </button>
-                    </div>
-                    {nextStep && (
-                      <div className="mt-3 pt-3 border-t flex items-center gap-2 text-xs" style={{ borderColor: 'rgba(255,255,255,0.15)', color: 'rgba(251,251,242,0.7)' }}>
-                        <span className="font-medium" style={{ color: 'rgba(251,251,242,0.5)' }}>Then:</span>
-                        <span className="truncate">{nextStep.maneuver?.instruction || 'Continue'}</span>
-                        <span className="ml-auto font-medium whitespace-nowrap">
-                          {nextStep.distance >= 1000 ? `${(nextStep.distance / 1000).toFixed(1)} km` : `${Math.round(nextStep.distance)} m`}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  {userPosition && (
-                    <div className="mt-1 text-right text-xs" style={{ color: '#5c6b73' }}>
-                      GPS accuracy: ~{Math.round(userPosition.accuracy || 0)}m
-                    </div>
+            {/* ── NavInstructionCard — turn-by-turn overlay ── */}
+            <NavInstructionCard
+              isNavigating={isNavigating}
+              currentRoute={currentRoute}
+              currentStepIndex={currentStepIndex}
+              userPosition={userPosition}
+              onExit={handleExitNavigation}
+            />
+
+            {/* ── On-map search bar (hidden during navigation or pin-add mode) ── */}
+            {!isNavigating && !addPinMode && (
+              <div
+                ref={mapSearchRef}
+                className="absolute top-4 left-1/2 -translate-x-1/2 z-20 w-full max-w-sm px-3"
+              >
+                {/* Pill input */}
+                <div className="flex items-center bg-white rounded-full shadow-lg px-4 py-2.5 gap-2">
+                  <MagnifyingGlassIcon className="w-4 h-4 shrink-0" style={{ color: '#6b7280' }} />
+                  <input
+                    type="text"
+                    value={mapSearchQuery}
+                    onChange={(e) => handleMapSearchInput(e.target.value)}
+                    placeholder="Search and add a stop..."
+                    className="flex-1 text-sm outline-none bg-transparent"
+                    style={{ color: '#160f29' }}
+                  />
+                  {mapSearchLoading && (
+                    <ArrowPathIcon className="w-4 h-4 shrink-0 animate-spin" style={{ color: '#9ca3af' }} />
+                  )}
+                  {mapSearchQuery && !mapSearchLoading && (
+                    <button
+                      onClick={() => { setMapSearchQuery(''); setMapSearchResults([]); }}
+                      className="shrink-0 p-0.5 rounded-full hover:bg-gray-100 transition"
+                    >
+                      <XMarkIcon className="w-4 h-4" style={{ color: '#9ca3af' }} />
+                    </button>
                   )}
                 </div>
-              );
-            })()}
+
+                {/* Dropdown results */}
+                {mapSearchResults.length > 0 && (
+                  <div className="mt-1.5 bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
+                    {mapSearchResults.map((place, idx) => {
+                      const name = place.name || place.display_name?.split(',')[0] || 'Place';
+                      const address = place.address || place.display_name || '';
+                      return (
+                        <button
+                          key={place.id || idx}
+                          onClick={() => handleMapSearchSelect(place)}
+                          className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-gray-50 transition border-b last:border-b-0"
+                          style={{ borderColor: '#f3f4f6' }}
+                        >
+                          <MapPinIcon className="w-4 h-4 shrink-0 mt-0.5" style={{ color: '#183a37' }} />
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold truncate" style={{ color: '#160f29' }}>{name}</p>
+                            {address && address !== name && (
+                              <p className="text-xs truncate mt-0.5" style={{ color: '#6b7280' }}>{address}</p>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
         </div>
