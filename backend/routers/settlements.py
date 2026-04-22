@@ -353,6 +353,151 @@ def record_settlement(
     return {"settlement": res.data[0]}
 
 
+@router.get("/trips/{trip_id}/settlement-summary")
+def get_settlement_summary(
+    trip_id: str,
+    current_user=Depends(oauth2.get_current_user),
+):
+    """
+    Return a concise settlement summary for a trip:
+      - balances      : net balance per member (positive = owed, negative = owes)
+      - settlements   : minimized transfer list (from/to/amount)
+      - total_spent   : sum of all expense totals for the trip
+      - per_person_share : total_spent / number of members
+    """
+    user_id = current_user["id"]
+    _ensure_trip_member(trip_id, user_id)
+
+    member_ids = _get_trip_member_ids(trip_id)
+    n_members = max(len(member_ids), 1)
+
+    # Fetch usernames
+    users_res = (
+        supabase.table("users")
+        .select("id, username")
+        .in_("id", member_ids)
+        .execute()
+    )
+    user_map = {u["id"]: u["username"] for u in (users_res.data or [])}
+
+    # Fetch all expenses for this trip
+    expenses_res = (
+        supabase.table("expenses")
+        .select("id, user_id, total")
+        .eq("trip_id", trip_id)
+        .execute()
+    )
+    expenses = expenses_res.data or []
+    expense_ids = [e["id"] for e in expenses]
+
+    # Total spent (sum of positive expense totals)
+    total_spent = sum(abs(float(e.get("total") or 0)) for e in expenses)
+    per_person_share = round(total_spent / n_members, 2)
+
+    # Fetch expense shares
+    shares = []
+    if expense_ids:
+        shares_res = (
+            supabase.table("expense_shares")
+            .select("expense_id, user_id, share_amount")
+            .in_("expense_id", expense_ids)
+            .execute()
+        )
+        shares = shares_res.data or []
+
+    # Build net balance per member
+    net = {mid: 0.0 for mid in member_ids}
+    expense_shares_map: dict = {}
+    for s in shares:
+        expense_shares_map.setdefault(s["expense_id"], []).append(s)
+
+    for exp in expenses:
+        exp_shares = expense_shares_map.get(exp["id"], [])
+        if not exp_shares:
+            # No explicit shares: split equally among all members
+            share_amount = round(abs(float(exp.get("total") or 0)) / n_members, 2)
+            payer_id = exp["user_id"]
+            total_paid = abs(float(exp.get("total") or 0))
+            if payer_id in net:
+                net[payer_id] += total_paid
+            for mid in member_ids:
+                net[mid] -= share_amount
+            continue
+
+        payer_id = exp["user_id"]
+        total_paid = abs(float(exp.get("total") or 0))
+        if payer_id in net:
+            net[payer_id] += total_paid
+        for s in exp_shares:
+            if s["user_id"] in net:
+                net[s["user_id"]] -= float(s["share_amount"])
+
+    # Factor in existing settlements
+    settlements_res = (
+        supabase.table("settlements")
+        .select("from_user_id, to_user_id, amount")
+        .eq("trip_id", trip_id)
+        .execute()
+    )
+    for s in (settlements_res.data or []):
+        amt = float(s["amount"])
+        if s["from_user_id"] in net:
+            net[s["from_user_id"]] += amt
+        if s["to_user_id"] in net:
+            net[s["to_user_id"]] -= amt
+
+    # Build balances list
+    balances = []
+    for mid in member_ids:
+        bal = round(net.get(mid, 0.0), 2)
+        balances.append({
+            "user_id": mid,
+            "username": user_map.get(mid, "Unknown"),
+            "net_balance": bal,
+        })
+
+    # Greedy minimization of transfers
+    creditors = []
+    debtors = []
+    for uid, balance in net.items():
+        if balance > 0.005:
+            creditors.append([uid, round(balance, 2)])
+        elif balance < -0.005:
+            debtors.append([uid, round(-balance, 2)])
+
+    creditors.sort(key=lambda x: -x[1])
+    debtors.sort(key=lambda x: -x[1])
+
+    settlement_steps = []
+    ci, di = 0, 0
+    while ci < len(creditors) and di < len(debtors):
+        c_id, c_amt = creditors[ci]
+        d_id, d_amt = debtors[di]
+        transfer_amt = round(min(c_amt, d_amt), 2)
+        if transfer_amt > 0:
+            settlement_steps.append({
+                "from_user": user_map.get(d_id, "Unknown"),
+                "from_user_id": d_id,
+                "to_user": user_map.get(c_id, "Unknown"),
+                "to_user_id": c_id,
+                "amount": transfer_amt,
+            })
+        creditors[ci][1] = round(c_amt - transfer_amt, 2)
+        debtors[di][1] = round(d_amt - transfer_amt, 2)
+        if creditors[ci][1] < 0.005:
+            ci += 1
+        if debtors[di][1] < 0.005:
+            di += 1
+
+    return {
+        "trip_id": trip_id,
+        "total_spent": round(total_spent, 2),
+        "per_person_share": per_person_share,
+        "balances": balances,
+        "settlements": settlement_steps,
+    }
+
+
 @router.get("/settlements/{trip_id}")
 def list_settlements(
     trip_id: str,
