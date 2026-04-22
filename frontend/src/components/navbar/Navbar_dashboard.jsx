@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
+import { apiFetch } from "../../services/api";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 
@@ -240,6 +241,20 @@ function Navbar_Dashboard() {
     navigate("/login");
   };
 
+  // Unread notifications count
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const fetchCount = () => {
+      apiFetch('/notifications/unread-count')
+        .then(data => setUnreadCount(data.count || 0))
+        .catch(() => {});
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Debounced query
   const debouncedQuery = useDebounce(searchQuery, 300);
 
@@ -446,6 +461,16 @@ function Navbar_Dashboard() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
           </svg>
         </button>
+
+        {/* Notifications bell */}
+        <Link to="/notifications" className="relative text-white/70 hover:text-white w-8 h-8 flex items-center justify-center rounded-lg hover:bg-black/5 transition" title="Notifications">
+          <span className="text-xl">🔔</span>
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
+        </Link>
 
         {/* Profile avatar + dropdown */}
         <div className="relative">

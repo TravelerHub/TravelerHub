@@ -42,6 +42,7 @@ from routers import story
 from routers import search
 from routers import invites
 from routers import export as export_router
+from routers import notifications
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
@@ -106,6 +107,7 @@ app.include_router(story.router)          # /trips/{trip_id}/story (shareable ti
 app.include_router(search.router)         # /search (global search across trips, expenses, photos)
 app.include_router(invites.router)        # /groups/invite/* (invite links)
 app.include_router(export_router.router)  # /export (iCal, CSV, JSON summary)
+app.include_router(notifications.router)  # /notifications
 
 
 
