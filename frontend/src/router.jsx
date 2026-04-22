@@ -30,6 +30,7 @@ import Gallery from "./app/pages/Gallery.jsx";
 import OfflineBanner from "./components/OfflineBanner.jsx";
 import InstallPrompt from "./components/InstallPrompt.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import StoryMode from "./components/StoryMode.jsx";
 
 
 // Layout that injects the floating AI chat widget and network status on authenticated pages
@@ -102,6 +103,14 @@ const router = createBrowserRouter([
               element: (
                 <ErrorBoundary>
                   <Gallery />
+                </ErrorBoundary>
+              ),
+            },
+            {
+              path: "/trips/:tripId/story",
+              element: (
+                <ErrorBoundary>
+                  <StoryMode />
                 </ErrorBoundary>
               ),
             },

@@ -1,245 +1,520 @@
-import { useState, useEffect, useRef } from 'react';
-import {
-  PlayIcon,
-  PauseIcon,
-  StopIcon,
-  ForwardIcon,
-  BackwardIcon,
-  XMarkIcon,
-  PhotoIcon,
-} from '@heroicons/react/24/solid';
+import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { apiFetch } from '../services/api.js';
 
-/**
- * StoryMode — "Play" button that traces the route on the map and pops up
- * photos/info at each stop, creating an instant trip recap.
- *
- * Props:
- *   route       — route object with geometry.coordinates array
- *   photos      — array of { coordinates: [lng,lat], url, caption, created_at }
- *   waypoints   — array of { name, coordinates: [lng,lat] }
- *   mapRef      — ref to Map component (for flyTo)
- *   visible     — whether story mode is active
- *   onClose     — callback to exit story mode
- */
-export default function StoryMode({ route, photos = [], waypoints = [], mapRef, visible, onClose }) {
-  const [playing, setPlaying] = useState(false);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [currentPhoto, setCurrentPhoto] = useState(null);
-  const intervalRef = useRef(null);
+// ── Category emoji map ────────────────────────────────────────────────────────
 
-  // Build "stops" — waypoints interleaved with nearby photos
-  const stops = buildStops(waypoints, photos);
+const CATEGORY_EMOJI = {
+  food: '🍽️',
+  dining: '🍽️',
+  restaurant: '🍽️',
+  transport: '🚗',
+  transportation: '🚗',
+  flight: '✈️',
+  lodging: '🏨',
+  hotel: '🏨',
+  accommodation: '🏨',
+  activity: '🎟️',
+  entertainment: '🎟️',
+  shopping: '🛍️',
+  health: '💊',
+  other: '💳',
+};
+
+function getCategoryEmoji(category) {
+  if (!category) return '💳';
+  const key = category.toLowerCase().trim();
+  return CATEGORY_EMOJI[key] || '💳';
+}
+
+// ── Date formatter ────────────────────────────────────────────────────────────
+
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function formatDateShort(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// ── Loading skeleton ──────────────────────────────────────────────────────────
+
+function Skeleton({ style }) {
+  return (
+    <div
+      style={{
+        background: 'linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 100%)',
+        backgroundSize: '200% 100%',
+        animation: 'shimmer 1.6s infinite',
+        borderRadius: 8,
+        ...style,
+      }}
+    />
+  );
+}
+
+// ── Day card ──────────────────────────────────────────────────────────────────
+
+function DayCard({ day, index }) {
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (!visible) {
-      setPlaying(false);
-      setCurrentIndex(0);
-      setCurrentPhoto(null);
-    }
-  }, [visible]);
+    // Stagger fade-in by card index
+    const t = setTimeout(() => setVisible(true), 80 + index * 60);
+    return () => clearTimeout(t);
+  }, [index]);
 
-  useEffect(() => {
-    if (playing && stops.length > 0) {
-      flyToStop(currentIndex);
-
-      intervalRef.current = setInterval(() => {
-        setCurrentIndex(prev => {
-          const next = prev + 1;
-          if (next >= stops.length) {
-            setPlaying(false);
-            return prev;
-          }
-          return next;
-        });
-      }, 3000); // 3 seconds per stop
-    }
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [playing]);
-
-  useEffect(() => {
-    if (visible && stops.length > 0) {
-      flyToStop(currentIndex);
-    }
-  }, [currentIndex]);
-
-  function flyToStop(index) {
-    const stop = stops[index];
-    if (!stop) return;
-
-    mapRef?.current?.flyTo(stop.coordinates, { zoom: 15, duration: 1500 });
-
-    if (stop.photo) {
-      setCurrentPhoto(stop.photo);
-    } else {
-      setCurrentPhoto(null);
-    }
-  }
-
-  function handlePlay() {
-    if (currentIndex >= stops.length - 1) setCurrentIndex(0);
-    setPlaying(true);
-  }
-
-  function handlePause() {
-    setPlaying(false);
-  }
-
-  function handleNext() {
-    setPlaying(false);
-    setCurrentIndex(prev => Math.min(prev + 1, stops.length - 1));
-  }
-
-  function handlePrev() {
-    setPlaying(false);
-    setCurrentIndex(prev => Math.max(prev - 1, 0));
-  }
-
-  if (!visible) return null;
+  const dateLabel = `${day.day_label} \u2014 ${formatDate(day.date)}`;
 
   return (
-    <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30">
-      {/* Photo popup */}
-      {currentPhoto && (
-        <div className="mb-3 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden max-w-sm mx-auto">
-          <img
-            src={currentPhoto.url}
-            alt={currentPhoto.caption || 'Trip photo'}
-            className="w-full h-48 object-cover"
-          />
-          {currentPhoto.caption && (
-            <div className="px-4 py-2">
-              <p className="text-sm text-gray-700">{currentPhoto.caption}</p>
-              {currentPhoto.created_at && (
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {new Date(currentPhoto.created_at).toLocaleDateString()}
-                </p>
+    <div
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'translateY(0)' : 'translateY(20px)',
+        transition: 'opacity 0.45s ease, transform 0.45s ease',
+        background: 'rgba(255,255,255,0.04)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: 20,
+        padding: '28px 28px 24px',
+        marginBottom: 20,
+      }}
+    >
+      {/* Day label */}
+      <p
+        style={{
+          color: '#4ade80',
+          fontSize: 13,
+          fontWeight: 700,
+          letterSpacing: '0.04em',
+          textTransform: 'uppercase',
+          marginBottom: 16,
+        }}
+      >
+        {dateLabel}
+      </p>
+
+      {/* Photo strip */}
+      {day.photos.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            gap: 10,
+            overflowX: 'auto',
+            paddingBottom: 8,
+            marginBottom: day.expenses.length > 0 ? 20 : 0,
+            scrollbarWidth: 'none',
+          }}
+        >
+          {day.photos.map((photo) => (
+            <div
+              key={photo.id}
+              style={{
+                flexShrink: 0,
+                width: 220,
+                height: 200,
+                borderRadius: 14,
+                overflow: 'hidden',
+                background: 'rgba(255,255,255,0.06)',
+                position: 'relative',
+              }}
+            >
+              <img
+                src={photo.public_url}
+                alt={photo.caption || 'Trip photo'}
+                loading="lazy"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  display: 'block',
+                }}
+              />
+              {photo.caption && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    padding: '20px 10px 10px',
+                    background: 'linear-gradient(transparent, rgba(0,0,0,0.65))',
+                  }}
+                >
+                  <p
+                    style={{
+                      color: 'rgba(255,255,255,0.9)',
+                      fontSize: 11,
+                      margin: 0,
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    {photo.caption}
+                  </p>
+                </div>
               )}
             </div>
-          )}
+          ))}
         </div>
       )}
 
-      {/* Current stop info */}
-      {stops[currentIndex] && (
-        <div className="mb-2 bg-white/90 backdrop-blur-sm rounded-xl px-4 py-2 text-center shadow-lg">
-          <p className="text-sm font-semibold text-gray-800">
-            {stops[currentIndex].name}
-          </p>
-          <p className="text-xs text-gray-500">
-            Stop {currentIndex + 1} of {stops.length}
-          </p>
-        </div>
+      {day.photos.length === 0 && day.expenses.length > 0 && (
+        <p style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12, marginBottom: 16 }}>
+          No photos on this day
+        </p>
       )}
 
-      {/* Playback controls */}
-      <div className="flex items-center gap-2 bg-gray-900/90 backdrop-blur-sm rounded-2xl px-4 py-3 shadow-2xl">
-        {/* Close */}
-        <button
-          onClick={onClose}
-          className="p-2 text-gray-400 hover:text-white rounded-lg transition"
-        >
-          <XMarkIcon className="w-5 h-5" />
-        </button>
-
-        {/* Previous */}
-        <button
-          onClick={handlePrev}
-          disabled={currentIndex === 0}
-          className="p-2 text-gray-400 hover:text-white rounded-lg transition disabled:opacity-30"
-        >
-          <BackwardIcon className="w-5 h-5" />
-        </button>
-
-        {/* Play/Pause */}
-        {playing ? (
-          <button
-            onClick={handlePause}
-            className="p-3 bg-white text-gray-900 rounded-full hover:bg-gray-100 transition"
-          >
-            <PauseIcon className="w-6 h-6" />
-          </button>
-        ) : (
-          <button
-            onClick={handlePlay}
-            className="p-3 bg-white text-gray-900 rounded-full hover:bg-gray-100 transition"
-          >
-            <PlayIcon className="w-6 h-6" />
-          </button>
-        )}
-
-        {/* Next */}
-        <button
-          onClick={handleNext}
-          disabled={currentIndex >= stops.length - 1}
-          className="p-2 text-gray-400 hover:text-white rounded-lg transition disabled:opacity-30"
-        >
-          <ForwardIcon className="w-5 h-5" />
-        </button>
-
-        {/* Progress */}
-        <div className="flex-1 mx-2">
-          <div className="h-1 bg-gray-700 rounded-full overflow-hidden">
+      {/* Expense pills */}
+      {day.expenses.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+          {day.expenses.map((exp) => (
             <div
-              className="h-full bg-white rounded-full transition-all duration-500"
-              style={{ width: `${stops.length > 0 ? ((currentIndex + 1) / stops.length) * 100 : 0}%` }}
-            />
-          </div>
+              key={exp.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '5px 12px',
+                background: 'rgba(255,255,255,0.07)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 999,
+                fontSize: 12,
+                color: 'rgba(255,255,255,0.75)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <span style={{ fontSize: 14 }}>{getCategoryEmoji(exp.category)}</span>
+              <span style={{ fontWeight: 500 }}>{exp.merchant}</span>
+              <span style={{ color: 'rgba(255,255,255,0.45)' }}>·</span>
+              <span style={{ color: '#4ade80', fontWeight: 600 }}>
+                ${exp.amount.toFixed(2)}
+              </span>
+            </div>
+          ))}
         </div>
+      )}
 
-        {/* Photos count */}
-        <div className="flex items-center gap-1 text-gray-400">
-          <PhotoIcon className="w-4 h-4" />
-          <span className="text-xs">{photos.length}</span>
+      {/* Day total */}
+      {day.expenses.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', margin: 0 }}>
+            Day total:{' '}
+            <span style={{ color: '#4ade80', fontWeight: 700 }}>
+              ${day.total_spent.toFixed(2)}
+            </span>
+          </p>
         </div>
-      </div>
+      )}
     </div>
   );
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
+
 /**
- * Build an ordered list of "stops" from waypoints + nearby photos.
- * Photos are matched to the nearest waypoint.
+ * StoryMode — full-page shareable post-trip timeline.
+ *
+ * Props:
+ *   tripId  — trip UUID. Falls back to :tripId URL param, then localStorage.
+ *
+ * Route: /trips/:tripId/story
  */
-function buildStops(waypoints, photos) {
-  const stops = waypoints.map(wp => ({
-    name: wp.name || wp.title || 'Stop',
-    coordinates: wp.coordinates,
-    type: 'waypoint',
-    photo: null,
-  }));
+export default function StoryMode({ tripId: tripIdProp }) {
+  const params = useParams();
+  const tripId =
+    tripIdProp ||
+    params.tripId ||
+    localStorage.getItem('active_group_id') ||
+    localStorage.getItem('activeGroupId') ||
+    '';
 
-  // Match photos to nearest waypoint
-  photos.forEach(photo => {
-    if (!photo.coordinates || photo.coordinates.length < 2) return;
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
 
-    let minDist = Infinity;
-    let nearestIdx = 0;
-
-    stops.forEach((stop, i) => {
-      const d = Math.abs(stop.coordinates[0] - photo.coordinates[0]) +
-                Math.abs(stop.coordinates[1] - photo.coordinates[1]);
-      if (d < minDist) {
-        minDist = d;
-        nearestIdx = i;
-      }
-    });
-
-    // Attach photo to the nearest stop, or insert after it
-    if (!stops[nearestIdx].photo) {
-      stops[nearestIdx].photo = photo;
-    } else {
-      // Insert as a separate photo stop
-      stops.splice(nearestIdx + 1, 0, {
-        name: photo.caption || 'Photo',
-        coordinates: photo.coordinates,
-        type: 'photo',
-        photo,
-      });
+  useEffect(() => {
+    if (!tripId) {
+      setError('No trip selected.');
+      setLoading(false);
+      return;
     }
-  });
 
-  return stops;
+    setLoading(true);
+    setError('');
+
+    apiFetch(`/trips/${tripId}/story`)
+      .then((res) => {
+        setData(res);
+      })
+      .catch((err) => {
+        console.error('[StoryMode] fetch error', err);
+        setError('Failed to load story. Please try again.');
+      })
+      .finally(() => setLoading(false));
+  }, [tripId]);
+
+  function handleShare() {
+    window.print();
+  }
+
+  async function handleCopyLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      alert('Could not copy link. Please copy the URL manually.');
+    }
+  }
+
+  // ── Date range label ───────────────────────────────────────────────────────
+  let dateRange = '';
+  if (data?.timeline?.length) {
+    const first = formatDateShort(data.timeline[0].date);
+    const last = formatDateShort(data.timeline[data.timeline.length - 1].date);
+    dateRange = first === last ? first : `${first} – ${last}`;
+  }
+
+  // ── Styles ─────────────────────────────────────────────────────────────────
+
+  const pageStyle = {
+    minHeight: '100vh',
+    background: '#160f29',
+    fontFamily:
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    color: '#fbfbf2',
+    overflowX: 'hidden',
+  };
+
+  // ── Error / no trip ────────────────────────────────────────────────────────
+
+  if (!loading && (error || !tripId)) {
+    return (
+      <div style={{ ...pageStyle, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center', maxWidth: 400, padding: 32 }}>
+          <p style={{ fontSize: 48, marginBottom: 16 }}>✈️</p>
+          <p style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>No trip found</p>
+          <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)' }}>
+            {error || 'Select a trip to view its story.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Loading state ──────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div style={pageStyle}>
+        <style>{`@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }`}</style>
+        <div style={{ maxWidth: 800, margin: '0 auto', padding: '56px 24px 80px' }}>
+          <Skeleton style={{ height: 52, width: '60%', marginBottom: 12 }} />
+          <Skeleton style={{ height: 20, width: '35%', marginBottom: 36 }} />
+          <Skeleton style={{ height: 180, marginBottom: 16 }} />
+          <Skeleton style={{ height: 180, marginBottom: 16 }} />
+          <Skeleton style={{ height: 180 }} />
+        </div>
+      </div>
+    );
+  }
+
+  const { trip, timeline, summary } = data;
+
+  // ── Empty trip ─────────────────────────────────────────────────────────────
+
+  if (!timeline || timeline.length === 0) {
+    return (
+      <div style={{ ...pageStyle, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center', maxWidth: 400, padding: 32 }}>
+          <p style={{ fontSize: 48, marginBottom: 16 }}>📷</p>
+          <p style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
+            {trip.name || 'This trip'}
+          </p>
+          <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)' }}>
+            No photos or expenses recorded yet. Start adding them and come back!
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Full render ────────────────────────────────────────────────────────────
+
+  return (
+    <div style={pageStyle}>
+      {/* Print + shimmer keyframes */}
+      <style>{`
+        @keyframes shimmer {
+          0%   { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+        @media print {
+          .story-no-print { display: none !important; }
+          body { background: #fff !important; color: #000 !important; }
+        }
+        ::-webkit-scrollbar { height: 4px; background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+      `}</style>
+
+      <div style={{ maxWidth: 800, margin: '0 auto', padding: '0 24px 100px' }}>
+
+        {/* ── Hero ────────────────────────────────────────────────────────── */}
+        <div
+          style={{
+            paddingTop: 72,
+            paddingBottom: 48,
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            marginBottom: 40,
+          }}
+        >
+          <h1
+            style={{
+              fontSize: 'clamp(32px, 6vw, 56px)',
+              fontWeight: 800,
+              color: '#fbfbf2',
+              letterSpacing: '-0.02em',
+              lineHeight: 1.1,
+              margin: '0 0 12px',
+            }}
+          >
+            {trip.name}
+          </h1>
+
+          {dateRange && (
+            <p
+              style={{
+                fontSize: 15,
+                color: 'rgba(255,255,255,0.45)',
+                margin: '0 0 20px',
+                fontWeight: 400,
+              }}
+            >
+              {dateRange}
+            </p>
+          )}
+
+          {trip.description && (
+            <p
+              style={{
+                fontSize: 15,
+                color: 'rgba(255,255,255,0.6)',
+                margin: '0 0 28px',
+                lineHeight: 1.6,
+                maxWidth: 560,
+              }}
+            >
+              {trip.description}
+            </p>
+          )}
+
+          {/* Summary stats */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+            {[
+              summary.total_days > 0 && `${summary.total_days} day${summary.total_days !== 1 ? 's' : ''}`,
+              summary.total_photos > 0 && `${summary.total_photos} photo${summary.total_photos !== 1 ? 's' : ''}`,
+              summary.total_spent > 0 && `$${summary.total_spent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} spent`,
+            ]
+              .filter(Boolean)
+              .map((stat, i, arr) => (
+                <span key={stat} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>
+                    {stat}
+                  </span>
+                  {i < arr.length - 1 && (
+                    <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 14 }}>·</span>
+                  )}
+                </span>
+              ))}
+
+            {summary.top_categories.length > 0 && (
+              <>
+                <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 14 }}>·</span>
+                <span style={{ display: 'flex', gap: 4 }}>
+                  {summary.top_categories.map((cat) => (
+                    <span
+                      key={cat}
+                      style={{
+                        fontSize: 12,
+                        padding: '3px 10px',
+                        background: 'rgba(74,222,128,0.12)',
+                        border: '1px solid rgba(74,222,128,0.25)',
+                        borderRadius: 999,
+                        color: '#4ade80',
+                        fontWeight: 600,
+                        textTransform: 'capitalize',
+                      }}
+                    >
+                      {cat}
+                    </span>
+                  ))}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* ── Timeline ────────────────────────────────────────────────────── */}
+        <div>
+          {timeline.map((day, idx) => (
+            <DayCard key={day.date} day={day} index={idx} />
+          ))}
+        </div>
+
+        {/* ── Share actions ────────────────────────────────────────────────── */}
+        <div
+          className="story-no-print"
+          style={{
+            display: 'flex',
+            gap: 12,
+            marginTop: 48,
+            justifyContent: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
+          <button
+            onClick={handleShare}
+            style={{
+              padding: '14px 32px',
+              background: '#fbfbf2',
+              color: '#160f29',
+              border: 'none',
+              borderRadius: 14,
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'opacity 0.15s',
+              letterSpacing: '0.01em',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.88')}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+          >
+            Share Story (PDF)
+          </button>
+
+          <button
+            onClick={handleCopyLink}
+            style={{
+              padding: '14px 32px',
+              background: 'transparent',
+              color: copied ? '#4ade80' : 'rgba(255,255,255,0.7)',
+              border: `1px solid ${copied ? '#4ade80' : 'rgba(255,255,255,0.2)'}`,
+              borderRadius: 14,
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'color 0.2s, border-color 0.2s',
+              letterSpacing: '0.01em',
+            }}
+          >
+            {copied ? 'Link Copied!' : 'Copy Link'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
