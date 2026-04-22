@@ -40,7 +40,7 @@ class SuggestionCard(BaseModel):
 # Google Places Config
 # -------------------------
 
-GOOGLE_PLACES_KEY = os.getenv("GOOGLE_PLACES_KEY")
+GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY")
 
 PRICE_MAP = {
     "low": 0,
@@ -50,14 +50,14 @@ PRICE_MAP = {
 
 
 def fetch_places(query: str, budget: str) -> List[Dict[str, Any]]:
-    if not GOOGLE_PLACES_KEY:
-        raise RuntimeError("GOOGLE_PLACES_KEY not set")
+    if not GOOGLE_PLACES_API_KEY:
+        raise RuntimeError("GOOGLE_PLACES_API_KEY not set")
 
     url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
 
     params = {
         "query": query,
-        "key": GOOGLE_PLACES_KEY,
+        "key": GOOGLE_PLACES_API_KEY,
         "minprice": PRICE_MAP.get(budget)
     }
 
