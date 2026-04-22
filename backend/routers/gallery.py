@@ -16,7 +16,7 @@ Endpoints:
 
 import secrets
 from typing import Optional
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Query
 from pydantic import BaseModel
 from supabase_client import supabase
 from utils import oauth2
@@ -28,6 +28,22 @@ router = APIRouter(
 )
 
 BUCKET_NAME = "Media"
+
+
+def _add_image_variants(photo: dict) -> dict:
+    """Add optimized URL variants to a photo record."""
+    base_url = photo.get("public_url", "")
+    if not base_url or "supabase" not in base_url:
+        photo["thumbnail_url"] = base_url
+        photo["display_url"] = base_url
+        return photo
+
+    # Supabase image transform: append ?width=X&quality=Y to the URL
+    # This works on /storage/v1/object/public/ URLs
+    photo["thumbnail_url"] = f"{base_url}?width=300&quality=60&resize=cover"
+    photo["display_url"] = f"{base_url}?width=1200&quality=80"
+    # Keep original public_url unchanged for download
+    return photo
 
 
 def _uid(current_user: dict) -> str:
@@ -75,22 +91,31 @@ def _is_trip_leader(trip_id: str, user_id: str) -> bool:
 @router.get("/{trip_id}/media")
 async def get_trip_media(
     trip_id: str,
+    limit: int = Query(20, ge=1, le=100),
+    cursor: Optional[str] = Query(None),  # cursor = last photo's created_at ISO string
     current_user=Depends(oauth2.get_current_user),
 ):
-    """Fetches all media for a trip with like/save status for the current user."""
+    """Fetches media for a trip with like/save status for the current user. Supports cursor-based pagination."""
     try:
         user_id = _uid(current_user)
 
-        response = (
-            supabase.table("trip_media")
-            .select("*")
-            .eq("trip_id", trip_id)
-            .order("created_at", desc=True)
-            .execute()
-        )
+        query = supabase.table("trip_media").select("*").eq("trip_id", trip_id)
+
+        if cursor:
+            # Fetch photos older than the cursor
+            query = query.lt("created_at", cursor)
+
+        response = query.order("created_at", desc=True).limit(limit + 1).execute()
         photos = response.data or []
+
+        has_more = len(photos) > limit
+        if has_more:
+            photos = photos[:limit]
+
+        next_cursor = photos[-1]["created_at"] if has_more and photos else None
+
         if not photos:
-            return []
+            return {"photos": [], "next_cursor": None, "has_more": False}
 
         media_ids = [p["id"] for p in photos]
 
@@ -117,8 +142,9 @@ async def get_trip_media(
         for p in photos:
             p["liked_by_me"] = p["id"] in liked_ids
             p["saved_by_me"] = p["id"] in saved_ids
+            _add_image_variants(p)
 
-        return photos
+        return {"photos": photos, "next_cursor": next_cursor, "has_more": has_more}
 
     except Exception as e:
         print(f"Error fetching media: {e}")
@@ -156,6 +182,10 @@ async def get_trip_media_grouped(
 
         clusterer = PhotoClusterer()
         clustered = clusterer.cluster(photos)
+
+        # Add image variants to every photo before grouping
+        for photo in clustered:
+            _add_image_variants(photo)
 
         # Collect groups preserving label order by group_id
         groups_map: dict[int, dict] = {}
@@ -392,11 +422,13 @@ async def get_my_albums(
         )
         total = len(all_res.data or [])
 
+        preview_photos = [_add_image_variants(dict(p)) for p in photos[:4]]
         albums.append({
             "trip_id": tid,
             "trip_name": trip_map.get(tid, "Untitled Trip"),
             "photo_count": total,
-            "preview_urls": [p["public_url"] for p in photos[:4]],
+            "preview_urls": [p["public_url"] for p in preview_photos],
+            "preview_thumbnail_urls": [p["thumbnail_url"] for p in preview_photos],
             "latest_at": photos[0]["created_at"] if photos else None,
         })
 
@@ -508,5 +540,6 @@ async def get_saved_photos(
     for p in photos:
         p["liked_by_me"] = False
         p["saved_by_me"] = True
+        _add_image_variants(p)
 
     return photos

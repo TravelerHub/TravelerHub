@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { API_BASE } from "../../config";
 import { apiFetch, getToken, authHeaders } from "../../services/api.js";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
@@ -90,14 +90,22 @@ export default function Gallery() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [albumsData]);
 
-  // ── React Query: photos for the active trip ───────────────────────────────
+  // ── React Query: photos for the active trip (infinite/paginated) ─────────
 
-  const { data: photosData, isLoading: loading } = useQuery({
+  const {
+    data: photosInfiniteData,
+    isLoading: loading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ["trip-media", activeTrip],
-    queryFn: () => apiFetch(`/trips/${activeTrip}/media`),
+    queryFn: ({ pageParam }) =>
+      apiFetch(`/trips/${activeTrip}/media?limit=20${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""}`),
+    getNextPageParam: (lastPage) => lastPage.has_more ? lastPage.next_cursor : undefined,
     enabled: !!activeTrip,
   });
-  const photos = Array.isArray(photosData) ? photosData : [];
+  const photos = photosInfiniteData?.pages.flatMap((p) => p.photos) ?? [];
 
   // ── useMutation: upload photo ─────────────────────────────────────────────
 
@@ -553,10 +561,11 @@ export default function Gallery() {
                               onClick={() => globalIdx >= 0 ? setLightboxIdx(globalIdx) : null}
                             >
                               <img
-                                src={photo.public_url}
+                                src={photo.thumbnail_url || photo.public_url}
                                 alt={photo.caption || "Trip photo"}
                                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                                 loading="lazy"
+                                decoding="async"
                               />
                               {/* Gradient + caption on hover */}
                               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
@@ -601,7 +610,8 @@ export default function Gallery() {
                 </button>
               </div>
             ) : (
-              <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
+              <>
+              <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4" style={{ columnGap: "1rem" }}>
                 {photos.map((photo, idx) => {
                   const bgColor = avatarColor(photo.uploaded_by_name);
                   const isSelected = selectedIds.has(photo.id);
@@ -613,10 +623,11 @@ export default function Gallery() {
                       onClick={() => selectMode ? toggleSelect(photo.id) : setLightboxIdx(idx)}
                     >
                       <img
-                        src={photo.public_url}
+                        src={photo.thumbnail_url || photo.public_url}
                         alt={photo.caption || "Trip photo"}
                         className="w-full block transition-transform duration-500 group-hover:scale-105"
                         loading="lazy"
+                        decoding="async"
                       />
 
                       {/* Select checkbox */}
@@ -708,6 +719,21 @@ export default function Gallery() {
                   );
                 })}
               </div>
+
+              {/* Load more */}
+              {hasNextPage && (
+                <div className="flex justify-center mt-8">
+                  <button
+                    onClick={() => fetchNextPage()}
+                    disabled={isFetchingNextPage}
+                    className="px-8 py-3 rounded-2xl text-sm font-semibold transition active:scale-95 disabled:opacity-40"
+                    style={{ background: "#160f29", color: "#fbfbf2" }}
+                  >
+                    {isFetchingNextPage ? "Loading..." : "Load more photos"}
+                  </button>
+                </div>
+              )}
+              </>
             )}
           </div>
           )}
@@ -746,9 +772,11 @@ export default function Gallery() {
           {/* Image */}
           <div className="max-w-5xl max-h-[85vh] flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
             <img
-              src={lightboxPhoto.public_url}
+              src={lightboxPhoto.display_url || lightboxPhoto.public_url}
               alt={lightboxPhoto.caption || ""}
               className="max-h-[70vh] max-w-full object-contain rounded-lg"
+              loading="lazy"
+              decoding="async"
               style={{ boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}
             />
 
