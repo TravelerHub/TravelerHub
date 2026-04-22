@@ -11,12 +11,14 @@ rooms: Dict[str, Set[WebSocket]] = {}
 rooms_lock = asyncio.Lock()
 
 
-async def broadcast_to_conversation(conversation_id: str, message: dict):
+async def broadcast_to_conversation(conversation_id: str, message: dict, exclude: Optional[WebSocket] = None):
     async with rooms_lock:
         sockets = list(rooms.get(conversation_id, set()))
 
     dead = []
     for ws in sockets:
+        if ws is exclude:
+            continue
         try:
             await ws.send_json(message)
         except Exception:
@@ -470,7 +472,53 @@ async def ws_conversation(websocket: WebSocket, conversation_id: str):
 
     try:
         while True:
-            await websocket.receive_text()
+            raw = await websocket.receive_text()
+
+            # Ignore keepalive pings
+            if raw == "ping":
+                continue
+
+            try:
+                data = __import__("json").loads(raw)
+            except Exception:
+                continue
+
+            event_type = data.get("type")
+
+            if event_type == "typing":
+                # Broadcast to everyone else in the room
+                await broadcast_to_conversation(
+                    conversation_id,
+                    {
+                        "type": "typing",
+                        "user_id": data.get("user_id"),
+                        "username": data.get("username"),
+                    },
+                    exclude=websocket,
+                )
+
+            elif event_type == "typing_stop":
+                await broadcast_to_conversation(
+                    conversation_id,
+                    {
+                        "type": "typing_stop",
+                        "user_id": data.get("user_id"),
+                    },
+                    exclude=websocket,
+                )
+
+            elif event_type == "read":
+                # Broadcast read receipt to others so they can update their UI
+                await broadcast_to_conversation(
+                    conversation_id,
+                    {
+                        "type": "read",
+                        "user_id": data.get("user_id"),
+                        "last_read_message_id": data.get("last_read_message_id"),
+                    },
+                    exclude=websocket,
+                )
+
     except WebSocketDisconnect:
         pass
     finally:
