@@ -33,6 +33,7 @@ import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import StoryMode from "./components/StoryMode.jsx";
 import JoinTrip from "./app/pages/JoinTrip.jsx";
 import MobileNav from "./components/MobileNav.jsx";
+import Notifications from "./app/pages/Notifications";
 
 
 // Layout that injects the floating AI chat widget and network status on authenticated pages
@@ -105,6 +106,7 @@ const router = createBrowserRouter([
             { path: "/suggestions", element: <TravelSuggestion /> },
             { path: "/todo", element: <Todo /> },
             { path: "/emergency", element: <Emergency /> },
+            { path: "/notifications", element: <Notifications /> },
             {
               path: "/gallery",
               element: (
