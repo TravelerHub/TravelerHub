@@ -47,6 +47,9 @@ function Expenses() {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState(null);
 
+  // Category auto-detection state
+  const [categoryAutoDetected, setCategoryAutoDetected] = useState(false);
+
   // Checklist state
   const [checklistChecked, setChecklistChecked] = useState({});
   const [savingChecklist, setSavingChecklist] = useState(false);
@@ -87,6 +90,9 @@ function Expenses() {
       if (response.success) {
         setResult(response.data);
         setEditData(response.data);
+        if (mode === "receipt" && response.data.category) {
+          setCategoryAutoDetected(true);
+        }
       } else {
         setError(response.error || "Could not analyze the image. Try a clearer photo.");
       }
@@ -106,6 +112,7 @@ function Expenses() {
     setEditData(null);
     setError("");
     setIsEditing(false);
+    setCategoryAutoDetected(false);
   };
 
   // Save expense to database
@@ -449,6 +456,40 @@ function Expenses() {
                           <p className="text-sm font-semibold" style={{ color: "#160f29" }}>
                             {result.date || "—"}
                           </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Category */}
+                    <div>
+                      <p className="text-xs font-medium mb-1" style={{ color: "#5c6b73" }}>Category</p>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={(isEditing ? editData.category : result.category) || "other"}
+                          onChange={(e) => {
+                            setCategoryAutoDetected(false);
+                            if (isEditing) {
+                              setEditData({ ...editData, category: e.target.value });
+                            } else {
+                              setResult({ ...result, category: e.target.value });
+                            }
+                          }}
+                          className="px-3 py-2 rounded-lg text-sm"
+                          style={{ border: "1px solid #d1d5db", background: "#fff", color: "#160f29" }}
+                        >
+                          <option value="food">Food</option>
+                          <option value="transport">Transport</option>
+                          <option value="lodging">Lodging</option>
+                          <option value="activities">Activities</option>
+                          <option value="shopping">Shopping</option>
+                          <option value="health">Health</option>
+                          <option value="entertainment">Entertainment</option>
+                          <option value="other">Other</option>
+                        </select>
+                        {categoryAutoDetected && (
+                          <span className="text-xs font-medium" style={{ color: "#16a34a" }}>
+                            ✓ Auto-detected
+                          </span>
                         )}
                       </div>
                     </div>
