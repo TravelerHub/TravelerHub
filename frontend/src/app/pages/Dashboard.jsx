@@ -60,6 +60,12 @@ export default function Dashboard() {
   const [members,          setMembers]          = useState([]);
   const [loadingMembers,   setLoadingMembers]   = useState(false);
 
+  const [showInviteModal,  setShowInviteModal]  = useState(false);
+  const [inviteUrl,        setInviteUrl]        = useState("");
+  const [inviteExpiresAt,  setInviteExpiresAt]  = useState("");
+  const [inviteLoading,    setInviteLoading]    = useState(false);
+  const [inviteCopied,     setInviteCopied]     = useState(false);
+
   const [activeTripId, setActiveTripId] = useState(
     () => localStorage.getItem("active_group_id") || localStorage.getItem("activeGroupId") || null
   );
@@ -216,6 +222,42 @@ export default function Dashboard() {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  // ── Invite link ────────────────────────────────────────────────────────────
+  const handleGenerateInviteLink = async (group) => {
+    setInviteLoading(true);
+    setInviteUrl("");
+    setInviteExpiresAt("");
+    setInviteCopied(false);
+    setShowInviteModal(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/groups/${group.group_id}/invite-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setInviteUrl(data.invite_url);
+        setInviteExpiresAt(data.expires_at);
+      } else {
+        const err = await res.json();
+        console.error("Invite link error:", err.detail);
+      }
+    } catch (err) {
+      console.error("Invite link error:", err);
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const handleCopyInviteLink = () => {
+    if (!inviteUrl) return;
+    navigator.clipboard.writeText(inviteUrl).then(() => {
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 2500);
+    });
   };
 
   // ── Guard ──────────────────────────────────────────────────────────────────
@@ -620,6 +662,73 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* ══ INVITE LINK MODAL ════════════════════════════════════════════════ */}
+      {showInviteModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+          <div className="rounded-2xl shadow-2xl max-w-md w-full p-6" style={{ background: "#fbfbf2" }}>
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="text-xl font-bold" style={{ color: "#160f29" }}>Invite Link</h3>
+                <p className="text-sm mt-0.5" style={{ color: "#5c6b73" }}>Share this link to invite people to the trip</p>
+              </div>
+              <button
+                onClick={() => setShowInviteModal(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/5 text-xl transition"
+                style={{ color: "#5c6b73" }}
+              >
+                ×
+              </button>
+            </div>
+
+            {inviteLoading ? (
+              <div className="flex flex-col items-center py-8 gap-3">
+                <div
+                  className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
+                  style={{ borderColor: "#183a37", borderTopColor: "transparent" }}
+                />
+                <p className="text-sm" style={{ color: "#5c6b73" }}>Generating invite link…</p>
+              </div>
+            ) : inviteUrl ? (
+              <>
+                <div
+                  className="rounded-xl px-4 py-3 mb-3 text-sm break-all font-mono select-all"
+                  style={{ background: "#f3f4f6", color: "#160f29", border: "1px solid #d1d5db" }}
+                >
+                  {inviteUrl}
+                </div>
+
+                <button
+                  onClick={handleCopyInviteLink}
+                  className="w-full py-2.5 rounded-xl font-semibold text-sm transition hover:opacity-90 mb-4"
+                  style={{ background: "#183a37", color: "#fbfbf2" }}
+                >
+                  {inviteCopied ? "Copied!" : "Copy Link"}
+                </button>
+
+                <p className="text-xs text-center" style={{ color: "#5c6b73" }}>
+                  Link expires in 7 days&nbsp;&middot;&nbsp;Max 50 uses
+                  {inviteExpiresAt && (
+                    <> &middot; Expires {new Date(inviteExpiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</>
+                  )}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-center py-4" style={{ color: "#dc2626" }}>
+                Failed to generate invite link. You may not have permission.
+              </p>
+            )}
+
+            <button
+              onClick={() => setShowInviteModal(false)}
+              className="mt-4 w-full py-2.5 rounded-xl font-medium text-sm transition hover:bg-black/5"
+              style={{ background: "#e8e8e0", color: "#160f29" }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ══ MEMBERS MODAL ════════════════════════════════════════════════════ */}
       {showMembersModal && selectedGroup && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
@@ -629,13 +738,24 @@ export default function Dashboard() {
                 <h3 className="text-xl font-bold" style={{ color: "#160f29" }}>{selectedGroup.name}</h3>
                 <p className="text-sm mt-0.5" style={{ color: "#5c6b73" }}>Group members</p>
               </div>
-              <button
-                onClick={() => setShowMembersModal(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/5 text-xl transition"
-                style={{ color: "#5c6b73" }}
-              >
-                ×
-              </button>
+              <div className="flex items-center gap-2">
+                {selectedGroup.my_role === "leader" && (
+                  <button
+                    onClick={() => handleGenerateInviteLink(selectedGroup)}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg transition hover:opacity-80"
+                    style={{ background: "#183a37", color: "#fbfbf2" }}
+                  >
+                    Invite Link
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowMembersModal(false)}
+                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/5 text-xl transition"
+                  style={{ color: "#5c6b73" }}
+                >
+                  ×
+                </button>
+              </div>
             </div>
 
             {loadingMembers ? (
