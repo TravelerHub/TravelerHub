@@ -17,6 +17,8 @@ import LocalInfoWidget     from "../../components/dashboard/LocalInfoWidget.jsx"
 import BookingSummaryWidget from "../../components/dashboard/BookingSummaryWidget.jsx";
 import GalleryWidget       from "../../components/dashboard/GalleryWidget.jsx";
 import ActivityFeed        from "../../components/ActivityFeed.jsx";
+import EmptyState          from "../../components/EmptyState.jsx";
+import OnboardingModal     from "../../components/OnboardingModal.jsx";
 
 // ── Color palette ─────────────────────────────────────────────────────────────
 // #160f29  deep dark   (sidebar, widget backgrounds)
@@ -70,6 +72,8 @@ export default function Dashboard() {
     () => localStorage.getItem("active_group_id") || localStorage.getItem("activeGroupId") || null
   );
 
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
   const queryClient = useQueryClient();
 
   // ── React Query: available users for invite modal ─────────────────────────
@@ -111,6 +115,13 @@ export default function Dashboard() {
     if (myGroupsData?.length > 0) {
       const tripId = myGroupsData[0]?.group_id || myGroupsData[0]?.id;
       if (tripId) setActiveTripId(tripId);
+    }
+  }, [myGroupsData]);
+
+  // Show onboarding modal for new users with zero trips
+  useEffect(() => {
+    if (myGroupsData !== undefined && myGroupsData?.length === 0 && !localStorage.getItem("onboarding_done")) {
+      setShowOnboarding(true);
     }
   }, [myGroupsData]);
 
@@ -348,6 +359,18 @@ export default function Dashboard() {
               + Create Group
             </button>
           </div>
+
+          {/* Empty state for users with no trips */}
+          {myGroupsData !== undefined && myGroupsData?.length === 0 && (
+            <div className="rounded-2xl mb-4" style={{ background: "#160f29" }}>
+              <EmptyState
+                icon="✈️"
+                title="No trips yet"
+                subtitle="Create your first trip and invite your crew."
+                action={{ label: "Plan a trip", onClick: () => { setShowCreateModal(true); setCreateError(""); } }}
+              />
+            </div>
+          )}
 
           <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1.4fr 1fr" }}>
 
@@ -727,6 +750,16 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* ══ ONBOARDING MODAL ═════════════════════════════════════════════════ */}
+      {showOnboarding && (
+        <OnboardingModal
+          onClose={() => {
+            localStorage.setItem("onboarding_done", "1");
+            setShowOnboarding(false);
+          }}
+        />
       )}
 
       {/* ══ MEMBERS MODAL ════════════════════════════════════════════════════ */}
