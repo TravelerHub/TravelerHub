@@ -32,6 +32,7 @@ import InstallPrompt from "./components/InstallPrompt.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import StoryMode from "./components/StoryMode.jsx";
 import JoinTrip from "./app/pages/JoinTrip.jsx";
+import MobileNav from "./components/MobileNav.jsx";
 
 
 // Layout that injects the floating AI chat widget and network status on authenticated pages
@@ -39,9 +40,13 @@ function AuthLayout() {
   return (
     <>
       <OfflineBanner />
-      <Outlet />
+      {/* pb-16 gives content room above the mobile bottom nav; cancelled on md+ */}
+      <div className="pb-16 md:pb-0">
+        <Outlet />
+      </div>
       <ChatWidget />
       <InstallPrompt />
+      <MobileNav />
     </>
   );
 }

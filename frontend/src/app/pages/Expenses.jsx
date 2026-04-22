@@ -6,6 +6,7 @@ import { analyzeReceipt, analyzeDocument } from "../../services/visionService.js
 import { saveChecklist } from "../../services/checklistService.js";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
+import { capturePhoto } from '../../utils/nativeCamera';
 
 import {
   CameraIcon,
@@ -65,14 +66,30 @@ function Expenses() {
     setError("");
   };
 
-  // Handle camera capture
-  const handleCameraCapture = (e) => {
+  // Handle camera input onChange (hidden file input fallback)
+  const handleCameraInputChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setSelectedFile(file);
     setPreview(URL.createObjectURL(file));
     setResult(null);
     setError("");
+  };
+
+  // Native camera capture via Capacitor (falls back to file picker on web)
+  const handleCameraCapture = async () => {
+    try {
+      const file = await capturePhoto();
+      if (file) {
+        setSelectedFile(file);
+        setPreview(URL.createObjectURL(file));
+        setResult(null);
+        setError("");
+      }
+    } catch (err) {
+      console.error('Camera capture failed:', err);
+      setError("Could not open camera. Please try uploading a file instead.");
+    }
   };
 
   // Analyze the image
@@ -285,14 +302,14 @@ function Expenses() {
                       JPEG, PNG, or WebP · max 10 MB
                     </p>
 
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 flex-wrap justify-center">
                       <button
-                        onClick={() => cameraInputRef.current.click()}
+                        onClick={handleCameraCapture}
                         className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition"
                         style={{ background: "#160f29", color: "#fbfbf2" }}
                       >
                         <CameraIcon className="w-4 h-4" />
-                        Camera
+                        📷 Scan Receipt
                       </button>
                       <button
                         onClick={() => fileInputRef.current.click()}
@@ -309,7 +326,7 @@ function Expenses() {
                       type="file"
                       accept="image/*"
                       capture="environment"
-                      onChange={handleCameraCapture}
+                      onChange={handleCameraInputChange}
                       className="hidden"
                     />
                     <input
