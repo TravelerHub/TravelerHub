@@ -64,6 +64,13 @@ export default function Gallery() {
   const [likingId, setLikingId] = useState(null);
   const [savingId, setSavingId] = useState(null);
 
+  // View mode: 'grid' | 'grouped'
+  const [viewMode, setViewMode] = useState('grid');
+
+  // Grouped view data
+  const [groupedData, setGroupedData] = useState([]);
+  const [groupedLoading, setGroupedLoading] = useState(false);
+
   // Multi-select for batch sharing
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -106,8 +113,26 @@ export default function Gallery() {
     finally { setLoading(false); }
   }, [activeTrip]);
 
+  const fetchGroupedPhotos = useCallback(async () => {
+    if (!activeTrip) { setGroupedData([]); return; }
+    setGroupedLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/trips/${activeTrip}/media/grouped`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setGroupedData(data.groups || []);
+      }
+    } catch { setGroupedData([]); }
+    finally { setGroupedLoading(false); }
+  }, [activeTrip]);
+
   useEffect(() => { fetchAlbums(); }, [fetchAlbums]);
   useEffect(() => { fetchPhotos(); }, [fetchPhotos]);
+  useEffect(() => {
+    if (viewMode === 'grouped') fetchGroupedPhotos();
+  }, [viewMode, fetchGroupedPhotos]);
 
   // ── Upload handlers ───────────────────────────────────────────────────────
 
@@ -431,6 +456,29 @@ export default function Gallery() {
                   </>
                 ) : (
                   <>
+                    {/* View mode toggle */}
+                    <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid rgba(251,251,242,0.2)" }}>
+                      <button
+                        onClick={() => setViewMode('grid')}
+                        className="px-4 py-2.5 text-sm font-medium transition"
+                        style={{
+                          background: viewMode === 'grid' ? "#183a37" : "transparent",
+                          color: viewMode === 'grid' ? "#fbfbf2" : "rgba(251,251,242,0.6)",
+                        }}
+                      >
+                        Grid
+                      </button>
+                      <button
+                        onClick={() => setViewMode('grouped')}
+                        className="px-4 py-2.5 text-sm font-medium transition"
+                        style={{
+                          background: viewMode === 'grouped' ? "#183a37" : "transparent",
+                          color: viewMode === 'grouped' ? "#fbfbf2" : "rgba(251,251,242,0.6)",
+                        }}
+                      >
+                        Grouped
+                      </button>
+                    </div>
                     {photos.length > 0 && (
                       <button
                         onClick={() => setSelectMode(true)}
@@ -474,7 +522,80 @@ export default function Gallery() {
             )}
           </div>
 
+          {/* ── Grouped view ─────────────────────────────────────────────── */}
+          {viewMode === 'grouped' && (
+            <div className="px-8 py-6">
+              {groupedLoading ? (
+                <div className="flex justify-center items-center h-64">
+                  <div className="w-8 h-8 border-3 border-gray-300 border-t-gray-800 rounded-full animate-spin" />
+                </div>
+              ) : groupedData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-24 rounded-3xl" style={{ border: "2px dashed #d1d5db" }}>
+                  <div className="w-20 h-20 rounded-full flex items-center justify-center mb-4" style={{ background: "#f3f4f6" }}>
+                    <span className="text-4xl">📸</span>
+                  </div>
+                  <p className="text-lg font-semibold" style={{ color: "#374151" }}>No photos yet</p>
+                  <p className="text-sm mt-1 mb-5" style={{ color: "#9ca3af" }}>
+                    Be the first to share a memory from this trip
+                  </p>
+                  <button
+                    onClick={() => setShowUpload(true)}
+                    className="px-6 py-2.5 rounded-xl text-sm font-semibold transition"
+                    style={{ background: "#160f29", color: "#fbfbf2" }}
+                  >
+                    Upload Photo
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-8">
+                  {groupedData.map((group) => (
+                    <div key={group.group_id}>
+                      {/* Group label header */}
+                      <h2 className="text-base font-bold mb-3" style={{ color: "#160f29" }}>
+                        {group.label}
+                        <span className="ml-2 text-xs font-normal" style={{ color: "#9ca3af" }}>
+                          {group.photos.length} photo{group.photos.length !== 1 ? "s" : ""}
+                        </span>
+                      </h2>
+
+                      {/* Horizontal scroll row of thumbnails */}
+                      <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+                        {group.photos.map((photo) => {
+                          // Find the global index for lightbox navigation
+                          const globalIdx = photos.findIndex((p) => p.id === photo.id);
+                          return (
+                            <div
+                              key={photo.id}
+                              className="relative shrink-0 rounded-2xl overflow-hidden cursor-pointer group"
+                              style={{ width: 200, height: 160, background: "#e5e7eb" }}
+                              onClick={() => globalIdx >= 0 ? setLightboxIdx(globalIdx) : null}
+                            >
+                              <img
+                                src={photo.public_url}
+                                alt={photo.caption || "Trip photo"}
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                loading="lazy"
+                              />
+                              {/* Gradient + caption on hover */}
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                              {photo.caption && (
+                                <p className="absolute bottom-2 left-2 right-2 text-[11px] text-white/90 line-clamp-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
+                                  {photo.caption}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ── Photo grid ───────────────────────────────────────────────── */}
+          {viewMode === 'grid' && (
           <div className="px-8 py-6">
             {loading ? (
               <div className="flex justify-center items-center h-64">
@@ -607,6 +728,7 @@ export default function Gallery() {
               </div>
             )}
           </div>
+          )}
         </main>
       </div>
 

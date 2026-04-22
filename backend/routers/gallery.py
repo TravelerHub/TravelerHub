@@ -20,6 +20,7 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from pydantic import BaseModel
 from supabase_client import supabase
 from utils import oauth2
+from services.photo_clusterer import PhotoClusterer
 
 router = APIRouter(
     prefix="/trips",
@@ -122,6 +123,63 @@ async def get_trip_media(
     except Exception as e:
         print(f"Error fetching media: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch media")
+
+
+# ── GET: Fetch photos grouped by location / date ─────────────────────────────
+
+@router.get("/{trip_id}/media/grouped")
+async def get_trip_media_grouped(
+    trip_id: str,
+    current_user=Depends(oauth2.get_current_user),
+):
+    """
+    Fetch all photos for a trip and cluster them into groups.
+
+    Uses K-means on GPS coordinates when available (>= 3 photos with lat/lng),
+    otherwise falls back to date-based grouping.
+
+    Returns:
+        {"groups": [{"label": "Stop 1", "photos": [...], "cover": <first photo>}, ...]}
+    """
+    try:
+        response = (
+            supabase.table("trip_media")
+            .select("*")
+            .eq("trip_id", trip_id)
+            .order("created_at", desc=False)
+            .execute()
+        )
+        photos = response.data or []
+
+        if not photos:
+            return {"groups": []}
+
+        clusterer = PhotoClusterer()
+        clustered = clusterer.cluster(photos)
+
+        # Collect groups preserving label order by group_id
+        groups_map: dict[int, dict] = {}
+        for photo in clustered:
+            gid = photo["group_id"]
+            if gid not in groups_map:
+                groups_map[gid] = {
+                    "label": photo["group_label"],
+                    "group_id": gid,
+                    "photos": [],
+                }
+            groups_map[gid]["photos"].append(photo)
+
+        groups = sorted(groups_map.values(), key=lambda g: g["group_id"])
+        for group in groups:
+            group["cover"] = group["photos"][0]
+            # Sort photos within group chronologically
+            group["photos"].sort(key=lambda p: p.get("created_at") or "")
+
+        return {"groups": groups}
+
+    except Exception as e:
+        print(f"Error fetching grouped media: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch grouped media")
 
 
 # ── POST: Upload a new photo ──────────────────────────────────────────────────
