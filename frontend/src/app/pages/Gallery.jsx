@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { API_BASE } from "../../config";
+import { apiFetch, getToken, authHeaders } from "../../services/api.js";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import { logActivity } from "../../components/ActivityFeed.jsx";
+import EmptyState from "../../components/EmptyState.jsx";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -26,27 +29,20 @@ function avatarColor(name) {
   return colors[Math.abs(hash) % colors.length];
 }
 
-function getToken() { return localStorage.getItem("token"); }
-
 // ── Main Component ──────────────────────────────────────────────────────────
 
 export default function Gallery() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  // Albums
-  const [albums, setAlbums] = useState([]);
+  // Active trip selection
   const [activeTrip, setActiveTrip] = useState(localStorage.getItem("active_group_id") || localStorage.getItem("activeGroupId") || "");
-
-  // Photos
-  const [photos, setPhotos] = useState([]);
-  const [loading, setLoading] = useState(true);
 
   // Upload
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadPreview, setUploadPreview] = useState(null);
   const [uploadCaption, setUploadCaption] = useState("");
-  const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const fileRef = useRef(null);
 
@@ -57,12 +53,17 @@ export default function Gallery() {
   const [editingId, setEditingId] = useState(null);
   const [editCaption, setEditCaption] = useState("");
 
-  // Delete
-  const [deletingId, setDeletingId] = useState(null);
-
-  // Social: likes, saves, share
+  // Social: likes, saves, share — track which item is in-flight
   const [likingId, setLikingId] = useState(null);
   const [savingId, setSavingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+
+  // View mode: 'grid' | 'grouped'
+  const [viewMode, setViewMode] = useState('grid');
+
+  // Grouped view data
+  const [groupedData, setGroupedData] = useState([]);
+  const [groupedLoading, setGroupedLoading] = useState(false);
 
   // Multi-select for batch sharing
   const [selectMode, setSelectMode] = useState(false);
@@ -74,40 +75,120 @@ export default function Gallery() {
   const [newComment, setNewComment]   = useState("");
   const [postingComment, setPosting]  = useState(false);
 
-  // ── Data fetching ─────────────────────────────────────────────────────────
+  // ── React Query: albums ───────────────────────────────────────────────────
 
-  const fetchAlbums = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/trips/my-albums`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
+  const { data: albumsData } = useQuery({
+    queryKey: ["my-albums"],
+    queryFn: () => apiFetch("/trips/my-albums"),
+  });
+  const albums = albumsData?.albums || [];
+
+  // Auto-select first album when none is active
+  useEffect(() => {
+    if (!activeTrip && albums.length > 0) {
+      setActiveTrip(albums[0].trip_id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [albumsData]);
+
+  // ── React Query: photos for the active trip (infinite/paginated) ─────────
+
+  const {
+    data: photosInfiniteData,
+    isLoading: loading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ["trip-media", activeTrip],
+    queryFn: ({ pageParam }) =>
+      apiFetch(`/trips/${activeTrip}/media?limit=20${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""}`),
+    getNextPageParam: (lastPage) => lastPage.has_more ? lastPage.next_cursor : undefined,
+    enabled: !!activeTrip,
+  });
+  const photos = photosInfiniteData?.pages.flatMap((p) => p.photos) ?? [];
+
+  // ── useMutation: upload photo ─────────────────────────────────────────────
+
+  const uploadMutation = useMutation({
+    mutationFn: async ({ file, caption, tripId }) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      if (caption.trim()) formData.append("caption", caption.trim());
+      const res = await fetch(`${API_BASE}/trips/${tripId}/upload`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: formData,
       });
-      if (res.ok) {
-        const data = await res.json();
-        setAlbums(data.albums || []);
-        if (!activeTrip && data.albums?.length > 0) {
-          setActiveTrip(data.albums[0].trip_id);
-        }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Upload failed");
       }
-    } catch { /* silent */ }
+      return res.json();
+    },
+    onSuccess: (newPhoto) => {
+      queryClient.invalidateQueries({ queryKey: ["trip-media", activeTrip] });
+      queryClient.invalidateQueries({ queryKey: ["my-albums"] });
+      logActivity(activeTrip, "added_photo", uploadCaption.trim() || "a photo");
+      closeUpload();
+    },
+    onError: (err) => {
+      setUploadError(err.message || "Network error");
+    },
+  });
+  const uploading = uploadMutation.isPending;
+
+  // ── useMutation: like toggle ──────────────────────────────────────────────
+
+  const likeMutation = useMutation({
+    mutationFn: ({ mediaId }) =>
+      apiFetch(`/trips/${activeTrip}/media/${mediaId}/like`, { method: "POST" }),
+    onSuccess: (data) => {
+      if (data?.liked) logActivity(activeTrip, "liked_photo");
+      queryClient.invalidateQueries({ queryKey: ["trip-media", activeTrip] });
+    },
+    onSettled: () => setLikingId(null),
+  });
+
+  // ── useMutation: save toggle ──────────────────────────────────────────────
+
+  const saveMutation = useMutation({
+    mutationFn: ({ mediaId }) =>
+      apiFetch(`/trips/${activeTrip}/media/${mediaId}/save`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trip-media", activeTrip] });
+    },
+    onSettled: () => setSavingId(null),
+  });
+
+  // ── useMutation: delete photo ─────────────────────────────────────────────
+
+  const deleteMutation = useMutation({
+    mutationFn: ({ mediaId }) =>
+      apiFetch(`/trips/${activeTrip}/media/${mediaId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trip-media", activeTrip] });
+      queryClient.invalidateQueries({ queryKey: ["my-albums"] });
+      if (lightboxIdx >= 0) setLightboxIdx(-1);
+    },
+    onSettled: () => setDeletingId(null),
+  });
+
+  // ── Grouped photos fetch ──────────────────────────────────────────────────
+
+  const fetchGroupedPhotos = useCallback(async () => {
+    if (!activeTrip) { setGroupedData([]); return; }
+    setGroupedLoading(true);
+    try {
+      const data = await apiFetch(`/trips/${activeTrip}/media/grouped`);
+      setGroupedData(data.groups || []);
+    } catch { setGroupedData([]); }
+    finally { setGroupedLoading(false); }
   }, [activeTrip]);
 
-  const fetchPhotos = useCallback(async () => {
-    if (!activeTrip) { setPhotos([]); setLoading(false); return; }
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/trips/${activeTrip}/media`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPhotos(Array.isArray(data) ? data : []);
-      }
-    } catch { setPhotos([]); }
-    finally { setLoading(false); }
-  }, [activeTrip]);
-
-  useEffect(() => { fetchAlbums(); }, [fetchAlbums]);
-  useEffect(() => { fetchPhotos(); }, [fetchPhotos]);
+  useEffect(() => {
+    if (viewMode === 'grouped') fetchGroupedPhotos();
+  }, [viewMode, fetchGroupedPhotos]);
 
   // ── Upload handlers ───────────────────────────────────────────────────────
 
@@ -121,33 +202,11 @@ export default function Gallery() {
     reader.readAsDataURL(file);
   };
 
-  const handleUpload = async (e) => {
+  const handleUpload = (e) => {
     e.preventDefault();
     if (!uploadFile || !activeTrip) return;
-    setUploading(true);
     setUploadError("");
-
-    const formData = new FormData();
-    formData.append("file", uploadFile);
-    if (uploadCaption.trim()) formData.append("caption", uploadCaption.trim());
-
-    try {
-      const res = await fetch(`${API_BASE}/trips/${activeTrip}/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${getToken()}` },
-        body: formData,
-      });
-      if (res.ok) {
-        const newPhoto = await res.json();
-        setPhotos((prev) => [newPhoto, ...prev]);
-        logActivity(activeTrip, "added_photo", uploadCaption.trim() || "a photo");
-        closeUpload();
-      } else {
-        const err = await res.json().catch(() => ({}));
-        setUploadError(err.detail || "Upload failed");
-      }
-    } catch { setUploadError("Network error"); }
-    finally { setUploading(false); }
+    uploadMutation.mutate({ file: uploadFile, caption: uploadCaption, tripId: activeTrip });
   };
 
   const closeUpload = () => {
@@ -168,12 +227,12 @@ export default function Gallery() {
   const saveCaption = async () => {
     if (!editingId) return;
     try {
-      await fetch(`${API_BASE}/trips/${activeTrip}/media/${editingId}`, {
+      await apiFetch(`/trips/${activeTrip}/media/${editingId}`, {
         method: "PATCH",
-        headers: { Authorization: `Bearer ${getToken()}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ caption: editCaption }),
       });
-      setPhotos((prev) => prev.map((p) => (p.id === editingId ? { ...p, caption: editCaption } : p)));
+      queryClient.invalidateQueries({ queryKey: ["trip-media", activeTrip] });
     } catch { /* silent */ }
     setEditingId(null);
     setEditCaption("");
@@ -181,60 +240,25 @@ export default function Gallery() {
 
   // ── Delete ────────────────────────────────────────────────────────────────
 
-  const handleDelete = async (mediaId) => {
+  const handleDelete = (mediaId) => {
     setDeletingId(mediaId);
-    try {
-      const res = await fetch(`${API_BASE}/trips/${activeTrip}/media/${mediaId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (res.ok) {
-        setPhotos((prev) => prev.filter((p) => p.id !== mediaId));
-        if (lightboxIdx >= 0) setLightboxIdx(-1);
-      }
-    } catch { /* silent */ }
-    finally { setDeletingId(null); }
+    deleteMutation.mutate({ mediaId });
   };
 
   // ── Like toggle ────────────────────────────────────────────────────────────
 
-  const handleLike = async (mediaId, e) => {
+  const handleLike = (mediaId, e) => {
     if (e) e.stopPropagation();
     setLikingId(mediaId);
-    try {
-      const res = await fetch(`${API_BASE}/trips/${activeTrip}/media/${mediaId}/like`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPhotos((prev) =>
-          prev.map((p) => (p.id === mediaId ? { ...p, liked_by_me: data.liked, like_count: data.like_count } : p))
-        );
-        if (data.liked) logActivity(activeTrip, "liked_photo");
-      }
-    } catch { /* silent */ }
-    finally { setLikingId(null); }
+    likeMutation.mutate({ mediaId });
   };
 
   // ── Save/bookmark toggle ──────────────────────────────────────────────────
 
-  const handleSave = async (mediaId, e) => {
+  const handleSave = (mediaId, e) => {
     if (e) e.stopPropagation();
     setSavingId(mediaId);
-    try {
-      const res = await fetch(`${API_BASE}/trips/${activeTrip}/media/${mediaId}/save`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPhotos((prev) =>
-          prev.map((p) => (p.id === mediaId ? { ...p, saved_by_me: data.saved } : p))
-        );
-      }
-    } catch { /* silent */ }
-    finally { setSavingId(null); }
+    saveMutation.mutate({ mediaId });
   };
 
   // ── Share (Web Share API + fallback) ──────────────────────────────────────
@@ -262,10 +286,8 @@ export default function Gallery() {
     setCommentsLoading(true);
     setComments([]);
     try {
-      const res = await fetch(`${API_BASE}/media-comments/?media_id=${mediaId}`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (res.ok) setComments(await res.json());
+      const data = await apiFetch(`/media-comments/?media_id=${mediaId}`);
+      setComments(Array.isArray(data) ? data : []);
     } catch { /* silent */ }
     finally { setCommentsLoading(false); }
   }, []);
@@ -286,17 +308,14 @@ export default function Gallery() {
     if (!newComment.trim() || !lightboxPhoto) return;
     setPosting(true);
     try {
-      const res = await fetch(`${API_BASE}/media-comments/`, {
+      const c = await apiFetch("/media-comments/", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ media_id: lightboxPhoto.id, trip_id: activeTrip, body: newComment.trim() }),
       });
-      if (res.ok) {
-        const c = await res.json();
-        setComments((prev) => [...prev, c]);
-        setNewComment("");
-        logActivity(activeTrip, "commented_photo", lightboxPhoto?.caption || "a photo");
-      }
+      setComments((prev) => [...prev, c]);
+      setNewComment("");
+      logActivity(activeTrip, "commented_photo", lightboxPhoto?.caption || "a photo");
     } catch { /* silent */ }
     finally { setPosting(false); }
   };
@@ -304,10 +323,7 @@ export default function Gallery() {
   const deleteComment = async (commentId) => {
     setComments((prev) => prev.filter((c) => c.id !== commentId));
     try {
-      await fetch(`${API_BASE}/media-comments/${commentId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
+      await apiFetch(`/media-comments/${commentId}`, { method: "DELETE" });
     } catch { /* already removed */ }
   };
 
@@ -431,6 +447,29 @@ export default function Gallery() {
                   </>
                 ) : (
                   <>
+                    {/* View mode toggle */}
+                    <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid rgba(251,251,242,0.2)" }}>
+                      <button
+                        onClick={() => setViewMode('grid')}
+                        className="px-4 py-2.5 text-sm font-medium transition"
+                        style={{
+                          background: viewMode === 'grid' ? "#183a37" : "transparent",
+                          color: viewMode === 'grid' ? "#fbfbf2" : "rgba(251,251,242,0.6)",
+                        }}
+                      >
+                        Grid
+                      </button>
+                      <button
+                        onClick={() => setViewMode('grouped')}
+                        className="px-4 py-2.5 text-sm font-medium transition"
+                        style={{
+                          background: viewMode === 'grouped' ? "#183a37" : "transparent",
+                          color: viewMode === 'grouped' ? "#fbfbf2" : "rgba(251,251,242,0.6)",
+                        }}
+                      >
+                        Grouped
+                      </button>
+                    </div>
                     {photos.length > 0 && (
                       <button
                         onClick={() => setSelectMode(true)}
@@ -474,31 +513,86 @@ export default function Gallery() {
             )}
           </div>
 
+          {/* ── Grouped view ─────────────────────────────────────────────── */}
+          {viewMode === 'grouped' && (
+            <div className="px-8 py-6">
+              {groupedLoading ? (
+                <div className="flex justify-center items-center h-64">
+                  <div className="w-8 h-8 border-3 border-gray-300 border-t-gray-800 rounded-full animate-spin" />
+                </div>
+              ) : groupedData.length === 0 ? (
+                <EmptyState
+                  icon="📸"
+                  title="No photos yet"
+                  subtitle="Upload your first memory from this trip."
+                  action={{ label: "Upload Photo", onClick: () => setShowUpload(true) }}
+                />
+              ) : (
+                <div className="space-y-8">
+                  {groupedData.map((group) => (
+                    <div key={group.group_id}>
+                      {/* Group label header */}
+                      <h2 className="text-base font-bold mb-3" style={{ color: "#160f29" }}>
+                        {group.label}
+                        <span className="ml-2 text-xs font-normal" style={{ color: "#9ca3af" }}>
+                          {group.photos.length} photo{group.photos.length !== 1 ? "s" : ""}
+                        </span>
+                      </h2>
+
+                      {/* Horizontal scroll row of thumbnails */}
+                      <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+                        {group.photos.map((photo) => {
+                          // Find the global index for lightbox navigation
+                          const globalIdx = photos.findIndex((p) => p.id === photo.id);
+                          return (
+                            <div
+                              key={photo.id}
+                              className="relative shrink-0 rounded-2xl overflow-hidden cursor-pointer group"
+                              style={{ width: 200, height: 160, background: "#e5e7eb" }}
+                              onClick={() => globalIdx >= 0 ? setLightboxIdx(globalIdx) : null}
+                            >
+                              <img
+                                src={photo.thumbnail_url || photo.public_url}
+                                alt={photo.caption || "Trip photo"}
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                loading="lazy"
+                                decoding="async"
+                              />
+                              {/* Gradient + caption on hover */}
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                              {photo.caption && (
+                                <p className="absolute bottom-2 left-2 right-2 text-[11px] text-white/90 line-clamp-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
+                                  {photo.caption}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ── Photo grid ───────────────────────────────────────────────── */}
+          {viewMode === 'grid' && (
           <div className="px-8 py-6">
             {loading ? (
               <div className="flex justify-center items-center h-64">
                 <div className="w-8 h-8 border-3 border-gray-300 border-t-gray-800 rounded-full animate-spin" />
               </div>
             ) : photos.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-24 rounded-3xl" style={{ border: "2px dashed #d1d5db" }}>
-                <div className="w-20 h-20 rounded-full flex items-center justify-center mb-4" style={{ background: "#f3f4f6" }}>
-                  <span className="text-4xl">📸</span>
-                </div>
-                <p className="text-lg font-semibold" style={{ color: "#374151" }}>No photos yet</p>
-                <p className="text-sm mt-1 mb-5" style={{ color: "#9ca3af" }}>
-                  Be the first to share a memory from this trip
-                </p>
-                <button
-                  onClick={() => setShowUpload(true)}
-                  className="px-6 py-2.5 rounded-xl text-sm font-semibold transition"
-                  style={{ background: "#160f29", color: "#fbfbf2" }}
-                >
-                  Upload Photo
-                </button>
-              </div>
+              <EmptyState
+                icon="📸"
+                title="No photos yet"
+                subtitle="Upload your first memory from this trip."
+                action={{ label: "Upload Photo", onClick: () => setShowUpload(true) }}
+              />
             ) : (
-              <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
+              <>
+              <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4" style={{ columnGap: "1rem" }}>
                 {photos.map((photo, idx) => {
                   const bgColor = avatarColor(photo.uploaded_by_name);
                   const isSelected = selectedIds.has(photo.id);
@@ -510,10 +604,11 @@ export default function Gallery() {
                       onClick={() => selectMode ? toggleSelect(photo.id) : setLightboxIdx(idx)}
                     >
                       <img
-                        src={photo.public_url}
+                        src={photo.thumbnail_url || photo.public_url}
                         alt={photo.caption || "Trip photo"}
                         className="w-full block transition-transform duration-500 group-hover:scale-105"
                         loading="lazy"
+                        decoding="async"
                       />
 
                       {/* Select checkbox */}
@@ -605,8 +700,24 @@ export default function Gallery() {
                   );
                 })}
               </div>
+
+              {/* Load more */}
+              {hasNextPage && (
+                <div className="flex justify-center mt-8">
+                  <button
+                    onClick={() => fetchNextPage()}
+                    disabled={isFetchingNextPage}
+                    className="px-8 py-3 rounded-2xl text-sm font-semibold transition active:scale-95 disabled:opacity-40"
+                    style={{ background: "#160f29", color: "#fbfbf2" }}
+                  >
+                    {isFetchingNextPage ? "Loading..." : "Load more photos"}
+                  </button>
+                </div>
+              )}
+              </>
             )}
           </div>
+          )}
         </main>
       </div>
 
@@ -642,9 +753,11 @@ export default function Gallery() {
           {/* Image */}
           <div className="max-w-5xl max-h-[85vh] flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
             <img
-              src={lightboxPhoto.public_url}
+              src={lightboxPhoto.display_url || lightboxPhoto.public_url}
               alt={lightboxPhoto.caption || ""}
               className="max-h-[70vh] max-w-full object-contain rounded-lg"
+              loading="lazy"
+              decoding="async"
               style={{ boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}
             />
 

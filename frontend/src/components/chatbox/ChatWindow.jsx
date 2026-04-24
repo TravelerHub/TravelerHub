@@ -1,10 +1,96 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { Avatar, EmptyState } from "./ui";
 import MessageList from "./MessagerList";
 import { chatApi } from "./chatAPI";
 import { encryptionUtils } from "../../lib/encryption";
 import { PaperAirplaneIcon } from "@heroicons/react/24/outline";
 import { API_BASE } from "../../config.js";
+
+// ── Typing indicator dots animation ─────────────────────────────────────────
+const typingDotsStyle = `
+@keyframes typingPulse {
+  0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+  40%            { opacity: 1;    transform: translateY(-3px); }
+}
+.typing-dot { display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: typingPulse 1.2s infinite; }
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+`;
+
+function TypingIndicator({ typingUsers }) {
+  const names = [...typingUsers.values()];
+  if (names.length === 0) return null;
+
+  let label;
+  if (names.length === 1)      label = `${names[0]} is typing`;
+  else if (names.length === 2) label = `${names[0]} and ${names[1]} are typing`;
+  else                         label = `${names.length} people are typing`;
+
+  return (
+    <div
+      className="flex items-center gap-1.5 px-1 mt-1"
+      style={{ color: "#9ca3af", fontSize: "12px", fontStyle: "italic" }}
+    >
+      <span>{label}</span>
+      <span className="flex items-center gap-[3px] ml-0.5" style={{ color: "#9ca3af" }}>
+        <span className="typing-dot" />
+        <span className="typing-dot" />
+        <span className="typing-dot" />
+      </span>
+    </div>
+  );
+}
+
+// ── Read receipt avatar dots ─────────────────────────────────────────────────
+function ReadReceipts({ readers, members }) {
+  if (!readers || readers.length === 0) return null;
+
+  const MAX_SHOWN = 3;
+  const shown = readers.slice(0, MAX_SHOWN);
+  const extra = readers.length - MAX_SHOWN;
+
+  const getInitials = (userId) => {
+    const member = members?.find((m) => m.id === userId);
+    const name = member?.username || member?.email || userId || "?";
+    return name.slice(0, 2).toUpperCase();
+  };
+
+  return (
+    <div className="flex items-center gap-0.5 justify-end mt-0.5 pr-1">
+      {shown.map((uid) => (
+        <span
+          key={uid}
+          title={members?.find((m) => m.id === uid)?.username || uid}
+          className="flex items-center justify-center rounded-full text-[7px] font-bold shrink-0"
+          style={{
+            width: "16px",
+            height: "16px",
+            background: "#183a37",
+            color: "#ffffff",
+            fontSize: "7px",
+          }}
+        >
+          {getInitials(uid)}
+        </span>
+      ))}
+      {extra > 0 && (
+        <span
+          className="flex items-center justify-center rounded-full shrink-0"
+          style={{
+            width: "16px",
+            height: "16px",
+            background: "#e5e7eb",
+            color: "#6b7280",
+            fontSize: "7px",
+            fontWeight: 700,
+          }}
+        >
+          +{extra}
+        </span>
+      )}
+    </div>
+  );
+}
 
 export default function ChatWindow({
   loading,
@@ -15,23 +101,83 @@ export default function ChatWindow({
   error,
   conversationID,
 }) {
-  const listRef = useRef(null);
-  const inputRef = useRef(null);
+  const listRef      = useRef(null);
+  const inputRef     = useRef(null);
+  const wsRef        = useRef(null);
+  const typingTimerRef = useRef(null);
+  const isTypingRef  = useRef(false);
+
   const [text,            setText]            = useState("");
   const [localMessages,   setLocalMessages]   = useState(messages || []);
   const [encryptionError, setEncryptionError] = useState(null);
   const [sending,         setSending]         = useState(false);
+  const [typingUsers,     setTypingUsers]     = useState(new Map()); // user_id → username
+  const [readStatus,      setReadStatus]      = useState(new Map()); // user_id → last_read_message_id
   const retryRef = useRef(null);
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  const currentUsername = useMemo(() => {
+    const me = (members || []).find((m) => m.id === currentUserId);
+    return me?.username || me?.email || "Someone";
+  }, [members, currentUserId]);
+
+  const lastMessageId = useMemo(() => {
+    if (!localMessages?.length) return null;
+    return localMessages[localMessages.length - 1]?.message_id ?? null;
+  }, [localMessages]);
+
+  const sendWsEvent = useCallback((payload) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(payload));
+    }
+  }, []);
+
+  // ── Typing events ──────────────────────────────────────────────────────────
+
+  const sendTypingStop = useCallback(() => {
+    if (!isTypingRef.current) return;
+    isTypingRef.current = false;
+    sendWsEvent({ type: "typing_stop", user_id: currentUserId });
+  }, [currentUserId, sendWsEvent]);
+
+  const handleInputChange = useCallback((e) => {
+    setText(e.target.value);
+    // Auto-grow up to ~4 lines
+    e.target.style.height = "auto";
+    e.target.style.height = Math.min(e.target.scrollHeight, 104) + "px";
+
+    // Send typing event (debounced stop after 2 s)
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
+      sendWsEvent({ type: "typing", user_id: currentUserId, username: currentUsername });
+    }
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {
+      sendTypingStop();
+    }, 2000);
+  }, [currentUserId, currentUsername, sendWsEvent, sendTypingStop]);
+
+  // ── Send message ───────────────────────────────────────────────────────────
 
   const sendMessage = async () => {
     const trimmed = text.trim();
     if (!trimmed || sending) return;
+
+    // Cancel any pending typing debounce and stop indicator
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    sendTypingStop();
+
     setSending(true);
     try {
       setEncryptionError(null);
       await chatApi.sendMessage(conversationID, trimmed);
       setText("");
-      inputRef.current?.focus();
+      if (inputRef.current) {
+        inputRef.current.style.height = "auto";
+        inputRef.current.focus();
+      }
     } catch (err) {
       console.error("Send error:", err);
       setEncryptionError(err.message || "Failed to send");
@@ -40,25 +186,28 @@ export default function ChatWindow({
     }
   };
 
-  useEffect(() => { setLocalMessages(messages || []); }, [messages, conversationID]);
+  // ── Sync messages from parent ──────────────────────────────────────────────
+
+  useEffect(() => {
+    setLocalMessages(messages || []);
+  }, [messages, conversationID]);
 
   // Stop any pending key-wait retry when conversation changes
   useEffect(() => {
     return () => {
       if (retryRef.current) { clearInterval(retryRef.current); retryRef.current = null; }
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     };
   }, [conversationID]);
 
-  // Fetch + decrypt the session key once when the conversation opens.
-  // If no key exists yet (e.g. conversations created before the migration),
-  // generate one and distribute it to all current members right away.
+  // ── Session key init ───────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!conversationID) return;
 
     const initSessionKey = async () => {
       const memberIds = (members || []).map((m) => m.id).filter(Boolean);
 
-      // Already cached — still try to distribute to any members added since last open
       const cached = encryptionUtils.getCachedSessionKey(conversationID);
       if (cached) {
         setEncryptionError(null);
@@ -70,7 +219,6 @@ export default function ChatWindow({
       }
 
       try {
-        // Try to fetch existing key from server and decrypt client-side
         const sessionKey = await chatApi.fetchAndDecryptSessionKey(conversationID);
         if (sessionKey) {
           encryptionUtils.cacheSessionKey(conversationID, sessionKey);
@@ -82,24 +230,16 @@ export default function ChatWindow({
           return;
         }
 
-        // No key on server for this user — generate one and distribute.
-        // If members haven't loaded yet, return silently; effect re-runs when they do.
         if (memberIds.length === 0) return;
-
         await chatApi.setupConversationEncryption(conversationID, memberIds);
         setEncryptionError(null);
       } catch (err) {
         if (err.message?.includes("Failed to decrypt session key")) {
-          // Private key mismatch — rotate keypair WITHOUT changing the session key.
-          // Deleting our server entry makes us appear "missing" to other members.
-          // When any member opens the chat, distributeToMissingMembers re-encrypts
-          // the SAME session key with our new public key → old messages stay readable.
           console.warn("Session key mismatch — rotating keypair, waiting for peer redistribution");
           try {
             await chatApi.rotateKeypair(conversationID);
             setEncryptionError("Waiting for key — ask another member to open the chat");
 
-            // Retry every 5 s (up to 24 attempts = 2 min) until a member redistributes
             let attempts = 0;
             if (retryRef.current) clearInterval(retryRef.current);
             retryRef.current = setInterval(async () => {
@@ -133,31 +273,95 @@ export default function ChatWindow({
     initSessionKey();
   }, [conversationID, members]);
 
-  // WebSocket real-time updates
+  // ── WebSocket — real-time messages + presence events ──────────────────────
+
   useEffect(() => {
     if (!conversationID) return;
     let isActive = true;
     const wsBase = API_BASE.replace(/^http/, "ws");
     const ws = new WebSocket(`${wsBase}/api/ws/conversations/${conversationID}`);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      // On (re)connect send our current read position so peers see it
+      if (currentUserId && lastMessageId) {
+        ws.send(JSON.stringify({
+          type: "read",
+          user_id: currentUserId,
+          last_read_message_id: lastMessageId,
+        }));
+      }
+    };
+
     ws.onmessage = (event) => {
       if (!isActive) return;
-      const msg = JSON.parse(event.data);
-      setLocalMessages((prev) => {
-        if (prev.some((m) => m.message_id === msg.message_id)) return prev;
-        return [...prev, msg];
-      });
+      let data;
+      try { data = JSON.parse(event.data); } catch { return; }
+
+      if (data.type === "typing") {
+        setTypingUsers((prev) => {
+          const next = new Map(prev);
+          next.set(data.user_id, data.username || data.user_id);
+          return next;
+        });
+      } else if (data.type === "typing_stop") {
+        setTypingUsers((prev) => {
+          const next = new Map(prev);
+          next.delete(data.user_id);
+          return next;
+        });
+      } else if (data.type === "read") {
+        setReadStatus((prev) => {
+          const next = new Map(prev);
+          next.set(data.user_id, data.last_read_message_id);
+          return next;
+        });
+      } else {
+        // Regular chat message
+        const msg = data;
+        if (msg.message_id) {
+          setLocalMessages((prev) => {
+            if (prev.some((m) => m.message_id === msg.message_id)) return prev;
+            return [...prev, msg];
+          });
+        }
+      }
     };
+
     ws.onerror  = (e) => { if (isActive) console.error("WebSocket error:", e); };
     ws.onclose  = ()  => { if (isActive) console.log("WebSocket closed"); };
     const ping  = setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send("ping"); }, 25000);
-    return () => { isActive = false; clearInterval(ping); ws.close(); };
-  }, [conversationID]);
 
-  // Scroll to bottom on new messages
+    return () => {
+      isActive = false;
+      clearInterval(ping);
+      wsRef.current = null;
+      ws.close();
+      // Clear typing state when leaving conversation
+      setTypingUsers(new Map());
+      setReadStatus(new Map());
+    };
+  }, [conversationID]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Send read receipt when new messages arrive (window focused) ────────────
+
+  useEffect(() => {
+    if (!currentUserId || !lastMessageId || !conversationID) return;
+    sendWsEvent({
+      type: "read",
+      user_id: currentUserId,
+      last_read_message_id: lastMessageId,
+    });
+  }, [lastMessageId, currentUserId, conversationID, sendWsEvent]);
+
+  // ── Scroll to bottom on new messages ──────────────────────────────────────
+
   useEffect(() => {
     if (!listRef.current) return;
     listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [localMessages?.length]);
+
+  // ── Subtitle ───────────────────────────────────────────────────────────────
 
   const subtitle = useMemo(() => {
     const others = (members || []).filter((u) => u.id !== currentUserId);
@@ -166,104 +370,109 @@ export default function ChatWindow({
   }, [members, currentUserId]);
 
   return (
-    <div className="flex flex-col h-full">
+    <>
+      {/* Inject keyframe CSS once */}
+      <style>{typingDotsStyle}</style>
 
-      {/* ── Chat header ─────────────────────────────────────────────── */}
-      <div
-        className="shrink-0 flex items-center gap-3 px-4 py-3"
-        style={{ borderBottom: "1px solid #ebebeb" }}
-      >
-        <Avatar name={title} size="md" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold truncate leading-tight" style={{ color: "#160f29" }}>
-            {title || "Conversation"}
-          </p>
-          <p className="text-[11px] mt-0.5" style={{ color: "#9ca3af" }}>
-            {subtitle}
-          </p>
+      <div className="flex flex-col h-full">
+
+        {/* ── Chat header ─────────────────────────────────────────────── */}
+        <div
+          className="shrink-0 flex items-center gap-3 px-4 py-3"
+          style={{ borderBottom: "1px solid #ebebeb" }}
+        >
+          <Avatar name={title} size="md" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold truncate leading-tight" style={{ color: "#160f29" }}>
+              {title || "Conversation"}
+            </p>
+            <p className="text-[11px] mt-0.5" style={{ color: "#9ca3af" }}>
+              {subtitle}
+            </p>
+          </div>
+
+          {/* Encryption status dot */}
+          <span
+            className="shrink-0 flex items-center gap-1.5 text-[10px] font-medium px-2.5 py-1 rounded-full"
+            style={{
+              background: encryptionError ? "#fef2f2" : "rgba(24,58,55,0.08)",
+              color: encryptionError ? "#dc2626" : "#183a37",
+            }}
+          >
+            <span
+              className="w-1.5 h-1.5 rounded-full"
+              style={{ background: encryptionError ? "#dc2626" : "#16a34a" }}
+            />
+            {encryptionError ? "Encryption issue" : "Encrypted"}
+          </span>
         </div>
 
-        {/* Encryption status dot */}
-        <span
-          className="shrink-0 flex items-center gap-1.5 text-[10px] font-medium px-2.5 py-1 rounded-full"
-          style={{
-            background: encryptionError ? "#fef2f2" : "rgba(24,58,55,0.08)",
-            color: encryptionError ? "#dc2626" : "#183a37",
-          }}
+        {/* ── Message body ─────────────────────────────────────────────── */}
+        <div
+          ref={listRef}
+          className="flex-1 overflow-y-auto px-4 py-4"
+          style={{ background: "#f9fafb" }}
         >
-          <span
-            className="w-1.5 h-1.5 rounded-full"
-            style={{ background: encryptionError ? "#dc2626" : "#16a34a" }}
-          />
-          {encryptionError ? "Encryption issue" : "Encrypted"}
-        </span>
-      </div>
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div
+                  key={i}
+                  className={`h-9 rounded-2xl animate-pulse ${i % 3 === 0 ? "ml-auto w-2/3" : "w-1/2"}`}
+                  style={{ background: "#e5e7eb" }}
+                />
+              ))}
+            </div>
+          ) : error ? (
+            <EmptyState title="Could not load messages" subtitle={error} />
+          ) : (
+            <MessageList
+              messages={localMessages}
+              currentUserId={currentUserId}
+              conversationId={conversationID}
+              members={members}
+              readStatus={readStatus}
+            />
+          )}
 
-      {/* ── Message body ─────────────────────────────────────────────── */}
-      <div
-        ref={listRef}
-        className="flex-1 overflow-y-auto px-4 py-4"
-        style={{ background: "#f9fafb" }}
-      >
-        {loading ? (
-          <div className="space-y-3">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div
-                key={i}
-                className={`h-9 rounded-2xl animate-pulse ${i % 3 === 0 ? "ml-auto w-2/3" : "w-1/2"}`}
-                style={{ background: "#e5e7eb" }}
-              />
-            ))}
-          </div>
-        ) : error ? (
-          <EmptyState title="Could not load messages" subtitle={error} />
-        ) : (
-          <MessageList
-            messages={localMessages}
-            currentUserId={currentUserId}
-            conversationId={conversationID}
-          />
-        )}
-      </div>
+          {/* Typing indicator */}
+          <TypingIndicator typingUsers={typingUsers} />
+        </div>
 
-      {/* ── Input bar ───────────────────────────────────────────────── */}
-      <div
-        className="shrink-0 px-4 py-3 flex items-end gap-2"
-        style={{ borderTop: "1px solid #ebebeb", background: "#ffffff" }}
-      >
-        <textarea
-          ref={inputRef}
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            // Auto-grow up to ~4 lines
-            e.target.style.height = "auto";
-            e.target.style.height = Math.min(e.target.scrollHeight, 104) + "px";
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-          }}
-          placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
-          rows={1}
-          className="flex-1 resize-none rounded-xl px-4 py-2.5 text-sm outline-none transition focus:ring-2 leading-relaxed"
-          style={{
-            background: "#f3f4f6",
-            border: "1px solid #e5e7eb",
-            color: "#160f29",
-            "--tw-ring-color": "#183a37",
-            minHeight: "40px",
-            maxHeight: "104px",
-          }}
-        />
-        <button
-          onClick={sendMessage}
-          disabled={!text.trim() || sending}
-          className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl transition active:scale-95 disabled:opacity-40"
-          style={{ background: "#000000" }}
+        {/* ── Input bar ───────────────────────────────────────────────── */}
+        <div
+          className="shrink-0 px-4 py-3 flex items-end gap-2"
+          style={{ borderTop: "1px solid #ebebeb", background: "#ffffff" }}
         >
-          <PaperAirplaneIcon className="w-4 h-4 text-white" />
-        </button>
+          <textarea
+            ref={inputRef}
+            value={text}
+            onChange={handleInputChange}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+            }}
+            placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
+            rows={1}
+            className="flex-1 resize-none rounded-xl px-4 py-2.5 text-sm outline-none transition focus:ring-2 leading-relaxed"
+            style={{
+              background: "#f3f4f6",
+              border: "1px solid #e5e7eb",
+              color: "#160f29",
+              "--tw-ring-color": "#183a37",
+              minHeight: "40px",
+              maxHeight: "104px",
+            }}
+          />
+          <button
+            onClick={sendMessage}
+            disabled={!text.trim() || sending}
+            className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl transition active:scale-95 disabled:opacity-40"
+            style={{ background: "#000000" }}
+          >
+            <PaperAirplaneIcon className="w-4 h-4 text-white" />
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

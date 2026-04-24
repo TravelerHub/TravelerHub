@@ -8,7 +8,58 @@ function formatTime(ts) {
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
-export default function MessageBubble({ msg, isMine, conversationId }) {
+// ── Read receipt avatar dots ─────────────────────────────────────────────────
+function ReadReceipts({ readers, members }) {
+  if (!readers || readers.length === 0) return null;
+
+  const MAX_SHOWN = 3;
+  const shown = readers.slice(0, MAX_SHOWN);
+  const extra = readers.length - MAX_SHOWN;
+
+  const getInitials = (userId) => {
+    const member = members?.find((m) => m.id === userId);
+    const name = member?.username || member?.email || userId || "?";
+    return name.slice(0, 2).toUpperCase();
+  };
+
+  return (
+    <div className="flex items-center gap-0.5 justify-end mt-0.5 pr-1">
+      {shown.map((uid) => (
+        <span
+          key={uid}
+          title={members?.find((m) => m.id === uid)?.username || uid}
+          className="flex items-center justify-center rounded-full font-bold shrink-0"
+          style={{
+            width: "16px",
+            height: "16px",
+            background: "#183a37",
+            color: "#ffffff",
+            fontSize: "7px",
+          }}
+        >
+          {getInitials(uid)}
+        </span>
+      ))}
+      {extra > 0 && (
+        <span
+          className="flex items-center justify-center rounded-full shrink-0"
+          style={{
+            width: "16px",
+            height: "16px",
+            background: "#e5e7eb",
+            color: "#6b7280",
+            fontSize: "7px",
+            fontWeight: 700,
+          }}
+        >
+          +{extra}
+        </span>
+      )}
+    </div>
+  );
+}
+
+export default function MessageBubble({ msg, isMine, conversationId, members, readers }) {
   const [decryptedContent, setDecryptedContent] = useState(msg.content || "");
   const [decryptError,     setDecryptError]     = useState(false);
 
@@ -39,7 +90,7 @@ export default function MessageBubble({ msg, isMine, conversationId }) {
   }, [msg.content, msg.is_encrypted, conversationId]);
 
   return (
-    <div className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
+    <div className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}>
       <div
         className="max-w-[70%] rounded-2xl px-3.5 py-2.5 text-sm"
         style={
@@ -65,6 +116,11 @@ export default function MessageBubble({ msg, isMine, conversationId }) {
           {formatTime(msg.sent_datetime)}
         </p>
       </div>
+
+      {/* Read receipts — only shown on current user's messages */}
+      {isMine && (
+        <ReadReceipts readers={readers} members={members} />
+      )}
     </div>
   );
 }

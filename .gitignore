@@ -24,11 +24,14 @@ dist-ssr
 *.sw?
 
 
-# Environment variables
+# Environment variables — never commit real keys
 venv
 venv/
 .venv/
 .env
+.env.*
+*.env
+*.env.*
 env/
 .env/
 

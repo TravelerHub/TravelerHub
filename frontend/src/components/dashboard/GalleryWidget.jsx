@@ -15,17 +15,42 @@ export default function GalleryWidget() {
     fetch(`${API_BASE}/trips/${tripId}/media`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) => setPhotos(Array.isArray(data) ? data.slice(0, 4) : []))
+      .then((r) => (r.ok ? r.json() : { photos: [] }))
+      .then((data) => {
+        const list = Array.isArray(data) ? data : (data.photos || []);
+        setPhotos(list.slice(0, 4));
+      })
       .catch(() => setPhotos([]))
       .finally(() => setLoading(false));
   }, []);
+
+  if (loading) {
+    return (
+      <div className="h-full flex flex-col p-4 overflow-hidden">
+        <div className="flex items-center justify-between mb-3 shrink-0">
+          <div className="animate-pulse bg-gray-200 rounded w-24 h-3" />
+          <div className="animate-pulse bg-gray-200 rounded-full w-14 h-5" />
+        </div>
+        <div className="flex-1 overflow-hidden">
+          <div className="grid grid-cols-2 gap-2 h-full content-start">
+            {[0, 1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="animate-pulse bg-gray-200 rounded-xl aspect-square"
+              />
+            ))}
+          </div>
+        </div>
+        <div className="animate-pulse bg-gray-200 rounded w-28 h-3 mt-3 shrink-0" />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col p-4 overflow-hidden">
       <div className="flex items-center justify-between mb-3 shrink-0">
         <p className="text-xs font-medium" style={{ color: "#6b7280" }}>
-          {loading ? "Loading..." : photos.length > 0 ? `${photos.length} recent photos` : "No photos yet"}
+          {photos.length > 0 ? `${photos.length} recent photos` : "No photos yet"}
         </p>
         <button
           onClick={() => navigate("/gallery")}
@@ -37,7 +62,7 @@ export default function GalleryWidget() {
       </div>
 
       <div className="flex-1 overflow-hidden">
-        {photos.length === 0 && !loading ? (
+        {photos.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center gap-2 rounded-xl" style={{ border: "1px dashed rgba(0,0,0,0.15)", background: "rgba(0,0,0,0.01)" }}>
             <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="#9ca3af" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
@@ -54,10 +79,11 @@ export default function GalleryWidget() {
                 style={{ border: "1px solid rgba(0,0,0,0.05)" }}
               >
                 <img
-                  src={photo.public_url || photo.url}
+                  src={photo.thumbnail_url || photo.public_url || photo.url}
                   alt={photo.caption || "Trip photo"}
                   className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                   loading="lazy"
+                  decoding="async"
                 />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
               </div>

@@ -16,6 +16,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { getGroupPositions, syncMyPosition } from '../services/smartRouteService';
+import { watchPosition } from '../utils/geolocation';
 import {
   MapPinIcon,
   SignalIcon,
@@ -123,42 +124,38 @@ export default function GroupLocationSharing({ tripId, onFlyTo, memberMarkers })
   }, [tripId, fetchPositions]);
 
   // Start / stop sharing own location
-  const toggleSharing = () => {
+  const toggleSharing = async () => {
     if (sharing) {
       if (watchIdRef.current != null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current(); // call the cleanup function returned by watchPosition
         watchIdRef.current = null;
       }
       setSharing(false);
     } else {
-      if (!navigator.geolocation) {
-        setError('Geolocation not supported by your browser');
-        return;
-      }
       setSharing(true);
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        (pos) => {
+      try {
+        const cleanup = await watchPosition((pos) => {
           syncMyPosition(tripId, {
             lat: pos.coords.latitude,
             lng: pos.coords.longitude,
             heading: pos.coords.heading,
             accuracy: pos.coords.accuracy,
           }).catch(() => {});
-        },
-        (err) => {
-          console.error('Geolocation error:', err);
-          setError('Location access denied');
-          setSharing(false);
-        },
-        { enableHighAccuracy: true, maximumAge: 3000 }
-      );
+        });
+        watchIdRef.current = cleanup;
+      } catch (err) {
+        console.error('Geolocation error:', err);
+        setError('Location access denied');
+        setSharing(false);
+      }
     }
   };
 
   useEffect(() => {
     return () => {
       if (watchIdRef.current != null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current(); // call the cleanup function on unmount
+        watchIdRef.current = null;
       }
     };
   }, []);

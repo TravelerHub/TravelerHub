@@ -7,9 +7,25 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "cap:sync": "vite build && npx cap sync",
+    "cap:ios": "vite build && npx cap sync ios && npx cap open ios",
+    "cap:android": "vite build && npx cap sync android && npx cap open android"
   },
   "dependencies": {
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/camera": "^6.0.0",
+    "@capacitor/geolocation": "^6.0.0",
+    "@capacitor/haptics": "^6.0.0",
+    "@capacitor/local-notifications": "^6.0.0",
+    "@capacitor/push-notifications": "^6.0.0",
+    "@capacitor/preferences": "^6.0.0",
+    "@capacitor/network": "^6.0.0",
+    "@capacitor/status-bar": "^6.0.0",
+    "@tanstack/react-query": "^5.62.0",
     "@fullcalendar/daygrid": "^6.1.20",
     "@fullcalendar/interaction": "^6.1.20",
     "@fullcalendar/react": "^6.1.20",
@@ -27,10 +43,15 @@
     "react-dom": "^19.2.0",
     "react-map-gl": "^8.1.0",
     "react-router-dom": "^7.10.1",
+    "supercluster": "^8.0.1",
     "tailwindcss": "^4.1.17"
   },
   "devDependencies": {
+    "@capacitor/cli": "^6.0.0",
     "@eslint/js": "^9.39.1",
+    "@testing-library/jest-dom": "^6.0.0",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/user-event": "^14.0.0",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
@@ -38,6 +59,8 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
-    "vite": "^7.2.4"
+    "jsdom": "^25.0.0",
+    "vite": "^7.2.4",
+    "vitest": "^2.0.0"
   }
 }

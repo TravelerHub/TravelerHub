@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { submitRankedVote, getBordaResults, getFrustrationIndex } from '../services/smartRouteService';
 import { API_BASE } from '../config';
+import { haptic } from '../utils/haptic';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { TrophyIcon, ArrowsUpDownIcon, ChartBarIcon } from '@heroicons/react/24/outline';
 
@@ -65,6 +66,7 @@ export default function RankedChoicePoll({ pollId, tripId, onClose }) {
     }));
     try {
       await submitRankedVote(pollId, rankData);
+      haptic('success');
       setSubmitted(true);
       // Refresh results
       const bordaRes = await getBordaResults(pollId);

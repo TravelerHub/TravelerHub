@@ -9,12 +9,14 @@ import {
   splitExpense,
   getTripBalances,
   recordSettlement,
+  getSettlementSummary,
 } from "../../services/financeService";
 import { chargeSavedCard, getSavedCards } from "../../services/billingService";
 import { ensureActiveGroupId, getActiveGroupId, getMyGroups, setActiveGroupId } from "../../services/groupService";
 import CardRecommendation from "../../components/CardRecommendation.jsx";
 import BudgetTracker from "../../components/BudgetTracker.jsx";
 import CardWallet from "../../components/CardWallet.jsx";
+import EmptyState from "../../components/EmptyState.jsx";
 
 // ── Color palette (matches Dashboard / Booking / Expenses)
 // #160f29  deep dark   (sidebar, headings)
@@ -84,6 +86,10 @@ function Finance() {
   const [splitModalExpense, setSplitModalExpense] = useState(null);
   const [splitLoading, setSplitLoading] = useState(false);
   const [settleLoading, setSettleLoading] = useState(null);
+  const [summary, setSummary] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [settledSteps, setSettledSteps] = useState(new Set());
+  const [stepSettling, setStepSettling] = useState(null);
 
   const loadGroups = useCallback(async () => {
     try {
@@ -137,9 +143,27 @@ function Finance() {
     loadTransactions();
   }, [loadTransactions]);
 
+  const loadSummary = useCallback(async () => {
+    if (!activeGroupId) return;
+    setSummaryLoading(true);
+    try {
+      const data = await getSettlementSummary(activeGroupId);
+      setSummary(data);
+      setSettledSteps(new Set());
+    } catch {
+      setSummary(null);
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, [activeGroupId]);
+
   useEffect(() => {
     if (activeTab === "balances") loadBalances();
   }, [activeTab, loadBalances]);
+
+  useEffect(() => {
+    if (activeTab === "settlement") loadSummary();
+  }, [activeTab, loadSummary]);
 
   const handleSplitExpense = async (expenseId) => {
     setSplitLoading(true);
@@ -167,6 +191,22 @@ function Finance() {
       setLoadError(error?.message || "Failed to record settlement");
     } finally {
       setSettleLoading(null);
+    }
+  };
+
+  const handleSettleStep = async (step, idx) => {
+    setStepSettling(idx);
+    try {
+      await recordSettlement({
+        tripId: activeGroupId,
+        toUserId: step.to_user_id,
+        amount: step.amount,
+      });
+      setSettledSteps((prev) => new Set([...prev, idx]));
+    } catch (error) {
+      setLoadError(error?.message || "Failed to record settlement");
+    } finally {
+      setStepSettling(null);
     }
   };
 
@@ -429,6 +469,7 @@ function Finance() {
             {[
               { id: "transactions", label: "Transactions", icon: "💳" },
               { id: "balances",     label: "Balances & Splits", icon: "⚖️" },
+              { id: "settlement",   label: "Settlement", icon: "🤝" },
               { id: "budget",       label: "Budget", icon: "📊" },
               { id: "cards",        label: "Card Wallet", icon: "🪪" },
             ].map((tab) => (
@@ -619,11 +660,11 @@ function Finance() {
                 </button>
               </div>
             ) : sortedTransactions.length === 0 ? (
-              <div className="py-16 text-center">
-                <p className="text-3xl mb-3">💳</p>
-                <p className="text-sm font-medium" style={{ color: "#374151" }}>No transactions</p>
-                <p className="text-xs mt-1" style={{ color: "#9ca3af" }}>Add your first transaction to get started</p>
-              </div>
+              <EmptyState
+                icon="💸"
+                title="No expenses yet"
+                subtitle="Add your first expense to start tracking the group budget."
+              />
             ) : (
               sortedTransactions.map((t, idx) => {
                 const meta = CATEGORY_META[t.category] || CATEGORY_META.Other;
@@ -812,6 +853,186 @@ function Finance() {
                       })}
                     </div>
                   )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── Settlement tab ───────────────────────────────────────────── */}
+          {activeTab === "settlement" && (
+            <div className="space-y-6">
+              {!activeGroupId ? (
+                <div className="rounded-2xl p-12 text-center" style={{ background: "#fff", border: "1px solid #e5e7eb" }}>
+                  <p className="text-3xl mb-3">🤝</p>
+                  <p className="text-sm font-medium" style={{ color: "#374151" }}>Select a group to view settlement</p>
+                </div>
+              ) : summaryLoading ? (
+                <div className="rounded-2xl p-12 text-center" style={{ background: "#fff", border: "1px solid #e5e7eb" }}>
+                  <p className="text-sm font-medium" style={{ color: "#374151" }}>Loading settlement summary...</p>
+                </div>
+              ) : !summary ? (
+                <div className="rounded-2xl p-12 text-center" style={{ background: "#fff", border: "1px solid #e5e7eb" }}>
+                  <p className="text-sm font-medium" style={{ color: "#374151" }}>No data available</p>
+                  <p className="text-xs mt-1" style={{ color: "#9ca3af" }}>Add group expenses first</p>
+                </div>
+              ) : (
+                <>
+                  {/* Summary bar */}
+                  {(() => {
+                    const unsettled = (summary.settlements || []).filter((_, i) => !settledSteps.has(i)).length;
+                    return (
+                      <div
+                        className="rounded-2xl px-6 py-4 flex flex-wrap items-center gap-4"
+                        style={{ background: "#160f29", color: "#fbfbf2" }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium" style={{ color: "rgba(251,251,242,0.6)" }}>Total spent</span>
+                          <span className="text-sm font-bold">${summary.total_spent.toFixed(2)}</span>
+                        </div>
+                        <span style={{ color: "rgba(251,251,242,0.3)" }}>·</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium" style={{ color: "rgba(251,251,242,0.6)" }}>Per person</span>
+                          <span className="text-sm font-bold">${summary.per_person_share.toFixed(2)}</span>
+                        </div>
+                        <span style={{ color: "rgba(251,251,242,0.3)" }}>·</span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="text-sm font-bold"
+                            style={{ color: unsettled === 0 ? "#4ade80" : "#fbbf24" }}
+                          >
+                            {unsettled === 0 ? "All settled up!" : `${unsettled} unsettled payment${unsettled !== 1 ? "s" : ""}`}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Balance cards row */}
+                  <div>
+                    <p className="text-sm font-semibold mb-3" style={{ color: "#160f29" }}>Member Balances</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {(summary.balances || []).map((m) => {
+                        const isOwed = m.net_balance > 0.005;
+                        const isOwes = m.net_balance < -0.005;
+                        return (
+                          <div
+                            key={m.user_id}
+                            className="rounded-2xl p-4 flex flex-col items-center text-center"
+                            style={{
+                              background: "#fff",
+                              border: `2px solid ${isOwed ? "#bbf7d0" : isOwes ? "#fecaca" : "#e5e7eb"}`,
+                            }}
+                          >
+                            <div
+                              className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold mb-2"
+                              style={{
+                                background: isOwed ? "#f0fdf4" : isOwes ? "#fef2f2" : "#f3f4f6",
+                                color: isOwed ? "#15803d" : isOwes ? "#b91c1c" : "#6b7280",
+                              }}
+                            >
+                              {(m.username || "?")[0].toUpperCase()}
+                            </div>
+                            <p className="text-xs font-semibold mb-1 truncate w-full" style={{ color: "#160f29" }}>
+                              {m.username}
+                            </p>
+                            <p
+                              className="text-base font-bold"
+                              style={{ color: isOwed ? "#16a34a" : isOwes ? "#dc2626" : "#6b7280" }}
+                            >
+                              {isOwed ? "+" : isOwes ? "-" : ""}${Math.abs(m.net_balance).toFixed(2)}
+                            </p>
+                            <p className="text-xs mt-0.5" style={{ color: "#9ca3af" }}>
+                              {isOwed ? "gets back" : isOwes ? "owes" : "settled"}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* How to settle up */}
+                  <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid #e5e7eb" }}>
+                    <div className="px-5 py-4" style={{ borderBottom: "1px solid #f3f4f6" }}>
+                      <p className="text-sm font-bold" style={{ color: "#160f29" }}>How to settle up</p>
+                      <p className="text-xs mt-0.5" style={{ color: "#9ca3af" }}>
+                        Minimum transfers to balance everyone out
+                      </p>
+                    </div>
+
+                    {(summary.settlements || []).length === 0 ? (
+                      <div className="py-10 text-center px-6">
+                        <p className="text-2xl mb-2">✅</p>
+                        <p className="text-sm font-semibold" style={{ color: "#15803d" }}>All settled up!</p>
+                        <p className="text-xs mt-1" style={{ color: "#9ca3af" }}>No payments needed.</p>
+                      </div>
+                    ) : (
+                      (summary.settlements || []).map((step, idx) => {
+                        const isDone = settledSteps.has(idx);
+                        const isSettlingThis = stepSettling === idx;
+                        return (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between px-5 py-4"
+                            style={{
+                              borderBottom: idx < summary.settlements.length - 1 ? "1px solid #f9fafb" : "none",
+                              opacity: isDone ? 0.55 : 1,
+                            }}
+                          >
+                            <div className="flex items-center gap-2 text-sm min-w-0 flex-1 mr-3">
+                              <span
+                                className="font-semibold shrink-0"
+                                style={{
+                                  color: isDone ? "#9ca3af" : "#dc2626",
+                                  textDecoration: isDone ? "line-through" : "none",
+                                }}
+                              >
+                                {step.from_user}
+                              </span>
+                              <span style={{ color: "#9ca3af" }} className="shrink-0">pays</span>
+                              <span
+                                className="font-semibold shrink-0"
+                                style={{
+                                  color: isDone ? "#9ca3af" : "#16a34a",
+                                  textDecoration: isDone ? "line-through" : "none",
+                                }}
+                              >
+                                {step.to_user}
+                              </span>
+                              <span
+                                className="font-bold shrink-0"
+                                style={{
+                                  color: isDone ? "#9ca3af" : "#160f29",
+                                  textDecoration: isDone ? "line-through" : "none",
+                                }}
+                              >
+                                ${step.amount.toFixed(2)}
+                              </span>
+                            </div>
+                            {isDone ? (
+                              <div
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0"
+                                style={{ background: "#f0fdf4", color: "#15803d" }}
+                              >
+                                <span>✓</span> Settled
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => handleSettleStep(step, idx)}
+                                disabled={isSettlingThis}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition shrink-0"
+                                style={{
+                                  background: isSettlingThis ? "#d1d5db" : "#183a37",
+                                  color: "#fbfbf2",
+                                }}
+                              >
+                                {isSettlingThis ? "..." : "✓ Mark settled"}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 </>
               )}
             </div>

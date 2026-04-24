@@ -1,4 +1,8 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Request, status, Depends
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 from pydantic import BaseModel
 from typing import Optional
 from utils import oauth2
@@ -20,7 +24,9 @@ router = APIRouter(
 )
 
 @router.post("/analyze-receipt")
+@limiter.limit("20/minute")
 async def analyze_receipt(
+    request: Request,
     file: UploadFile = File(...),
     current_user: dict = Depends(oauth2.get_current_user)
 ):
@@ -57,8 +63,11 @@ async def analyze_receipt(
         "tip": 0.00,
         "total": 0.00,
         "currency": "USD",
-        "payment_method": "cash/card/other or null if not visible"
+        "payment_method": "cash/card/other or null if not visible",
+        "category": "food"
     }
+
+    Also include a 'category' field — classify the expense into exactly one of: food, transport, lodging, activities, shopping, health, entertainment, other.
 
     If you cannot read a value, use null. For items you cannot read, skip them.
     Always return valid JSON."""
@@ -90,15 +99,13 @@ async def analyze_receipt(
         return {
             "success": True,
             "data": parsed_data,
-            "raw_text": response.text
         }
 
     except json.JSONDecodeError:
-        return {
-            "success": False,
-            "error": "Could not parse receipt data",
-            "raw_text": response.text
-        }
+        raise HTTPException(
+            status_code=422,
+            detail="Could not parse receipt. Please try a clearer image."
+        )
     except Exception as e:
         print(f"Gemini API error: {e}")
         raise HTTPException(
@@ -171,15 +178,13 @@ async def analyze_document(
         return {
             "success": True,
             "data": parsed_data,
-            "raw_text": response.text
         }
 
     except json.JSONDecodeError:
-        return {
-            "success": False,
-            "error": "Could not parse document data",
-            "raw_text": response.text
-        }
+        raise HTTPException(
+            status_code=422,
+            detail="Could not parse receipt. Please try a clearer image."
+        )
     except Exception as e:
         print(f"Gemini API error: {e}")
         raise HTTPException(
@@ -198,6 +203,7 @@ class ExpenseData(BaseModel):
     total: Optional[float] = None
     currency: Optional[str] = "USD"
     payment_method: Optional[str] = None
+    category: Optional[str] = "other"
 
 
 @router.post("/save-expense")
@@ -219,6 +225,7 @@ async def save_expense(
             "total": expense.total,
             "currency": expense.currency,
             "payment_method": expense.payment_method,
+            "category": expense.category or "other",
         }
         result = supabase.table("expenses").insert(row).execute()
         return {"success": True, "id": result.data[0]["id"] if result.data else None}

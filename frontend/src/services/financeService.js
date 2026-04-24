@@ -115,6 +115,18 @@ export async function recordSettlement({ tripId, toUserId, amount, currency = 'U
   return response.json();
 }
 
+export async function getSettlementSummary(tripId) {
+  const response = await fetch(`${API_BASE}/finance/trips/${tripId}/settlement-summary`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to load settlement summary');
+  }
+
+  return response.json();
+}
+
 export async function getTripSettlements(tripId) {
   const response = await fetch(`${API_BASE}/finance/settlements/${tripId}`, {
     headers: { Authorization: `Bearer ${getToken()}` },

@@ -19,7 +19,7 @@ import Expenses from "./app/pages/Expenses.jsx";
 import Message from "./app/pages/Message.jsx";
 import Booking from "./app/pages/Booking.jsx";
 import Calendar from "./app/pages/Calendar.jsx";
-import TravelSuggestion from "./app/pages/TravelSuggestion.jsx"; 
+import TravelSuggestion from "./app/pages/TravelSuggestion.jsx";
 import Todo from "./app/pages/Todo.jsx";
 
 import Finance from "./app/pages/Finance.jsx";
@@ -29,6 +29,12 @@ import ChatWidget from "./components/ChatWidget.jsx";
 import Emergency from "./app/pages/Emergency.jsx";
 import Gallery from "./app/pages/Gallery.jsx";
 import OfflineBanner from "./components/OfflineBanner.jsx";
+import InstallPrompt from "./components/InstallPrompt.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import StoryMode from "./components/StoryMode.jsx";
+import JoinTrip from "./app/pages/JoinTrip.jsx";
+import MobileNav from "./components/MobileNav.jsx";
+import Notifications from "./app/pages/Notifications";
 
 
 // Layout that injects the floating AI chat widget and network status on authenticated pages
@@ -36,44 +42,90 @@ function AuthLayout() {
   return (
     <>
       <OfflineBanner />
-      <Outlet />
+      {/* pb-16 gives content room above the mobile bottom nav; cancelled on md+ */}
+      <div className="pb-16 md:pb-0">
+        <Outlet />
+      </div>
       <ChatWidget />
+      <InstallPrompt />
+      <MobileNav />
     </>
   );
 }
 
 const router = createBrowserRouter([
-    // Public routes (no chat widget)
-    { path: "/", element: <Landing /> },
-    { path: "/about", element: <About /> },
-    { path: "/contactus", element: <ContactUs /> },
-    { path: "/service", element: <Service /> },
-    { path: "/feedback", element: <Feedback /> },
-    { path: "/login", element: <Login /> },
-    { path: "/signup", element: <SignUp /> },
-    { path: "/resetpassword", element: <ResetPassword /> },
-    { path: "/otp", element: <OTP /> },
-    { path: "/newpassword", element: <NewPassword /> },
-
-    // Authenticated routes (chat widget available)
+    // Top-level ErrorBoundary wraps all routes
     {
-      element: <AuthLayout />,
+      element: (
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
+      ),
       children: [
-        { path: "/dashboard", element: <Dashboard /> },
-        { path: "/settings", element: <Settings /> },
-        { path: "/profile", element: <Profile /> },
-        { path: "/navigation", element: <Navigation /> },
-        { path: "/expenses", element: <Expenses /> },
-        { path: "/message", element: <Message /> },
-        { path: "/booking", element: <Booking /> },
-        { path: "/calendar", element: <Calendar /> },
-        { path: "/finance", element: <Finance /> },
-        { path: "/vote",    element: <GroupVote /> },
-        { path: "/welcome", element: <WelcomeAfterLogin /> },
-        { path: "/suggestions", element: <TravelSuggestion /> },
-        { path: "/todo", element: <Todo /> },
-        { path: "/emergency", element: <Emergency /> },
-        { path: "/gallery", element: <Gallery /> }
+        // Public routes (no chat widget)
+        { path: "/", element: <Landing /> },
+        { path: "/about", element: <About /> },
+        { path: "/contactus", element: <ContactUs /> },
+        { path: "/service", element: <Service /> },
+        { path: "/feedback", element: <Feedback /> },
+        { path: "/login", element: <Login /> },
+        { path: "/signup", element: <SignUp /> },
+        { path: "/resetpassword", element: <ResetPassword /> },
+        { path: "/otp", element: <OTP /> },
+        { path: "/newpassword", element: <NewPassword /> },
+        { path: "/join/:token", element: <JoinTrip /> },
+
+        // Authenticated routes (chat widget available)
+        {
+          element: <AuthLayout />,
+          children: [
+            {
+              path: "/dashboard",
+              element: (
+                <ErrorBoundary>
+                  <Dashboard />
+                </ErrorBoundary>
+              ),
+            },
+            { path: "/settings", element: <Settings /> },
+            { path: "/profile", element: <Profile /> },
+            {
+              path: "/navigation",
+              element: (
+                <ErrorBoundary>
+                  <Navigation />
+                </ErrorBoundary>
+              ),
+            },
+            { path: "/expenses", element: <Expenses /> },
+            { path: "/message", element: <Message /> },
+            { path: "/booking", element: <Booking /> },
+            { path: "/calendar", element: <Calendar /> },
+            { path: "/finance", element: <Finance /> },
+            { path: "/vote",    element: <GroupVote /> },
+            { path: "/welcome", element: <WelcomeAfterLogin /> },
+            { path: "/suggestions", element: <TravelSuggestion /> },
+            { path: "/todo", element: <Todo /> },
+            { path: "/emergency", element: <Emergency /> },
+            { path: "/notifications", element: <Notifications /> },
+            {
+              path: "/gallery",
+              element: (
+                <ErrorBoundary>
+                  <Gallery />
+                </ErrorBoundary>
+              ),
+            },
+            {
+              path: "/trips/:tripId/story",
+              element: (
+                <ErrorBoundary>
+                  <StoryMode />
+                </ErrorBoundary>
+              ),
+            },
+          ],
+        },
       ],
     },
     { path: "*", element: <NotFound /> },
