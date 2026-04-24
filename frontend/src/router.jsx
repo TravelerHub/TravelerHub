@@ -1,4 +1,5 @@
 import { createBrowserRouter, Outlet } from "react-router-dom";
+import NotFound from "./app/pages/NotFound";
 
 import Landing from "./app/pages/Landing.jsx";
 import About from "./app/pages/About.jsx";
@@ -75,6 +76,7 @@ const router = createBrowserRouter([
         { path: "/gallery", element: <Gallery /> }
       ],
     },
+    { path: "*", element: <NotFound /> },
 ]);
 
 export default router;
