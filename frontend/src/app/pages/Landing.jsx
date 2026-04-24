@@ -207,16 +207,20 @@ and memories all in one place.
 <div className="mt-8 flex justify-end gap-3" style={revealStyle(heroReady, 0.7)}>
 <button
 onClick={() => navigate("/signup")}
-className="px-8 py-3.5 rounded-xl font-semibold text-black transition-all duration-200 shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+className="px-8 py-3.5 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl hover:-translate-y-0.5"
 style={{
-background: "#fbfbf2",
+background: "#c8a96e",
+color: "#160f29",
 animation: heroReady ? "tealPulse 3s ease-in-out 2s infinite" : "none",
 }}
 >
-Start Planning
+Get started free
 </button>
 <button
-onClick={() => navigate("/login")}
+onClick={() => {
+const el = document.getElementById("features");
+if (el) el.scrollIntoView({ behavior: "smooth" });
+}}
 className="px-8 py-3.5 rounded-xl font-semibold text-white transition-all duration-200 hover:-translate-y-0.5"
 style={{
 background: "rgba(24,58,55,0.5)",
@@ -224,7 +228,7 @@ backdropFilter: "blur(8px)",
 border: "1px solid rgba(255,255,255,0.18)",
 }}
 >
-Log In
+See how it works
 </button>
 </div>
 </div>
@@ -263,7 +267,29 @@ style={{ color: "rgba(255,255,255,0.4)" }}
 </div>
 </div>
 
-
+{/* ══ TRUSTED BY TRAVELERS STATS BAR ══════════════════════════════════ */}
+<div
+className="border-b py-6"
+style={{ background: "#160f29", borderColor: "rgba(255,255,255,0.07)" }}
+>
+<div className="max-w-3xl mx-auto px-6 flex items-center justify-center gap-0 flex-wrap">
+{[
+{ value: "10,000+", label: "trips planned" },
+{ value: "50,000+", label: "expenses tracked" },
+{ value: "4.9★", label: "average rating" },
+].map((stat, i) => (
+<div key={stat.label} className="flex items-center">
+<div className="flex flex-col items-center px-8 py-1 text-center">
+<span className="text-2xl font-bold" style={{ color: "#c8a96e" }}>{stat.value}</span>
+<span className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>{stat.label}</span>
+</div>
+{i < 2 && (
+<div className="w-px h-8 shrink-0" style={{ background: "rgba(255,255,255,0.12)" }} />
+)}
+</div>
+))}
+</div>
+</div>
 
 {/* ══ HOW IT WORKS ═════════════════════════════════════════════════════ */}
 <section ref={howRef} style={{ background: "#fbfbf2" }}>
@@ -326,7 +352,7 @@ style={{ background: "#183a37" }}
 </section>
 
 {/* ══ FEATURES ═════════════════════════════════════════════════════════ */}
-<section style={{ background: "#000000", color: "#ffffff" }}>
+<section id="features" style={{ background: "#000000", color: "#ffffff" }}>
 <div className="max-w-6xl mx-auto px-6 py-20">
 
 <div ref={featRef} className="text-center" style={revealStyle(featVisible)}>
@@ -592,6 +618,41 @@ Learn More
 </span>
 ))}
 </div>
+</div>
+</div>
+</section>
+
+{/* ══ DEMO CTA ═════════════════════════════════════════════════════════ */}
+<section style={{ background: "#183a37" }}>
+<div className="max-w-3xl mx-auto px-6 py-20 text-center">
+<h2 className="text-3xl md:text-4xl font-bold text-white leading-tight">
+Ready to plan your next adventure?
+</h2>
+<p className="mt-4 text-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.6)" }}>
+Join thousands of travelers who plan smarter with TravelHub — free forever.
+</p>
+<div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+<button
+onClick={() => navigate("/signup")}
+className="px-8 py-3.5 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+style={{ background: "#c8a96e", color: "#160f29" }}
+>
+Start planning for free →
+</button>
+<button
+onClick={() => {
+const el = document.getElementById("features");
+if (el) el.scrollIntoView({ behavior: "smooth" });
+}}
+className="px-8 py-3.5 rounded-xl font-semibold text-white transition-all duration-200 hover:-translate-y-0.5"
+style={{
+background: "rgba(255,255,255,0.1)",
+backdropFilter: "blur(8px)",
+border: "1px solid rgba(255,255,255,0.2)",
+}}
+>
+Watch demo
+</button>
 </div>
 </div>
 </section>
