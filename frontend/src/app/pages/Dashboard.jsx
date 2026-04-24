@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import LoadingSpinner from "../../components/LoadingSpinner.jsx";
 import { API_BASE } from "../../config";
+import { apiFetch } from "../../services/api.js";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
 import { setActiveGroupId } from "../../services/groupService";
@@ -16,6 +18,8 @@ import LocalInfoWidget     from "../../components/dashboard/LocalInfoWidget.jsx"
 import BookingSummaryWidget from "../../components/dashboard/BookingSummaryWidget.jsx";
 import GalleryWidget       from "../../components/dashboard/GalleryWidget.jsx";
 import ActivityFeed        from "../../components/ActivityFeed.jsx";
+import EmptyState          from "../../components/EmptyState.jsx";
+import OnboardingModal     from "../../components/OnboardingModal.jsx";
 
 // ── Color palette ─────────────────────────────────────────────────────────────
 // #160f29  deep dark   (sidebar, widget backgrounds)
@@ -59,90 +63,94 @@ export default function Dashboard() {
   const [members,          setMembers]          = useState([]);
   const [loadingMembers,   setLoadingMembers]   = useState(false);
 
-  const [latestConversations, setLatestConversations] = useState([]);
-  const [upcomingBookings,    setUpcomingBookings]    = useState([]);
-  const [activeTripId,        setActiveTripId]        = useState(
+  const [showInviteModal,  setShowInviteModal]  = useState(false);
+  const [inviteUrl,        setInviteUrl]        = useState("");
+  const [inviteExpiresAt,  setInviteExpiresAt]  = useState("");
+  const [inviteLoading,    setInviteLoading]    = useState(false);
+  const [inviteCopied,     setInviteCopied]     = useState(false);
+
+  const [activeTripId, setActiveTripId] = useState(
     () => localStorage.getItem("active_group_id") || localStorage.getItem("activeGroupId") || null
   );
 
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  const queryClient = useQueryClient();
+
+  // ── React Query: available users for invite modal ─────────────────────────
+  const { data: usersData } = useQuery({
+    queryKey: ["users-list"],
+    queryFn: () => apiFetch("/users/"),
+    enabled: !!user,
+  });
+  const availableUsersFromQuery = Array.isArray(usersData)
+    ? usersData.filter((u) => u.id !== user?.id)
+    : [];
+  // Merge with manually-set availableUsers so the modal checkbox list works
   useEffect(() => {
-    if (!user) return;
-    fetchLatestChat();
-    fetchUpcomingBookings();
-    fetchUsersForInvites();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const fetchUsersForInvites = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) return;
-      const res = await fetch(`${API_BASE}/users/`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return;
-      const users = await res.json();
-      const others = (Array.isArray(users) ? users : []).filter((u) => u.id !== user?.id);
-      setAvailableUsers(others);
-    } catch (err) {
-      console.error("fetchUsersForInvites:", err);
-      setAvailableUsers([]);
+    if (availableUsersFromQuery.length > 0) {
+      setAvailableUsers(availableUsersFromQuery);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usersData]);
 
-  // ── Data fetching ──────────────────────────────────────────────────────────
-  const fetchLatestChat = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) return;
-      const res = await fetch(`${API_BASE}/api/conversations`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setLatestConversations(Array.isArray(data) ? data.slice(0, 3) : []);
-      }
-    } catch (err) {
-      console.error("fetchLatestChat:", err);
-    }
-  };
+  // ── React Query: latest conversations ─────────────────────────────────────
+  const { data: conversationsData } = useQuery({
+    queryKey: ["conversations"],
+    queryFn: () => apiFetch("/api/conversations"),
+    enabled: !!user,
+  });
+  const latestConversations = Array.isArray(conversationsData)
+    ? conversationsData.slice(0, 3)
+    : [];
 
-  const fetchUpcomingBookings = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) return;
-      const tripsRes = await fetch(`${API_BASE}/groups/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!tripsRes.ok) return;
-      const tripsData = await tripsRes.json();
-      if (!tripsData?.length) return;
-      const tripId = tripsData[0]?.group_id || tripsData[0]?.id;
+  // ── React Query: upcoming bookings (depends on my groups first) ───────────
+  const { data: myGroupsData } = useQuery({
+    queryKey: ["my-groups"],
+    queryFn: () => apiFetch("/groups/me"),
+    enabled: !!user,
+  });
+
+  // Derive activeTripId from groups query result and keep it in sync
+  useEffect(() => {
+    if (myGroupsData?.length > 0) {
+      const tripId = myGroupsData[0]?.group_id || myGroupsData[0]?.id;
       if (tripId) setActiveTripId(tripId);
-      const bRes = await fetch(`${API_BASE}/api/bookings?trip_id=${tripId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (bRes.ok) {
-        const bData = await bRes.json();
-        const bookings = Array.isArray(bData?.data) ? bData.data : Array.isArray(bData) ? bData : [];
-        const now = new Date();
-        const upcoming = bookings
-          .filter((b) => {
-            const d = new Date(b.check_in || b.pickup_datetime || b.start_date || b.created_at);
-            return d >= now;
-          })
-          .sort((a, b) => {
-            const da = new Date(a.check_in || a.pickup_datetime || a.start_date || a.created_at);
-            const db = new Date(b.check_in || b.pickup_datetime || b.start_date || b.created_at);
-            return da - db;
-          })
-          .slice(0, 3);
-        setUpcomingBookings(upcoming);
-      }
-    } catch (err) {
-      console.error("fetchUpcomingBookings:", err);
     }
-  };
+  }, [myGroupsData]);
+
+  // Show onboarding modal for new users with zero trips
+  useEffect(() => {
+    if (myGroupsData !== undefined && myGroupsData?.length === 0 && !localStorage.getItem("onboarding_done")) {
+      setShowOnboarding(true);
+    }
+  }, [myGroupsData]);
+
+  const derivedTripId = myGroupsData?.length > 0
+    ? (myGroupsData[0]?.group_id || myGroupsData[0]?.id)
+    : activeTripId;
+
+  const { data: bookingsData, isLoading: loadingBookings } = useQuery({
+    queryKey: ["bookings", derivedTripId],
+    queryFn: async () => {
+      const bData = await apiFetch(`/api/bookings?trip_id=${derivedTripId}`);
+      const bookings = Array.isArray(bData?.data) ? bData.data : Array.isArray(bData) ? bData : [];
+      const now = new Date();
+      return bookings
+        .filter((b) => {
+          const d = new Date(b.check_in || b.pickup_datetime || b.start_date || b.created_at);
+          return d >= now;
+        })
+        .sort((a, b) => {
+          const da = new Date(a.check_in || a.pickup_datetime || a.start_date || a.created_at);
+          const db = new Date(b.check_in || b.pickup_datetime || b.start_date || b.created_at);
+          return da - db;
+        })
+        .slice(0, 3);
+    },
+    enabled: !!derivedTripId,
+  });
+  const upcomingBookings = bookingsData ?? [];
 
   // ── Create trip ────────────────────────────────────────────────────────────
   const handleCreateTrip = async (e) => {
@@ -176,6 +184,9 @@ export default function Dashboard() {
         if (createdGroupId) {
           setActiveGroupId(createdGroupId);
         }
+
+        queryClient.invalidateQueries({ queryKey: ["my-groups"] });
+        queryClient.invalidateQueries({ queryKey: ["bookings"] });
 
         setShowCreateModal(false);
         setNewTripName("");
@@ -223,6 +234,42 @@ export default function Dashboard() {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  // ── Invite link ────────────────────────────────────────────────────────────
+  const handleGenerateInviteLink = async (group) => {
+    setInviteLoading(true);
+    setInviteUrl("");
+    setInviteExpiresAt("");
+    setInviteCopied(false);
+    setShowInviteModal(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/groups/${group.group_id}/invite-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setInviteUrl(data.invite_url);
+        setInviteExpiresAt(data.expires_at);
+      } else {
+        const err = await res.json();
+        console.error("Invite link error:", err.detail);
+      }
+    } catch (err) {
+      console.error("Invite link error:", err);
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const handleCopyInviteLink = () => {
+    if (!inviteUrl) return;
+    navigator.clipboard.writeText(inviteUrl).then(() => {
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 2500);
+    });
   };
 
   // ── Guard ──────────────────────────────────────────────────────────────────
@@ -314,6 +361,18 @@ export default function Dashboard() {
             </button>
           </div>
 
+          {/* Empty state for users with no trips */}
+          {myGroupsData !== undefined && myGroupsData?.length === 0 && (
+            <div className="rounded-2xl mb-4" style={{ background: "#160f29" }}>
+              <EmptyState
+                icon="✈️"
+                title="No trips yet"
+                subtitle="Create your first trip and invite your crew."
+                action={{ label: "Plan a trip", onClick: () => { setShowCreateModal(true); setCreateError(""); } }}
+              />
+            </div>
+          )}
+
           <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1.4fr 1fr" }}>
 
             {/* ── ROW 1 · Weather (col 1-2) + Map Snapshot (col 3) ────────── */}
@@ -373,7 +432,20 @@ export default function Dashboard() {
 
             <Widget title="Upcoming Event" style={{ minHeight: "220px" }}>
               <div className="h-full flex flex-col gap-2 p-4 overflow-y-auto">
-                {upcomingBookings.length === 0 ? (
+                {loadingBookings ? (
+                  <div className="flex flex-col gap-3">
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} className="flex items-start gap-3 px-3 py-3 rounded-xl" style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
+                        <div className="animate-pulse bg-gray-200 rounded w-6 h-6 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                          <div className="animate-pulse bg-gray-200 rounded w-3/4 h-4" />
+                          <div className="animate-pulse bg-gray-200 rounded w-1/2 h-3" />
+                        </div>
+                        <div className="animate-pulse bg-gray-200 rounded-full w-16 h-5 shrink-0" />
+                      </div>
+                    ))}
+                  </div>
+                ) : upcomingBookings.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center gap-2">
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="#9ca3af" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -614,6 +686,83 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* ══ INVITE LINK MODAL ════════════════════════════════════════════════ */}
+      {showInviteModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+          <div className="rounded-2xl shadow-2xl max-w-md w-full p-6" style={{ background: "#fbfbf2" }}>
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="text-xl font-bold" style={{ color: "#160f29" }}>Invite Link</h3>
+                <p className="text-sm mt-0.5" style={{ color: "#5c6b73" }}>Share this link to invite people to the trip</p>
+              </div>
+              <button
+                onClick={() => setShowInviteModal(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/5 text-xl transition"
+                style={{ color: "#5c6b73" }}
+              >
+                ×
+              </button>
+            </div>
+
+            {inviteLoading ? (
+              <div className="flex flex-col items-center py-8 gap-3">
+                <div
+                  className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
+                  style={{ borderColor: "#183a37", borderTopColor: "transparent" }}
+                />
+                <p className="text-sm" style={{ color: "#5c6b73" }}>Generating invite link…</p>
+              </div>
+            ) : inviteUrl ? (
+              <>
+                <div
+                  className="rounded-xl px-4 py-3 mb-3 text-sm break-all font-mono select-all"
+                  style={{ background: "#f3f4f6", color: "#160f29", border: "1px solid #d1d5db" }}
+                >
+                  {inviteUrl}
+                </div>
+
+                <button
+                  onClick={handleCopyInviteLink}
+                  className="w-full py-2.5 rounded-xl font-semibold text-sm transition hover:opacity-90 mb-4"
+                  style={{ background: "#183a37", color: "#fbfbf2" }}
+                >
+                  {inviteCopied ? "Copied!" : "Copy Link"}
+                </button>
+
+                <p className="text-xs text-center" style={{ color: "#5c6b73" }}>
+                  Link expires in 7 days&nbsp;&middot;&nbsp;Max 50 uses
+                  {inviteExpiresAt && (
+                    <> &middot; Expires {new Date(inviteExpiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</>
+                  )}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-center py-4" style={{ color: "#dc2626" }}>
+                Failed to generate invite link. You may not have permission.
+              </p>
+            )}
+
+            <button
+              onClick={() => setShowInviteModal(false)}
+              className="mt-4 w-full py-2.5 rounded-xl font-medium text-sm transition hover:bg-black/5"
+              style={{ background: "#e8e8e0", color: "#160f29" }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ══ ONBOARDING MODAL ═════════════════════════════════════════════════ */}
+      {showOnboarding && (
+        <OnboardingModal
+          onClose={() => {
+            localStorage.setItem("onboarding_done", "1");
+            setShowOnboarding(false);
+          }}
+        />
+      )}
+
       {/* ══ MEMBERS MODAL ════════════════════════════════════════════════════ */}
       {showMembersModal && selectedGroup && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
@@ -623,13 +772,24 @@ export default function Dashboard() {
                 <h3 className="text-xl font-bold" style={{ color: "#160f29" }}>{selectedGroup.name}</h3>
                 <p className="text-sm mt-0.5" style={{ color: "#5c6b73" }}>Group members</p>
               </div>
-              <button
-                onClick={() => setShowMembersModal(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/5 text-xl transition"
-                style={{ color: "#5c6b73" }}
-              >
-                ×
-              </button>
+              <div className="flex items-center gap-2">
+                {selectedGroup.my_role === "leader" && (
+                  <button
+                    onClick={() => handleGenerateInviteLink(selectedGroup)}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg transition hover:opacity-80"
+                    style={{ background: "#183a37", color: "#fbfbf2" }}
+                  >
+                    Invite Link
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowMembersModal(false)}
+                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/5 text-xl transition"
+                  style={{ color: "#5c6b73" }}
+                >
+                  ×
+                </button>
+              </div>
             </div>
 
             {loadingMembers ? (

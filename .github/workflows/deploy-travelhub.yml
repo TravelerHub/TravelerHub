@@ -1,0 +1,51 @@
+name: Deploy TravelerHub
+
+on:
+  push:
+    branches: [main, Booking-and-Maps]
+
+jobs:
+  deploy:
+    name: Build & deploy on Hetzner
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Deploy via SSH
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$SERVER_IP" >> ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@$SERVER_IP << 'ENDSSH'
+            set -e
+            cd /opt/travelhub
+
+            echo "==> Pulling latest code..."
+            git pull origin Booking-and-Maps
+
+            echo "==> Building Docker image..."
+            docker build -t travelhub-backend:latest ./backend
+
+            echo "==> Replacing container..."
+            docker stop travelhub 2>/dev/null || true
+            docker rm   travelhub 2>/dev/null || true
+
+            docker run -d \
+              --restart always \
+              --name travelhub \
+              -p 8000:8000 \
+              --env-file /opt/travelhub/.env \
+              travelhub-backend:latest
+
+            echo "==> Waiting for startup..."
+            sleep 5
+            curl -sf http://localhost:8000/health \
+              || (echo "--- Container logs ---" && docker logs travelhub --tail 40 && exit 1)
+
+            docker image prune -f
+            echo "==> Deploy complete ✓"
+          ENDSSH

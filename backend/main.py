@@ -1,6 +1,10 @@
 import os
-from fastapi import FastAPI
+import time
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from routers import auth
 from routers import user
@@ -33,11 +37,30 @@ from routers import activity
 from routers import trip_todos
 from routers import media_comments
 from routers import cards
+from routers import suggestion
+from routers import story
+from routers import search
+from routers import invites
+from routers import export as export_router
+from routers import notifications
+from routers import push
 
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 _cors_env = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
 _allowed_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    ms = round((time.time() - start) * 1000)
+    print(f"{request.method} {request.url.path} → {response.status_code} ({ms}ms)")
+    return response
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -80,11 +103,22 @@ app.include_router(trip_todos.router)    # /todos (group-synced trip todos)
 app.include_router(media_comments.router)  # /media-comments (photo comments)
 app.include_router(cards.router)           # /cards (credit card optimizer)
 app.include_router(cards.budget_router)    # /finance/budget (trip budgets)
+app.include_router(suggestion.router)     # /suggestions (POI ranking)
+app.include_router(story.router)          # /trips/{trip_id}/story (shareable timeline)
+app.include_router(search.router)         # /search (global search across trips, expenses, photos)
+app.include_router(invites.router)        # /groups/invite/* (invite links)
+app.include_router(export_router.router)  # /export (iCal, CSV, JSON summary)
+app.include_router(notifications.router)  # /notifications
+app.include_router(push.router)            # /push (web push subscriptions)
 
 
 
 # testing default route
-@app.get("/") 
+@app.get("/")
 def root():
     #the data get send back to the client
     return {"message": "Hello World kinoko from TravelHub Backend!"}
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}

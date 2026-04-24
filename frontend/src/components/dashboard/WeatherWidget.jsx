@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 // Open-Meteo WMO weather interpretation codes
 const WMO_MAP = {
@@ -33,49 +34,78 @@ function getWeatherInfo(code) {
 }
 
 export default function WeatherWidget() {
-  const [weather, setWeather] = useState(null);
-  const [city,    setCity]    = useState("");
-  const [loading, setLoading] = useState(true);
-  const [denied,  setDenied]  = useState(false);
+  const [coords, setCoords] = useState(null);
+  const [denied, setDenied] = useState(false);
 
+  // Request geolocation once on mount
   useEffect(() => {
-    if (!navigator.geolocation) { setLoading(false); return; }
+    if (!navigator.geolocation) { setDenied(true); return; }
     navigator.geolocation.getCurrentPosition(
-      async ({ coords }) => {
-        try {
-          const { latitude: lat, longitude: lng } = coords;
-          const [weatherRes, geoRes] = await Promise.all([
-            fetch(
-              `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}` +
-              `&current=temperature_2m,weathercode,windspeed_10m,relative_humidity_2m` +
-              `&temperature_unit=fahrenheit&wind_speed_unit=mph`
-            ),
-            fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`),
-          ]);
-          const wData = await weatherRes.json();
-          const gData = await geoRes.json();
-          setWeather(wData.current);
-          setCity(
-            gData?.address?.city   ||
-            gData?.address?.town   ||
-            gData?.address?.county ||
-            gData?.address?.state  ||
-            "Your Location"
-          );
-        } catch {
-          // silently fail — widget degrades gracefully
-        } finally {
-          setLoading(false);
-        }
-      },
-      () => { setDenied(true); setLoading(false); }
+      ({ coords: { latitude: lat, longitude: lng } }) => setCoords({ lat, lng }),
+      () => setDenied(true)
     );
   }, []);
 
-  if (loading) {
+  // useQuery for weather + city name — staleTime 5 min (weather doesn't change often)
+  const { data: weatherData, isLoading: loading } = useQuery({
+    queryKey: ["weather", coords?.lat, coords?.lng],
+    queryFn: async () => {
+      const { lat, lng } = coords;
+      const [weatherRes, geoRes] = await Promise.all([
+        fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}` +
+          `&current=temperature_2m,weathercode,windspeed_10m,relative_humidity_2m` +
+          `&temperature_unit=fahrenheit&wind_speed_unit=mph`
+        ),
+        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`),
+      ]);
+      const wData = await weatherRes.json();
+      const gData = await geoRes.json();
+      return {
+        weather: wData.current,
+        city:
+          gData?.address?.city   ||
+          gData?.address?.town   ||
+          gData?.address?.county ||
+          gData?.address?.state  ||
+          "Your Location",
+      };
+    },
+    enabled: !!coords,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  const weather = weatherData?.weather ?? null;
+  const city    = weatherData?.city    ?? "";
+
+  if (!coords && !denied) {
+    // Still waiting for geolocation permission response
     return (
-      <div className="h-full flex items-center justify-center p-4">
-        <span className="text-xs animate-pulse" style={{ color: "#9ca3af" }}>Fetching weather…</span>
+      <div className="h-full flex items-center gap-6 px-5 py-3">
+        {/* Icon + temp skeleton */}
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="animate-pulse bg-gray-200 rounded-full w-10 h-10" />
+          <div className="flex flex-col gap-1.5">
+            <div className="animate-pulse bg-gray-200 rounded w-16 h-7" />
+            <div className="animate-pulse bg-gray-200 rounded w-20 h-3" />
+          </div>
+        </div>
+        {/* Divider */}
+        <div className="h-10 w-px shrink-0" style={{ background: "rgba(0,0,0,0.08)" }} />
+        {/* City + stats skeleton */}
+        <div className="flex-1 min-w-0 flex flex-col gap-2">
+          <div className="animate-pulse bg-gray-200 rounded w-32 h-4" />
+          <div className="flex gap-4">
+            <div className="animate-pulse bg-gray-200 rounded w-16 h-3" />
+            <div className="animate-pulse bg-gray-200 rounded w-20 h-3" />
+          </div>
+        </div>
+        {/* Day skeleton */}
+        <div className="shrink-0 flex flex-col gap-1.5 items-end">
+          <div className="animate-pulse bg-gray-200 rounded w-16 h-3" />
+          <div className="animate-pulse bg-gray-200 rounded w-12 h-3" />
+        </div>
       </div>
     );
   }

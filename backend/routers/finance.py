@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from supabase_client import supabase
 from utils import oauth2
+from services.anomaly_detection import ExpenseAnomalyDetector
 
 router = APIRouter(
     prefix="/finance",
@@ -220,6 +221,69 @@ def create_transaction(
     except Exception as e:
         print(f"Error creating transaction: {e}")
         raise HTTPException(status_code=500, detail="Error creating transaction")
+
+
+@router.get("/trips/{trip_id}/expenses/anomalies")
+def get_expense_anomalies(
+    trip_id: str,
+    current_user=Depends(oauth2.get_current_user),
+):
+    """
+    Detect anomalous expenses for a trip using Isolation Forest (z-score fallback
+    for categories with fewer than 5 samples).
+    Returns only flagged expenses (is_anomaly=True).
+    """
+    try:
+        user_id = current_user.get("id") or current_user.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
+
+        _ensure_trip_member(trip_id, user_id)
+
+        result = (
+            supabase.table("expenses")
+            .select("id, merchant_name, place_name, category, total, date, currency, created_at")
+            .eq("trip_id", trip_id)
+            .execute()
+        )
+
+        rows = result.data or []
+
+        # Build expense dicts for the detector
+        expenses = []
+        for row in rows:
+            total_value = float(row.get("total") or 0)
+            expenses.append({
+                "id": row.get("id"),
+                "amount": abs(total_value),
+                "category": row.get("category") or "Other",
+                "merchant": row.get("merchant_name") or row.get("place_name") or "Unknown",
+                "date": row.get("date") or (str(row.get("created_at") or "")[:10] or None),
+            })
+
+        detector = ExpenseAnomalyDetector()
+        analyzed = detector.detect(expenses)
+
+        flagged = [
+            {
+                "id": e["id"],
+                "amount": e["amount"],
+                "category": e["category"],
+                "merchant": e["merchant"],
+                "date": e["date"],
+                "anomaly_score": e["anomaly_score"],
+            }
+            for e in analyzed
+            if e.get("is_anomaly")
+        ]
+
+        return {"anomalies": flagged, "total_expenses_checked": len(expenses)}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error detecting expense anomalies: {e}")
+        raise HTTPException(status_code=500, detail="Error detecting expense anomalies")
 
 
 @router.delete("/transactions/{transaction_id}")

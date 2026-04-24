@@ -1,5 +1,9 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from supabase_client import supabase
+
+limiter = Limiter(key_func=get_remote_address)
 
 from schemas import SignupRequest, LoginRequest, OtpRequest, OtpVerifyRequest  
 
@@ -40,7 +44,8 @@ def _get_or_create_user_symmetric_key(user_id: str) -> str:
 # sign up for the new user
 
 @router.post("/signup", status_code=status.HTTP_201_CREATED)
-def signup(data: SignupRequest):
+@limiter.limit("10/minute")
+def signup(request: Request, data: SignupRequest):
     # Check email uniqueness
     existing_email = (
         supabase
@@ -112,7 +117,8 @@ def signup(data: SignupRequest):
 # LOGIN
 # ----------------
 @router.post("/login")
-def login(data: LoginRequest):
+@limiter.limit("10/minute")
+def login(request: Request, data: LoginRequest):
     # Get user by username
     res = (
         supabase

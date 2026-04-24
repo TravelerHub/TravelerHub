@@ -216,23 +216,32 @@ function HotelSearchModal({ open, onClose, onSave }) {
   );
 }
 
-function CarSearchModal({ open, onClose }) {
+function CarSearchModal({ open, onClose, onAddManually }) {
   return (
-    <Modal open={open} title="🚗 Add Car Rental" onClose={onClose}>
-      <div className="rounded-xl p-4 mb-5" style={{ background: "#f3f4f6", border: "1px solid #e5e7eb" }}>
-        <p className="text-sm font-semibold mb-1" style={{ color: "#160f29" }}>Car rental search is unavailable</p>
-        <p className="text-sm" style={{ color: "#5c6b73" }}>
-          The current booking provider (Amadeus free tier) does not include car rental search.
-          Close this dialog and use the <strong>+ Add Booking</strong> button to log a car rental manually — just enter the vendor, dates, confirmation code, and cost.
-        </p>
-      </div>
-      <button
-        onClick={onClose}
-        className="px-5 py-2.5 rounded-xl text-sm font-semibold transition hover:bg-gray-800"
-        style={{ background: "#160f29", color: "#fff" }}
+    <Modal open={open} title="🚗 Car Rentals" onClose={onClose}>
+      <div
+        className="rounded-2xl p-5 mb-5 flex flex-col gap-3"
+        style={{ background: "#f3f4f6", border: "1px solid #e5e7eb" }}
       >
-        Got it — I'll add manually
-      </button>
+        <div className="flex items-center gap-3">
+          <span className="text-3xl">🚗</span>
+          <div>
+            <p className="font-semibold text-base" style={{ color: "#160f29" }}>
+              Add Car Rental Manually
+            </p>
+            <p className="text-sm mt-0.5" style={{ color: "#5c6b73" }}>
+              Car search isn't available yet. Add your rental details below.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => { onClose(); onAddManually({ type: "car" }); }}
+          className="self-start px-5 py-2.5 rounded-xl text-sm font-semibold transition hover:bg-gray-800"
+          style={{ background: "#160f29", color: "#fff" }}
+        >
+          + Add Car Rental
+        </button>
+      </div>
     </Modal>
   );
 }
@@ -753,7 +762,7 @@ export default function Booking({ tripId: tripIdProp }) {
 
       {/* Search modals */}
       <HotelSearchModal open={hotelOpen} onClose={() => setHotelOpen(false)} onSave={handleSearchSave} />
-      <CarSearchModal   open={carOpen}   onClose={() => setCarOpen(false)}   onSave={handleSearchSave} />
+      <CarSearchModal   open={carOpen}   onClose={() => setCarOpen(false)}   onAddManually={openCreate} />
       <ToursSearchModal open={toursOpen} onClose={() => setToursOpen(false)} onSave={handleSearchSave} />
     </div>
   );

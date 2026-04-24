@@ -1,10 +1,12 @@
 import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE } from '../../config';
+import { haptic } from '../../utils/haptic';
 import { analyzeReceipt, analyzeDocument } from "../../services/visionService.js";
 import { saveChecklist } from "../../services/checklistService.js";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
+import { capturePhoto } from '../../utils/nativeCamera';
 
 import {
   CameraIcon,
@@ -46,6 +48,9 @@ function Expenses() {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState(null);
 
+  // Category auto-detection state
+  const [categoryAutoDetected, setCategoryAutoDetected] = useState(false);
+
   // Checklist state
   const [checklistChecked, setChecklistChecked] = useState({});
   const [savingChecklist, setSavingChecklist] = useState(false);
@@ -61,14 +66,30 @@ function Expenses() {
     setError("");
   };
 
-  // Handle camera capture
-  const handleCameraCapture = (e) => {
+  // Handle camera input onChange (hidden file input fallback)
+  const handleCameraInputChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setSelectedFile(file);
     setPreview(URL.createObjectURL(file));
     setResult(null);
     setError("");
+  };
+
+  // Native camera capture via Capacitor (falls back to file picker on web)
+  const handleCameraCapture = async () => {
+    try {
+      const file = await capturePhoto();
+      if (file) {
+        setSelectedFile(file);
+        setPreview(URL.createObjectURL(file));
+        setResult(null);
+        setError("");
+      }
+    } catch (err) {
+      console.error('Camera capture failed:', err);
+      setError("Could not open camera. Please try uploading a file instead.");
+    }
   };
 
   // Analyze the image
@@ -86,6 +107,9 @@ function Expenses() {
       if (response.success) {
         setResult(response.data);
         setEditData(response.data);
+        if (mode === "receipt" && response.data.category) {
+          setCategoryAutoDetected(true);
+        }
       } else {
         setError(response.error || "Could not analyze the image. Try a clearer photo.");
       }
@@ -105,6 +129,7 @@ function Expenses() {
     setEditData(null);
     setError("");
     setIsEditing(false);
+    setCategoryAutoDetected(false);
   };
 
   // Save expense to database
@@ -121,6 +146,7 @@ function Expenses() {
         body: JSON.stringify(data),
       });
       if (response.ok) {
+        haptic('light');
         alert("Expense saved successfully!");
         handleClear();
       } else {
@@ -276,14 +302,14 @@ function Expenses() {
                       JPEG, PNG, or WebP · max 10 MB
                     </p>
 
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 flex-wrap justify-center">
                       <button
-                        onClick={() => cameraInputRef.current.click()}
+                        onClick={handleCameraCapture}
                         className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition"
                         style={{ background: "#160f29", color: "#fbfbf2" }}
                       >
                         <CameraIcon className="w-4 h-4" />
-                        Camera
+                        📷 Scan Receipt
                       </button>
                       <button
                         onClick={() => fileInputRef.current.click()}
@@ -300,7 +326,7 @@ function Expenses() {
                       type="file"
                       accept="image/*"
                       capture="environment"
-                      onChange={handleCameraCapture}
+                      onChange={handleCameraInputChange}
                       className="hidden"
                     />
                     <input
@@ -447,6 +473,40 @@ function Expenses() {
                           <p className="text-sm font-semibold" style={{ color: "#160f29" }}>
                             {result.date || "—"}
                           </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Category */}
+                    <div>
+                      <p className="text-xs font-medium mb-1" style={{ color: "#5c6b73" }}>Category</p>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={(isEditing ? editData.category : result.category) || "other"}
+                          onChange={(e) => {
+                            setCategoryAutoDetected(false);
+                            if (isEditing) {
+                              setEditData({ ...editData, category: e.target.value });
+                            } else {
+                              setResult({ ...result, category: e.target.value });
+                            }
+                          }}
+                          className="px-3 py-2 rounded-lg text-sm"
+                          style={{ border: "1px solid #d1d5db", background: "#fff", color: "#160f29" }}
+                        >
+                          <option value="food">Food</option>
+                          <option value="transport">Transport</option>
+                          <option value="lodging">Lodging</option>
+                          <option value="activities">Activities</option>
+                          <option value="shopping">Shopping</option>
+                          <option value="health">Health</option>
+                          <option value="entertainment">Entertainment</option>
+                          <option value="other">Other</option>
+                        </select>
+                        {categoryAutoDetected && (
+                          <span className="text-xs font-medium" style={{ color: "#16a34a" }}>
+                            ✓ Auto-detected
+                          </span>
                         )}
                       </div>
                     </div>
