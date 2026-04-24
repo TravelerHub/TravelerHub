@@ -6,36 +6,34 @@ on:
 
 jobs:
   deploy:
-    name: SSH deploy to Hetzner
+    name: Build & deploy on Hetzner
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up SSH
+      - name: Deploy via SSH
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.SERVER_IP }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -H "$SERVER_IP" >> ~/.ssh/known_hosts
 
-      - name: Deploy to server
-        env:
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-        run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@$SERVER_IP << 'ENDSSH'
             set -e
+            cd /opt/travelhub
 
-            echo "==> Pulling latest image..."
-            docker pull travelhub-backend:latest
+            echo "==> Pulling latest code..."
+            git pull origin Booking-and-Maps
 
-            echo "==> Stopping old container (if running)..."
+            echo "==> Building Docker image..."
+            docker build -t travelhub-backend:latest ./backend
+
+            echo "==> Replacing container..."
             docker stop travelhub 2>/dev/null || true
             docker rm   travelhub 2>/dev/null || true
 
-            echo "==> Starting new container..."
             docker run -d \
               --restart always \
               --name travelhub \
@@ -43,12 +41,11 @@ jobs:
               --env-file /opt/travelhub/.env \
               travelhub-backend:latest
 
-            echo "==> Waiting for health check..."
-            sleep 4
-            curl -sf http://localhost:8000/ || (docker logs travelhub --tail 30 && exit 1)
+            echo "==> Waiting for startup..."
+            sleep 5
+            curl -sf http://localhost:8000/health \
+              || (echo "--- Container logs ---" && docker logs travelhub --tail 40 && exit 1)
 
-            echo "==> Cleaning up old images..."
             docker image prune -f
-
-            echo "==> Deploy complete."
+            echo "==> Deploy complete ✓"
           ENDSSH
