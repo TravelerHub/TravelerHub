@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import LoadingSpinner from "../../components/LoadingSpinner.jsx";
 import { API_BASE } from "../../config";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
@@ -632,7 +633,9 @@ export default function Dashboard() {
             </div>
 
             {loadingMembers ? (
-              <p className="text-sm py-6 text-center" style={{ color: "#5c6b73" }}>Loading members…</p>
+              <div className="py-6 flex items-center justify-center">
+                <LoadingSpinner text="Loading your trips..." />
+              </div>
             ) : members.length === 0 ? (
               <p className="text-sm py-6 text-center" style={{ color: "#5c6b73" }}>No members found.</p>
             ) : (
