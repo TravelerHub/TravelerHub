@@ -43,6 +43,7 @@ from routers import search
 from routers import invites
 from routers import export as export_router
 from routers import notifications
+from routers import push
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
@@ -108,11 +109,16 @@ app.include_router(search.router)         # /search (global search across trips,
 app.include_router(invites.router)        # /groups/invite/* (invite links)
 app.include_router(export_router.router)  # /export (iCal, CSV, JSON summary)
 app.include_router(notifications.router)  # /notifications
+app.include_router(push.router)            # /push (web push subscriptions)
 
 
 
 # testing default route
-@app.get("/") 
+@app.get("/")
 def root():
     #the data get send back to the client
     return {"message": "Hello World kinoko from TravelHub Backend!"}
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
