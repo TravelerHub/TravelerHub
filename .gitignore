@@ -47,3 +47,6 @@ CLAUDE.md
 *.mov
 *.avi
 *.mkv
+# Environment files with real secrets
+frontend/.env.production
+frontend/.env.local
