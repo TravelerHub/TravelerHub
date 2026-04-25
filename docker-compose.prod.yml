@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: travelhub-backend
+    ports:
+      - "127.0.0.1:8000:8000"   # only accessible to host nginx, not public
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        # docker compose reads these from .env automatically
+        VITE_API_URL: ${VITE_API_URL}
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+        VITE_MAPBOX_TOKEN: ${VITE_MAPBOX_TOKEN}
+        VITE_GOOGLE_PLACES_API_KEY: ${VITE_GOOGLE_PLACES_API_KEY}
+    container_name: travelhub-frontend
+    ports:
+      - "127.0.0.1:3000:80"     # only accessible to host nginx, not public
+    depends_on:
+      - backend
+    restart: unless-stopped
