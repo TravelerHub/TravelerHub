@@ -1,60 +1,45 @@
 """
 flights_service.py
-SerpApi Google Flights – real-time flight search via Google Flights data.
+Google Flights data via fast-flights — no API key, no sign-up, completely free.
 
-Environment variable required:
-  SERPAPI_KEY   — free key (250 req/month) at serpapi.com
+pip install fast-flights  (already in requirements.txt)
 
-httpx is used for async HTTP (already in requirements.txt).
+fast-flights decodes Google Flights Protobuf responses directly. It requires
+no credentials and is maintained as of early 2025. The tradeoff is that it
+can break if Google changes their internal API — wrap calls defensively.
 """
 
-import os
-import httpx
+import asyncio
+from fast_flights import FlightData, Passengers, get_flights
 
-SERPAPI_BASE = "https://serpapi.com/search"
+_SEAT_MAP = {
+    "ECONOMY":         "economy",
+    "PREMIUM_ECONOMY": "premium-economy",
+    "BUSINESS":        "business",
+    "FIRST":           "first",
+}
 
 
-def _api_key() -> str:
-    return os.environ.get("SERPAPI_KEY", "")
+def _parse_flight(flight, origin: str, destination: str, departure_date: str) -> dict:
+    """Normalise a fast-flights Flight object into the TravelerHub flight shape."""
+    price_str = ""
+    if flight.price:
+        # price is a string like "$250" or "250 USD" — strip currency symbols
+        price_str = flight.price.replace("$", "").replace("USD", "").replace(",", "").strip()
 
-
-def _parse_flight_group(flights_list: list) -> list:
-    """Parse best_flights or other_flights arrays from SerpApi response."""
-    results = []
-    for option in flights_list:
-        legs = option.get("flights", [])
-        if not legs:
-            continue
-
-        first_leg = legs[0]
-        last_leg  = legs[-1]
-
-        dep_airport = first_leg.get("departure_airport", {})
-        arr_airport = last_leg.get("arrival_airport", {})
-
-        airlines = [leg.get("airline", "") for leg in legs if leg.get("airline")]
-        airline  = airlines[0] if airlines else ""
-
-        stops = max(len(legs) - 1, 0)
-
-        total_minutes = option.get("total_duration", 0)
-        hours, mins   = divmod(total_minutes, 60)
-        duration_str  = f"{hours}h {mins}m"
-
-        results.append({
-            "id":             option.get("booking_token", f"{dep_airport.get('id','')}-{arr_airport.get('id','')}"),
-            "price":          str(option.get("price", "0")),
-            "currency":       "USD",
-            "origin":         dep_airport.get("id", ""),
-            "destination":    arr_airport.get("id", ""),
-            "departure_time": dep_airport.get("time", ""),
-            "arrival_time":   arr_airport.get("time", ""),
-            "duration":       duration_str,
-            "stops":          stops,
-            "airline":        airline,
-            "cabin_class":    option.get("travel_class", "ECONOMY"),
-        })
-    return results
+    return {
+        "id":             f"{origin}-{destination}-{flight.name}-{flight.departure}".replace(" ", "_"),
+        "price":          price_str or "0",
+        "currency":       "USD",
+        "origin":         origin.upper(),
+        "destination":    destination.upper(),
+        "departure_time": f"{departure_date}T{flight.departure}" if flight.departure else departure_date,
+        "arrival_time":   f"{departure_date}T{flight.arrival}" if flight.arrival else departure_date,
+        "duration":       flight.duration or "",
+        "stops":          flight.stops if isinstance(flight.stops, int) else (0 if flight.stops == "Nonstop" else 1),
+        "airline":        flight.name or "",
+        "cabin_class":    "ECONOMY",
+    }
 
 
 async def search_flights(
@@ -65,7 +50,7 @@ async def search_flights(
     travel_class: str = "ECONOMY",
 ) -> dict:
     """
-    Search for flight offers via SerpApi Google Flights.
+    Search for flights via fast-flights (no API key required).
 
     Args:
         origin:         IATA airport code (e.g. "LAX")
@@ -78,51 +63,34 @@ async def search_flights(
         {"data": [<flight>, ...], "error": None}  on success
         {"data": [],              "error": "<msg>"} on failure
     """
-    api_key = _api_key()
-    if not api_key:
-        return {
-            "data": [],
-            "error": "SERPAPI_KEY not configured. Get a free key (250 req/mo) at serpapi.com",
-        }
-
-    travel_class_map = {
-        "ECONOMY": 1, "PREMIUM_ECONOMY": 2, "BUSINESS": 3, "FIRST": 4,
-    }
-
-    params = {
-        "engine":         "google_flights",
-        "departure_id":   origin.upper(),
-        "arrival_id":     destination.upper(),
-        "outbound_date":  departure_date,
-        "adults":         adults,
-        "travel_class":   travel_class_map.get(travel_class.upper(), 1),
-        "currency":       "USD",
-        "hl":             "en",
-        "api_key":        api_key,
-    }
+    seat = _SEAT_MAP.get(travel_class.upper(), "economy")
 
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            resp = await client.get(SERPAPI_BASE, params=params)
-            resp.raise_for_status()
-            body = resp.json()
-
-        flights = (
-            _parse_flight_group(body.get("best_flights", []))
-            + _parse_flight_group(body.get("other_flights", []))
+        result = await asyncio.to_thread(
+            get_flights,
+            flight_data=[FlightData(date=departure_date, from_airport=origin.upper(), to_airport=destination.upper())],
+            trip="one-way",
+            seat=seat,
+            passengers=Passengers(adults=adults),
+            fetch_mode="fallback",
         )
-        return {"data": flights[:20], "error": None}
 
-    except httpx.HTTPStatusError as e:
-        return {"data": [], "error": f"SerpApi error {e.response.status_code}: {e.response.text[:200]}"}
+        if not result or not result.flights:
+            return {"data": [], "error": "No flights found for this route and date."}
+
+        flights = [
+            _parse_flight(f, origin, destination, departure_date)
+            for f in result.flights[:20]
+        ]
+        return {"data": flights, "error": None}
+
     except Exception as e:
-        return {"data": [], "error": str(e)}
+        return {"data": [], "error": f"Flight search unavailable: {str(e)}"}
 
 
 async def get_flight_details(offer_id: str) -> dict:
     """
-    SerpApi does not have a stateful offer-by-ID endpoint.
-    Clients should use the data returned directly from search_flights.
+    fast-flights does not store offer state — clients use search result data directly.
     """
     return {
         "data": {

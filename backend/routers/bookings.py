@@ -266,7 +266,7 @@ async def flights_save(body: FlightSaveBody):
         type="flight",
         title=title,
         vendor=flight.get("airline") or None,
-        source="serpapi",
+        source="google_flights",
         external_id=str(flight.get("id") or ""),
         start_time=body.departure_date if "T" in body.departure_date else f"{body.departure_date}T00:00:00",
         end_time=body.arrival_date if "T" in body.arrival_date else f"{body.arrival_date}T23:59:59",

@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS public.bookings (
     title           TEXT NOT NULL,
     vendor          TEXT,
     source          TEXT DEFAULT 'manual' CHECK (source = ANY (ARRAY[
-                        'booking.com', 'duffel', 'viator', 'rome2rio', 'manual', 'amadeus', 'serpapi'
+                        'booking.com', 'duffel', 'viator', 'rome2rio', 'manual', 'amadeus', 'google_flights'
                     ])),
     external_id     TEXT,
     external_ref    TEXT,
