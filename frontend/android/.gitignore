@@ -1,0 +1,15 @@
+# Android build outputs
+build/
+app/build/
+.gradle/
+local.properties
+
+# Android Studio
+.idea/
+*.iml
+.DS_Store
+
+# Capacitor generated web assets (built by `npm run build && npx cap sync`)
+app/src/main/assets/public/
+app/src/main/res/xml/config.xml
+capacitor-cordova-android-plugins/
