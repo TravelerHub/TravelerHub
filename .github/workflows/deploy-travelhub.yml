@@ -27,11 +27,13 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Write frontend env
+        working-directory: frontend
+        run: echo "${{ secrets.VITE_FRONTEND_ENV }}" > .env.production
+
       - name: Build frontend
         working-directory: frontend
         run: npm run build
-        # .env.production is committed — it contains only public VITE_ tokens
-        # (Supabase anon key, Mapbox public token, Google Places key, API URL)
 
       # ── 3. SSH setup ──────────────────────────────────────────────────────────
       - name: Set up SSH agent
