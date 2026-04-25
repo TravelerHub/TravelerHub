@@ -24,7 +24,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_card_profiles_default
 -- Trip budgets — per-category budget targets for a trip
 CREATE TABLE IF NOT EXISTS trip_budgets (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    trip_id         UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    trip_id         UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
     category        TEXT NOT NULL,   -- matches expense category names
     amount          NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
     currency        TEXT DEFAULT 'USD',
