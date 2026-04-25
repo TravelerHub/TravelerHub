@@ -3,8 +3,20 @@ import { Avatar, EmptyState } from "./ui";
 import MessageList from "./MessagerList";
 import { chatApi } from "./chatAPI";
 import { encryptionUtils } from "../../lib/encryption";
-import { PaperAirplaneIcon } from "@heroicons/react/24/outline";
+import { PaperAirplaneIcon, PhotoIcon, XMarkIcon, MicrophoneIcon, StopIcon, VideoCameraIcon } from "@heroicons/react/24/outline";
 import { API_BASE } from "../../config.js";
+
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_VOICE_BYTES = 15 * 1024 * 1024;
+const MAX_VOICE_SECONDS = 180;
+const MAX_VIDEO_BYTES = 40 * 1024 * 1024;
+
+function formatDuration(totalSeconds) {
+  const safe = Number.isFinite(totalSeconds) ? Math.max(0, Math.floor(totalSeconds)) : 0;
+  const minutes = Math.floor(safe / 60).toString().padStart(2, "0");
+  const seconds = (safe % 60).toString().padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
 
 // ── Typing indicator dots animation ─────────────────────────────────────────
 const typingDotsStyle = `
@@ -103,14 +115,30 @@ export default function ChatWindow({
 }) {
   const listRef      = useRef(null);
   const inputRef     = useRef(null);
+  const fileInputRef = useRef(null);
+  const videoInputRef = useRef(null);
   const wsRef        = useRef(null);
+  const voiceRecorderRef = useRef(null);
+  const voiceStreamRef = useRef(null);
+  const voiceTimerRef = useRef(null);
+  const voiceSecondsRef = useRef(0);
   const typingTimerRef = useRef(null);
   const isTypingRef  = useRef(false);
 
   const [text,            setText]            = useState("");
   const [localMessages,   setLocalMessages]   = useState(messages || []);
   const [encryptionError, setEncryptionError] = useState(null);
+  const [sendError,       setSendError]       = useState("");
   const [sending,         setSending]         = useState(false);
+  const [selectedImage,   setSelectedImage]   = useState(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState("");
+  const [selectedVideo, setSelectedVideo] = useState(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState("");
+  const [selectedVoiceNote, setSelectedVoiceNote] = useState(null);
+  const [voicePreviewUrl, setVoicePreviewUrl] = useState("");
+  const [voiceDurationSec, setVoiceDurationSec] = useState(0);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [typingUsers,     setTypingUsers]     = useState(new Map()); // user_id → username
   const [readStatus,      setReadStatus]      = useState(new Map()); // user_id → last_read_message_id
   const retryRef = useRef(null);
@@ -142,6 +170,209 @@ export default function ChatWindow({
     sendWsEvent({ type: "typing_stop", user_id: currentUserId });
   }, [currentUserId, sendWsEvent]);
 
+  const clearImageSelection = useCallback(() => {
+    setSelectedImage(null);
+    setImagePreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return "";
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
+  const clearVideoSelection = useCallback(() => {
+    setSelectedVideo(null);
+    setVideoPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return "";
+    });
+    if (videoInputRef.current) videoInputRef.current.value = "";
+  }, []);
+
+  const clearVoiceSelection = useCallback(() => {
+    setSelectedVoiceNote(null);
+    setVoiceDurationSec(0);
+    setVoicePreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return "";
+    });
+  }, []);
+
+  const stopVoiceRecording = useCallback(() => {
+    const recorder = voiceRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+    recorder.stop();
+  }, []);
+
+  const startVoiceRecording = useCallback(async () => {
+    if (sending) return;
+
+    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setSendError("Voice recording is not supported in this browser");
+      return;
+    }
+
+    try {
+      setSendError("");
+      sendTypingStop();
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+
+      clearImageSelection();
+      clearVideoSelection();
+      clearVoiceSelection();
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      voiceStreamRef.current = stream;
+
+      const mimeCandidates = [
+        "audio/webm;codecs=opus",
+        "audio/mp4",
+        "audio/webm",
+        "audio/ogg;codecs=opus",
+      ];
+
+      let selectedMimeType = "";
+      if (typeof MediaRecorder.isTypeSupported === "function") {
+        selectedMimeType = mimeCandidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+      }
+
+      const recorder = selectedMimeType
+        ? new MediaRecorder(stream, { mimeType: selectedMimeType })
+        : new MediaRecorder(stream);
+
+      const chunks = [];
+      voiceRecorderRef.current = recorder;
+      voiceSecondsRef.current = 0;
+      setRecordingSeconds(0);
+      setIsRecording(true);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+
+      recorder.onerror = () => {
+        setSendError("Failed to record voicemail");
+      };
+
+      recorder.onstop = () => {
+        setIsRecording(false);
+
+        if (voiceTimerRef.current) {
+          clearInterval(voiceTimerRef.current);
+          voiceTimerRef.current = null;
+        }
+
+        const activeStream = voiceStreamRef.current;
+        if (activeStream) {
+          activeStream.getTracks().forEach((track) => track.stop());
+          voiceStreamRef.current = null;
+        }
+
+        if (!chunks.length) return;
+
+        const blobType = recorder.mimeType || chunks[0].type || "audio/webm";
+        const blob = new Blob(chunks, { type: blobType });
+
+        if (blob.size > MAX_VOICE_BYTES) {
+          setSendError("Voice message is too large (max 15MB)");
+          return;
+        }
+
+        const extension =
+          blobType.includes("mp4") ? "mp4" :
+          blobType.includes("mpeg") ? "mp3" :
+          blobType.includes("wav") ? "wav" :
+          blobType.includes("ogg") ? "ogg" :
+          "webm";
+
+        const file = new File([blob], `voicemail_${Date.now()}.${extension}`, { type: blobType });
+
+        setSelectedVoiceNote(file);
+        setVoiceDurationSec(Math.max(voiceSecondsRef.current, 1));
+        setVoicePreviewUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return URL.createObjectURL(blob);
+        });
+      };
+
+      recorder.start(250);
+
+      voiceTimerRef.current = setInterval(() => {
+        voiceSecondsRef.current += 1;
+        setRecordingSeconds(voiceSecondsRef.current);
+
+        if (voiceSecondsRef.current >= MAX_VOICE_SECONDS) {
+          stopVoiceRecording();
+        }
+      }, 1000);
+    } catch {
+      const activeStream = voiceStreamRef.current;
+      if (activeStream) {
+        activeStream.getTracks().forEach((track) => track.stop());
+        voiceStreamRef.current = null;
+      }
+      setIsRecording(false);
+      setSendError("Microphone access failed. Please allow mic permission and try again.");
+    }
+  }, [clearImageSelection, clearVideoSelection, clearVoiceSelection, sendTypingStop, sending, stopVoiceRecording]);
+
+  const handleImagePick = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setSendError("Only image files can be attached");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    if (file.size > MAX_IMAGE_BYTES) {
+      setSendError("Image is too large (max 8MB)");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    setSendError("");
+    clearVideoSelection();
+    clearVoiceSelection();
+    setSelectedImage(file);
+    setImagePreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
+  }, [clearVideoSelection, clearVoiceSelection]);
+
+  const handleVideoPick = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const looksLikeVideo =
+      file.type.startsWith("video/") ||
+      /\.(mp4|webm|mov|m4v|ogg|ogv|mkv|3gp|3g2)$/i.test(file.name || "");
+
+    if (!looksLikeVideo) {
+      setSendError("Only video files can be attached");
+      if (videoInputRef.current) videoInputRef.current.value = "";
+      return;
+    }
+
+    if (file.size > MAX_VIDEO_BYTES) {
+      setSendError("Video is too large (max 40MB)");
+      if (videoInputRef.current) videoInputRef.current.value = "";
+      return;
+    }
+
+    setSendError("");
+    clearImageSelection();
+    clearVoiceSelection();
+    setSelectedVideo(file);
+    setVideoPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
+  }, [clearImageSelection, clearVoiceSelection]);
+
   const handleInputChange = useCallback((e) => {
     setText(e.target.value);
     // Auto-grow up to ~4 lines
@@ -163,7 +394,16 @@ export default function ChatWindow({
 
   const sendMessage = async () => {
     const trimmed = text.trim();
-    if (!trimmed || sending) return;
+    const hasImage = Boolean(selectedImage);
+    const hasVideo = Boolean(selectedVideo);
+    const hasVoice = Boolean(selectedVoiceNote);
+
+    if (isRecording) {
+      setSendError("Stop recording before sending your voicemail");
+      return;
+    }
+
+    if ((!trimmed && !hasImage && !hasVideo && !hasVoice) || sending) return;
 
     // Cancel any pending typing debounce and stop indicator
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
@@ -171,8 +411,42 @@ export default function ChatWindow({
 
     setSending(true);
     try {
-      setEncryptionError(null);
-      await chatApi.sendMessage(conversationID, trimmed);
+      setSendError("");
+      if (hasVoice) {
+        const uploadedVoice = await chatApi.uploadConversationVoicemail(conversationID, selectedVoiceNote);
+        await chatApi.sendMessage(conversationID, {
+          type: "audio",
+          audio_url: uploadedVoice.public_url,
+          caption: trimmed,
+          duration_sec: voiceDurationSec,
+          file_name: uploadedVoice.file_name || selectedVoiceNote.name,
+          mime_type: uploadedVoice.content_type || selectedVoiceNote.type,
+        });
+        clearVoiceSelection();
+      } else if (hasVideo) {
+        const uploadedVideo = await chatApi.uploadConversationVideo(conversationID, selectedVideo);
+        await chatApi.sendMessage(conversationID, {
+          type: "video",
+          video_url: uploadedVideo.public_url,
+          caption: trimmed,
+          file_name: uploadedVideo.file_name || selectedVideo.name,
+          mime_type: uploadedVideo.content_type || selectedVideo.type,
+        });
+        clearVideoSelection();
+      } else if (hasImage) {
+        const uploaded = await chatApi.uploadConversationImage(conversationID, selectedImage);
+        await chatApi.sendMessage(conversationID, {
+          type: "image",
+          image_url: uploaded.public_url,
+          caption: trimmed,
+          file_name: uploaded.file_name || selectedImage.name,
+          mime_type: uploaded.content_type || selectedImage.type,
+        });
+        clearImageSelection();
+      } else {
+        await chatApi.sendMessage(conversationID, trimmed);
+      }
+
       setText("");
       if (inputRef.current) {
         inputRef.current.style.height = "auto";
@@ -180,7 +454,7 @@ export default function ChatWindow({
       }
     } catch (err) {
       console.error("Send error:", err);
-      setEncryptionError(err.message || "Failed to send");
+      setSendError(err.message || "Failed to send");
     } finally {
       setSending(false);
     }
@@ -197,8 +471,51 @@ export default function ChatWindow({
     return () => {
       if (retryRef.current) { clearInterval(retryRef.current); retryRef.current = null; }
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+
+      if (voiceTimerRef.current) {
+        clearInterval(voiceTimerRef.current);
+        voiceTimerRef.current = null;
+      }
+
+      const recorder = voiceRecorderRef.current;
+      if (recorder && recorder.state !== "inactive") {
+        recorder.stop();
+      }
+
+      const activeStream = voiceStreamRef.current;
+      if (activeStream) {
+        activeStream.getTracks().forEach((track) => track.stop());
+        voiceStreamRef.current = null;
+      }
     };
   }, [conversationID]);
+
+  useEffect(() => {
+    return () => {
+      if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+    };
+  }, [imagePreviewUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+    };
+  }, [videoPreviewUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl);
+    };
+  }, [voicePreviewUrl]);
+
+  useEffect(() => {
+    setSendError("");
+    clearImageSelection();
+    clearVideoSelection();
+    clearVoiceSelection();
+    setRecordingSeconds(0);
+    setIsRecording(false);
+  }, [conversationID, clearImageSelection, clearVideoSelection, clearVoiceSelection]);
 
   // ── Session key init ───────────────────────────────────────────────────────
 
@@ -440,10 +757,198 @@ export default function ChatWindow({
         </div>
 
         {/* ── Input bar ───────────────────────────────────────────────── */}
+        {selectedImage && (
+          <div
+            className="shrink-0 px-4 pt-3"
+            style={{ borderTop: "1px solid #ebebeb", background: "#ffffff" }}
+          >
+            <div
+              className="rounded-xl p-2.5 flex items-center gap-2.5"
+              style={{ background: "#f3f4f6", border: "1px solid #e5e7eb" }}
+            >
+              <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0" style={{ background: "#e5e7eb" }}>
+                {imagePreviewUrl && (
+                  <img
+                    src={imagePreviewUrl}
+                    alt="Selected"
+                    className="w-full h-full object-cover"
+                  />
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold truncate" style={{ color: "#111827" }}>
+                  {selectedImage.name}
+                </p>
+                <p className="text-[10px]" style={{ color: "#6b7280" }}>
+                  {(selectedImage.size / 1024 / 1024).toFixed(2)} MB
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={clearImageSelection}
+                className="w-8 h-8 rounded-lg flex items-center justify-center transition hover:bg-black/5"
+                aria-label="Remove image"
+              >
+                <XMarkIcon className="w-4 h-4" style={{ color: "#6b7280" }} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {selectedVideo && (
+          <div
+            className="shrink-0 px-4 pt-3"
+            style={{ borderTop: "1px solid #ebebeb", background: "#ffffff" }}
+          >
+            <div
+              className="rounded-xl p-2.5 flex items-start gap-2.5"
+              style={{ background: "#f3f4f6", border: "1px solid #e5e7eb" }}
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold truncate" style={{ color: "#111827" }}>
+                  {selectedVideo.name}
+                </p>
+                <p className="text-[10px] mb-1" style={{ color: "#6b7280" }}>
+                  {(selectedVideo.size / 1024 / 1024).toFixed(2)} MB
+                </p>
+                {videoPreviewUrl && (
+                  <video
+                    controls
+                    preload="metadata"
+                    src={videoPreviewUrl}
+                    className="w-full max-w-[260px] rounded-lg"
+                  />
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={clearVideoSelection}
+                className="w-8 h-8 rounded-lg flex items-center justify-center transition hover:bg-black/5"
+                aria-label="Remove video"
+              >
+                <XMarkIcon className="w-4 h-4" style={{ color: "#6b7280" }} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {selectedVoiceNote && (
+          <div
+            className="shrink-0 px-4 pt-3"
+            style={{ borderTop: "1px solid #ebebeb", background: "#ffffff" }}
+          >
+            <div
+              className="rounded-xl p-2.5 flex items-center gap-2.5"
+              style={{ background: "#f3f4f6", border: "1px solid #e5e7eb" }}
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold truncate" style={{ color: "#111827" }}>
+                  {selectedVoiceNote.name}
+                </p>
+                <p className="text-[10px] mb-1" style={{ color: "#6b7280" }}>
+                  Voicemail {voiceDurationSec ? `• ${formatDuration(voiceDurationSec)}` : ""}
+                </p>
+                {voicePreviewUrl && (
+                  <audio
+                    controls
+                    preload="metadata"
+                    src={voicePreviewUrl}
+                    className="w-full max-w-[260px] h-9"
+                  />
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={clearVoiceSelection}
+                className="w-8 h-8 rounded-lg flex items-center justify-center transition hover:bg-black/5"
+                aria-label="Remove voicemail"
+              >
+                <XMarkIcon className="w-4 h-4" style={{ color: "#6b7280" }} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isRecording && (
+          <div className="shrink-0 px-4 pt-2" style={{ background: "#ffffff" }}>
+            <p className="text-xs font-semibold" style={{ color: "#dc2626" }}>
+              Recording voicemail: {formatDuration(recordingSeconds)}
+            </p>
+          </div>
+        )}
+
+        {sendError && (
+          <div className="shrink-0 px-4 pt-2" style={{ background: "#ffffff" }}>
+            <p className="text-xs" style={{ color: "#dc2626" }}>
+              {sendError}
+            </p>
+          </div>
+        )}
+
         <div
           className="shrink-0 px-4 py-3 flex items-end gap-2"
           style={{ borderTop: "1px solid #ebebeb", background: "#ffffff" }}
         >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleImagePick}
+            className="hidden"
+          />
+
+          <input
+            ref={videoInputRef}
+            type="file"
+            accept="video/*,.mov,.m4v,.mkv,.3gp,.3g2"
+            onChange={handleVideoPick}
+            className="hidden"
+          />
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl transition active:scale-95"
+            style={{ background: "#f3f4f6", border: "1px solid #e5e7eb" }}
+            aria-label="Attach image"
+            disabled={sending || isRecording}
+          >
+            <PhotoIcon className="w-5 h-5" style={{ color: "#374151" }} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => videoInputRef.current?.click()}
+            className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl transition active:scale-95"
+            style={{ background: "#f3f4f6", border: "1px solid #e5e7eb" }}
+            aria-label="Attach video"
+            disabled={sending || isRecording}
+          >
+            <VideoCameraIcon className="w-5 h-5" style={{ color: "#374151" }} />
+          </button>
+
+          <button
+            type="button"
+            onClick={isRecording ? stopVoiceRecording : startVoiceRecording}
+            className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl transition active:scale-95"
+            style={{
+              background: isRecording ? "#fee2e2" : "#f3f4f6",
+              border: `1px solid ${isRecording ? "#fecaca" : "#e5e7eb"}`,
+            }}
+            aria-label={isRecording ? "Stop recording" : "Record voicemail"}
+            disabled={sending}
+          >
+            {isRecording ? (
+              <StopIcon className="w-5 h-5" style={{ color: "#dc2626" }} />
+            ) : (
+              <MicrophoneIcon className="w-5 h-5" style={{ color: "#374151" }} />
+            )}
+          </button>
+
           <textarea
             ref={inputRef}
             value={text}
@@ -451,7 +956,7 @@ export default function ChatWindow({
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
             }}
-            placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
+            placeholder={isRecording ? "Recording voicemail..." : "Type a message, attach image/video, or record voicemail..."}
             rows={1}
             className="flex-1 resize-none rounded-xl px-4 py-2.5 text-sm outline-none transition focus:ring-2 leading-relaxed"
             style={{
@@ -462,10 +967,11 @@ export default function ChatWindow({
               minHeight: "40px",
               maxHeight: "104px",
             }}
+            disabled={sending || isRecording}
           />
           <button
             onClick={sendMessage}
-            disabled={!text.trim() || sending}
+            disabled={(!text.trim() && !selectedImage && !selectedVideo && !selectedVoiceNote) || sending || isRecording}
             className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl transition active:scale-95 disabled:opacity-40"
             style={{ background: "#000000" }}
           >

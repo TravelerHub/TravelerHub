@@ -1,8 +1,10 @@
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, Depends, UploadFile, File
 from typing import Dict, Set, Optional
 import asyncio
 from datetime import datetime
-from supabase_client import supabase
+import secrets
+import re
+from supabase_client import supabase, supabase_admin
 import schemas
 from utils import oauth2
 
@@ -33,6 +35,143 @@ async def broadcast_to_conversation(conversation_id: str, message: dict, exclude
 
 
 router = APIRouter(prefix="/api", tags=["chat"])
+
+CHAT_MEDIA_BUCKET = "Media"
+MAX_CHAT_IMAGE_BYTES = 8 * 1024 * 1024
+MAX_CHAT_VOICEMAIL_BYTES = 15 * 1024 * 1024
+MAX_CHAT_VIDEO_BYTES = 40 * 1024 * 1024
+ALLOWED_CHAT_IMAGE_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+}
+ALLOWED_CHAT_AUDIO_TYPES = {
+    "audio/webm",
+    "audio/mp4",
+    "audio/ogg",
+    "audio/mpeg",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/x-m4a",
+    "audio/aac",
+    "audio/3gpp",
+    "audio/3gpp2",
+}
+ALLOWED_CHAT_AUDIO_EXTENSIONS = {
+    "webm",
+    "mp4",
+    "ogg",
+    "mp3",
+    "m4a",
+    "aac",
+    "wav",
+    "3gp",
+    "3g2",
+}
+ALLOWED_CHAT_VIDEO_TYPES = {
+    "video/mp4",
+    "video/webm",
+    "video/quicktime",
+    "video/ogg",
+    "video/x-matroska",
+    "video/3gpp",
+    "video/3gpp2",
+}
+ALLOWED_CHAT_VIDEO_EXTENSIONS = {
+    "mp4",
+    "webm",
+    "mov",
+    "m4v",
+    "ogg",
+    "ogv",
+    "mkv",
+    "3gp",
+    "3g2",
+}
+
+
+def get_conversation_trip_id(conversation_id: str) -> Optional[str]:
+    try:
+        res = (
+            supabase
+            .from_("conversation")
+            .select("trip_id")
+            .eq("conversation_id", conversation_id)
+            .maybe_single()
+            .execute()
+        )
+        if res.data:
+            return res.data.get("trip_id")
+    except Exception:
+        pass
+    return None
+
+
+def resolve_public_url(raw_public_url) -> Optional[str]:
+    if isinstance(raw_public_url, dict):
+        return raw_public_url.get("publicURL") or raw_public_url.get("publicUrl")
+    return raw_public_url
+
+
+def normalize_content_type(content_type: Optional[str]) -> str:
+    if not content_type:
+        return ""
+    return content_type.split(";", 1)[0].strip().lower()
+
+
+def get_file_extension(filename: str) -> str:
+    if "." not in filename:
+        return ""
+    return filename.rsplit(".", 1)[1].lower()
+
+
+def is_allowed_audio_upload(content_type: str, filename: str) -> bool:
+    base_type = normalize_content_type(content_type)
+    if base_type in ALLOWED_CHAT_AUDIO_TYPES:
+        return True
+
+    # Safari can report audio-only MediaRecorder blobs as video/mp4.
+    if base_type == "video/mp4":
+        return True
+
+    ext = get_file_extension(filename)
+    if ext in ALLOWED_CHAT_AUDIO_EXTENSIONS:
+        return True
+
+    return False
+
+
+def is_allowed_video_upload(content_type: str, filename: str) -> bool:
+    base_type = normalize_content_type(content_type)
+    if base_type in ALLOWED_CHAT_VIDEO_TYPES:
+        return True
+
+    ext = get_file_extension(filename)
+    if ext in ALLOWED_CHAT_VIDEO_EXTENSIONS:
+        return True
+
+    return False
+
+
+def resolve_video_upload_content_type(content_type: str, filename: str) -> str:
+    base_type = normalize_content_type(content_type)
+    if base_type in ALLOWED_CHAT_VIDEO_TYPES:
+        return base_type
+
+    ext = get_file_extension(filename)
+    ext_to_type = {
+        "mp4": "video/mp4",
+        "m4v": "video/mp4",
+        "webm": "video/webm",
+        "mov": "video/quicktime",
+        "ogg": "video/ogg",
+        "ogv": "video/ogg",
+        "mkv": "video/x-matroska",
+        "3gp": "video/3gpp",
+        "3g2": "video/3gpp2",
+    }
+    return ext_to_type.get(ext, "video/mp4")
 
 
 def ensure_conversation_member(conversation_id: str, user_id: str):
@@ -459,6 +598,225 @@ def get_messages(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/conversations/{conversation_id}/images")
+async def upload_conversation_image(
+    conversation_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(oauth2.get_current_user)
+):
+    """
+    POST /api/conversations/{conversation_id}/images
+    Upload a chat image and return a public URL for message payloads.
+    """
+    ensure_conversation_member(conversation_id, current_user["id"])
+
+    raw_name = (file.filename or "image").replace(" ", "_")
+    safe_name = re.sub(r"[^A-Za-z0-9._-]", "", raw_name) or "image"
+    base_content_type = normalize_content_type(file.content_type)
+
+    if not base_content_type or not base_content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image files are supported")
+
+    if base_content_type not in ALLOWED_CHAT_IMAGE_TYPES and base_content_type not in {"image/heic", "image/heif"}:
+        raise HTTPException(status_code=400, detail="Only JPG, PNG, WEBP, GIF, and HEIC images are supported")
+    file_bytes = await file.read()
+
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    if len(file_bytes) > MAX_CHAT_IMAGE_BYTES:
+        raise HTTPException(status_code=400, detail="Image is too large (max 8MB)")
+
+    trip_prefix = get_conversation_trip_id(conversation_id) or conversation_id
+    file_path = (
+        f"{trip_prefix}/chat/{conversation_id}/"
+        f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(8)}_{safe_name}"
+    )
+
+    try:
+        storage_client = supabase_admin or supabase
+
+        storage_client.storage.from_(CHAT_MEDIA_BUCKET).upload(
+            path=file_path,
+            file=file_bytes,
+            file_options={"content-type": base_content_type},
+        )
+
+        raw_public_url = storage_client.storage.from_(CHAT_MEDIA_BUCKET).get_public_url(file_path)
+        public_url = resolve_public_url(raw_public_url)
+
+        if not public_url:
+            raise HTTPException(status_code=500, detail="Upload succeeded but public URL could not be resolved")
+
+        return {
+            "public_url": public_url,
+            "storage_path": file_path,
+            "content_type": base_content_type,
+            "file_name": safe_name,
+            "size_bytes": len(file_bytes),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        err_text = str(e)
+        if "row-level security policy" in err_text.lower() and supabase_admin is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Storage RLS blocked upload. Set SUPABASE_SERVICE_ROLE_KEY in backend .env and restart backend.",
+            )
+        raise HTTPException(status_code=500, detail=f"Failed to upload image: {str(e)}")
+
+
+@router.post("/conversations/{conversation_id}/voicemails")
+async def upload_conversation_voicemail(
+    conversation_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(oauth2.get_current_user)
+):
+    """
+    POST /api/conversations/{conversation_id}/voicemails
+    Upload a voice message file and return a public URL for encrypted message payloads.
+    """
+    ensure_conversation_member(conversation_id, current_user["id"])
+
+    raw_name = (file.filename or "voicemail").replace(" ", "_")
+    safe_name = re.sub(r"[^A-Za-z0-9._-]", "", raw_name) or "voicemail"
+    base_content_type = normalize_content_type(file.content_type)
+
+    if not is_allowed_audio_upload(base_content_type, safe_name):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only WEBM, MP4, OGG, MP3, M4A, AAC, WAV, and 3GP audio are supported (received: {file.content_type or 'unknown'})",
+        )
+
+    upload_content_type = base_content_type
+    if base_content_type == "video/mp4":
+        upload_content_type = "audio/mp4"
+    if not upload_content_type:
+        upload_content_type = "audio/webm"
+
+    file_bytes = await file.read()
+
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    if len(file_bytes) > MAX_CHAT_VOICEMAIL_BYTES:
+        raise HTTPException(status_code=400, detail="Voice message is too large (max 15MB)")
+
+    trip_prefix = get_conversation_trip_id(conversation_id) or conversation_id
+    file_path = (
+        f"{trip_prefix}/chat/{conversation_id}/voicemail/"
+        f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(8)}_{safe_name}"
+    )
+
+    try:
+        storage_client = supabase_admin or supabase
+
+        storage_client.storage.from_(CHAT_MEDIA_BUCKET).upload(
+            path=file_path,
+            file=file_bytes,
+            file_options={"content-type": upload_content_type},
+        )
+
+        raw_public_url = storage_client.storage.from_(CHAT_MEDIA_BUCKET).get_public_url(file_path)
+        public_url = resolve_public_url(raw_public_url)
+
+        if not public_url:
+            raise HTTPException(status_code=500, detail="Upload succeeded but public URL could not be resolved")
+
+        return {
+            "public_url": public_url,
+            "storage_path": file_path,
+            "content_type": upload_content_type,
+            "file_name": safe_name,
+            "size_bytes": len(file_bytes),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        err_text = str(e)
+        if "row-level security policy" in err_text.lower() and supabase_admin is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Storage RLS blocked upload. Set SUPABASE_SERVICE_ROLE_KEY in backend .env and restart backend.",
+            )
+        raise HTTPException(status_code=500, detail=f"Failed to upload voicemail: {str(e)}")
+
+
+@router.post("/conversations/{conversation_id}/videos")
+async def upload_conversation_video(
+    conversation_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(oauth2.get_current_user)
+):
+    """
+    POST /api/conversations/{conversation_id}/videos
+    Upload a video file and return a public URL for encrypted message payloads.
+    """
+    ensure_conversation_member(conversation_id, current_user["id"])
+
+    raw_name = (file.filename or "video").replace(" ", "_")
+    safe_name = re.sub(r"[^A-Za-z0-9._-]", "", raw_name) or "video"
+    base_content_type = normalize_content_type(file.content_type)
+
+    if not is_allowed_video_upload(base_content_type, safe_name):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only MP4, WEBM, MOV, OGG, MKV, and 3GP videos are supported (received: {file.content_type or 'unknown'})",
+        )
+
+    upload_content_type = resolve_video_upload_content_type(base_content_type, safe_name)
+    file_bytes = await file.read()
+
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    if len(file_bytes) > MAX_CHAT_VIDEO_BYTES:
+        raise HTTPException(status_code=400, detail="Video is too large (max 40MB)")
+
+    trip_prefix = get_conversation_trip_id(conversation_id) or conversation_id
+    file_path = (
+        f"{trip_prefix}/chat/{conversation_id}/video/"
+        f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(8)}_{safe_name}"
+    )
+
+    try:
+        storage_client = supabase_admin or supabase
+
+        storage_client.storage.from_(CHAT_MEDIA_BUCKET).upload(
+            path=file_path,
+            file=file_bytes,
+            file_options={"content-type": upload_content_type},
+        )
+
+        raw_public_url = storage_client.storage.from_(CHAT_MEDIA_BUCKET).get_public_url(file_path)
+        public_url = resolve_public_url(raw_public_url)
+
+        if not public_url:
+            raise HTTPException(status_code=500, detail="Upload succeeded but public URL could not be resolved")
+
+        return {
+            "public_url": public_url,
+            "storage_path": file_path,
+            "content_type": upload_content_type,
+            "file_name": safe_name,
+            "size_bytes": len(file_bytes),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        err_text = str(e)
+        if "row-level security policy" in err_text.lower() and supabase_admin is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Storage RLS blocked upload. Set SUPABASE_SERVICE_ROLE_KEY in backend .env and restart backend.",
+            )
+        raise HTTPException(status_code=500, detail=f"Failed to upload video: {str(e)}")
 
 
 # ── WebSocket ──────────────────────────────────────────────────────────────────

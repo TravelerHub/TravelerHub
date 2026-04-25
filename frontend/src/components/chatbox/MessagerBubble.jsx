@@ -8,6 +8,49 @@ function formatTime(ts) {
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+function formatDuration(totalSeconds) {
+  const safe = Number.isFinite(totalSeconds) ? Math.max(0, Math.floor(totalSeconds)) : 0;
+  const minutes = Math.floor(safe / 60).toString().padStart(2, "0");
+  const seconds = (safe % 60).toString().padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function normalizeDecryptedPayload(plaintext) {
+  if (typeof plaintext !== "string") {
+    return { type: "text", text: "" };
+  }
+
+  try {
+    const parsed = JSON.parse(plaintext);
+    if (parsed?.type === "image" && typeof parsed.image_url === "string") {
+      return {
+        type: "image",
+        image_url: parsed.image_url,
+        caption: typeof parsed.caption === "string" ? parsed.caption : "",
+        file_name: typeof parsed.file_name === "string" ? parsed.file_name : "",
+      };
+    }
+
+    if (parsed?.type === "audio" && typeof parsed.audio_url === "string") {
+      return {
+        type: "audio",
+        audio_url: parsed.audio_url,
+        caption: typeof parsed.caption === "string" ? parsed.caption : "",
+        duration_sec: Number(parsed.duration_sec || 0),
+        file_name: typeof parsed.file_name === "string" ? parsed.file_name : "",
+      };
+    }
+
+    if (parsed?.type === "text" && typeof parsed.text === "string") {
+      return { type: "text", text: parsed.text };
+    }
+  } catch {
+    // Legacy messages are plain strings after decryption.
+  }
+
+  return { type: "text", text: plaintext };
+}
+
 // ── Read receipt avatar dots ─────────────────────────────────────────────────
 function ReadReceipts({ readers, members }) {
   if (!readers || readers.length === 0) return null;
@@ -60,13 +103,15 @@ function ReadReceipts({ readers, members }) {
 }
 
 export default function MessageBubble({ msg, isMine, conversationId, members, readers }) {
-  const [decryptedContent, setDecryptedContent] = useState(msg.content || "");
+  const [decryptedPayload, setDecryptedPayload] = useState(
+    normalizeDecryptedPayload(msg.content || "")
+  );
   const [decryptError,     setDecryptError]     = useState(false);
 
   useEffect(() => {
     // Not encrypted — show as-is
     if (!msg.is_encrypted && !encryptionUtils.isLikelyEncryptedMessage(msg.content)) {
-      setDecryptedContent(msg.content);
+      setDecryptedPayload(normalizeDecryptedPayload(msg.content || ""));
       setDecryptError(false);
       return;
     }
@@ -75,17 +120,17 @@ export default function MessageBubble({ msg, isMine, conversationId, members, re
     const sessionKey = encryptionUtils.getCachedSessionKey(conversationId);
     if (!sessionKey) {
       setDecryptError(true);
-      setDecryptedContent(null);
+      setDecryptedPayload(null);
       return;
     }
 
     try {
       const plaintext = encryptionUtils.decryptMessage(msg.content, sessionKey);
-      setDecryptedContent(plaintext);
+      setDecryptedPayload(normalizeDecryptedPayload(plaintext));
       setDecryptError(false);
     } catch {
       setDecryptError(true);
-      setDecryptedContent(null);
+      setDecryptedPayload(null);
     }
   }, [msg.content, msg.is_encrypted, conversationId]);
 
@@ -99,15 +144,63 @@ export default function MessageBubble({ msg, isMine, conversationId, members, re
             : { background: "#ffffff", color: "#160f29", border: "1px solid #ebebeb" }
         }
       >
-        <p className="whitespace-pre-wrap wrap-break-word leading-relaxed">
-          {decryptError ? (
+        {decryptError ? (
+          <p className="whitespace-pre-wrap break-words leading-relaxed">
             <span style={{ color: isMine ? "#9ca3af" : "#d1d5db", fontStyle: "italic" }}>
               🔒 Encrypted with a previous key
             </span>
-          ) : (
-            decryptedContent || "[Empty message]"
-          )}
-        </p>
+          </p>
+        ) : decryptedPayload?.type === "image" ? (
+          <div className="space-y-2">
+            <a
+              href={decryptedPayload.image_url}
+              target="_blank"
+              rel="noreferrer"
+              className="block"
+            >
+              <img
+                src={decryptedPayload.image_url}
+                alt={decryptedPayload.file_name || "Chat image"}
+                className="rounded-xl max-h-72 w-auto max-w-full object-cover"
+                loading="lazy"
+              />
+            </a>
+
+            {decryptedPayload.caption && (
+              <p className="whitespace-pre-wrap break-words leading-relaxed">
+                {decryptedPayload.caption}
+              </p>
+            )}
+          </div>
+        ) : decryptedPayload?.type === "audio" ? (
+          <div className="space-y-2">
+            <audio
+              controls
+              preload="metadata"
+              src={decryptedPayload.audio_url}
+              className="w-full max-w-[260px] h-9"
+            />
+
+            {decryptedPayload.duration_sec > 0 && (
+              <p
+                className="text-[10px]"
+                style={{ color: isMine ? "rgba(255,255,255,0.55)" : "#6b7280" }}
+              >
+                Voicemail • {formatDuration(decryptedPayload.duration_sec)}
+              </p>
+            )}
+
+            {decryptedPayload.caption && (
+              <p className="whitespace-pre-wrap break-words leading-relaxed">
+                {decryptedPayload.caption}
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="whitespace-pre-wrap break-words leading-relaxed">
+            {decryptedPayload?.text || "[Empty message]"}
+          </p>
+        )}
 
         <p
           className="mt-1 text-[10px] text-right"

@@ -1,6 +1,53 @@
 // chatAPI.jsx — centralized API calls with client-side E2E encryption
 import { request } from "../../api/request";
 import { encryptionUtils } from "../../lib/encryption";
+import { API_BASE } from "../../config.js";
+
+function normalizeMessageEnvelope(payload) {
+  if (typeof payload === "string") {
+    return { type: "text", text: payload };
+  }
+
+  if (payload && typeof payload === "object") {
+    if (payload.type === "image") {
+      return {
+        type: "image",
+        image_url: payload.image_url,
+        caption: payload.caption || "",
+        file_name: payload.file_name || "",
+        mime_type: payload.mime_type || "",
+      };
+    }
+
+    if (payload.type === "audio") {
+      return {
+        type: "audio",
+        audio_url: payload.audio_url,
+        caption: payload.caption || "",
+        duration_sec: Number(payload.duration_sec || 0),
+        file_name: payload.file_name || "",
+        mime_type: payload.mime_type || "",
+      };
+    }
+
+    if (payload.type === "video") {
+      return {
+        type: "video",
+        video_url: payload.video_url,
+        caption: payload.caption || "",
+        file_name: payload.file_name || "",
+        mime_type: payload.mime_type || "",
+      };
+    }
+
+    return {
+      type: "text",
+      text: String(payload.text || ""),
+    };
+  }
+
+  return { type: "text", text: "" };
+}
 
 export const chatApi = {
 
@@ -29,16 +76,33 @@ export const chatApi = {
   // ── Messages ───────────────────────────────────────────────────────────────
 
   /**
-   * Encrypt a message client-side and POST the ciphertext.
+   * Encrypt a structured message envelope client-side and POST the ciphertext.
    * Session key is read from cache — no server call for encryption.
    */
-  sendMessage: (conversationId, content) => {
+  sendMessage: (conversationId, payload) => {
     const sessionKey = encryptionUtils.getCachedSessionKey(conversationId);
     if (!sessionKey) {
       throw new Error("No session key found for this conversation. Re-open the chat and try again.");
     }
 
-    const encryptedContent = encryptionUtils.encryptMessage(content, sessionKey);
+    const envelope = normalizeMessageEnvelope(payload);
+    if (envelope.type === "image" && !envelope.image_url) {
+      throw new Error("Image message is missing an image URL");
+    }
+
+    if (envelope.type === "audio" && !envelope.audio_url) {
+      throw new Error("Voice message is missing an audio URL");
+    }
+
+    if (envelope.type === "video" && !envelope.video_url) {
+      throw new Error("Video message is missing a video URL");
+    }
+
+    if (envelope.type === "text" && !envelope.text.trim()) {
+      throw new Error("Message is empty");
+    }
+
+    const encryptedContent = encryptionUtils.encryptMessage(JSON.stringify(envelope), sessionKey);
 
     return request(`/api/conversations/${encodeURIComponent(conversationId)}/messages`, {
       method: "POST",
@@ -48,6 +112,138 @@ export const chatApi = {
         is_encrypted: true,
       },
     });
+  },
+
+  uploadConversationImage: async (conversationId, file) => {
+    if (!file) throw new Error("No image selected");
+
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${encodeURIComponent(conversationId)}/images`,
+      {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      }
+    );
+
+    if (!response.ok) {
+      let errorMessage = "Failed to upload image";
+      try {
+        const err = await response.json();
+        errorMessage = err.detail || JSON.stringify(err);
+      } catch {
+        errorMessage = await response.text();
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    const publicUrl =
+      data?.public_url ||
+      data?.publicUrl ||
+      data?.public_url?.publicUrl ||
+      data?.public_url?.publicURL;
+
+    if (!publicUrl || typeof publicUrl !== "string") {
+      throw new Error("Upload completed but image URL is invalid");
+    }
+
+    return {
+      ...data,
+      public_url: publicUrl,
+    };
+  },
+
+  uploadConversationVoicemail: async (conversationId, file) => {
+    if (!file) throw new Error("No voice message selected");
+
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${encodeURIComponent(conversationId)}/voicemails`,
+      {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      }
+    );
+
+    if (!response.ok) {
+      let errorMessage = "Failed to upload voicemail";
+      try {
+        const err = await response.json();
+        errorMessage = err.detail || JSON.stringify(err);
+      } catch {
+        errorMessage = await response.text();
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    const publicUrl =
+      data?.public_url ||
+      data?.publicUrl ||
+      data?.public_url?.publicUrl ||
+      data?.public_url?.publicURL;
+
+    if (!publicUrl || typeof publicUrl !== "string") {
+      throw new Error("Voicemail upload completed but audio URL is invalid");
+    }
+
+    return {
+      ...data,
+      public_url: publicUrl,
+    };
+  },
+
+  uploadConversationVideo: async (conversationId, file) => {
+    if (!file) throw new Error("No video selected");
+
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${encodeURIComponent(conversationId)}/videos`,
+      {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      }
+    );
+
+    if (!response.ok) {
+      let errorMessage = "Failed to upload video";
+      try {
+        const err = await response.json();
+        errorMessage = err.detail || JSON.stringify(err);
+      } catch {
+        errorMessage = await response.text();
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    const publicUrl =
+      data?.public_url ||
+      data?.publicUrl ||
+      data?.public_url?.publicUrl ||
+      data?.public_url?.publicURL;
+
+    if (!publicUrl || typeof publicUrl !== "string") {
+      throw new Error("Video upload completed but video URL is invalid");
+    }
+
+    return {
+      ...data,
+      public_url: publicUrl,
+    };
   },
 
   // ── Keypair / public key ───────────────────────────────────────────────────
