@@ -22,7 +22,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from supabase_client import supabase
-from routers.auth import get_current_user
+from utils.oauth2 import get_current_user
 
 router = APIRouter(prefix="/push", tags=["Push"])
 

@@ -4,7 +4,7 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from supabase_client import supabase
-from routers.auth import get_current_user
+from utils.oauth2 import get_current_user
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
