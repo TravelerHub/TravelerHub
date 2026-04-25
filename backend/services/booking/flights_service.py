@@ -1,83 +1,46 @@
 """
 flights_service.py
-Amadeus Self-Service API – flight offer search and details.
+Google Flights data via fast-flights — no API key, no sign-up, completely free.
 
-Credentials are loaded from environment variables:
-  AMADEUS_API_KEY
-  AMADEUS_API_SECRET
+pip install fast-flights  (already in requirements.txt)
 
-Install dependency: pip install amadeus
+fast-flights decodes Google Flights Protobuf responses directly. It requires
+no credentials and is maintained as of early 2025. The tradeoff is that it
+can break if Google changes their internal API — wrap calls defensively.
 """
 
-import os
-from amadeus import Client, ResponseError
+import asyncio
+from fast_flights import FlightData, Passengers, get_flights
 
-# ── Amadeus client (lazy singleton) ──────────────────────────────────────────
-
-_client: Client | None = None
-
-
-def _get_client() -> Client:
-    global _client
-    if _client is None:
-        _client = Client(
-            client_id=os.environ.get("AMADEUS_API_KEY", ""),
-            client_secret=os.environ.get("AMADEUS_API_SECRET", ""),
-        )
-    return _client
+_SEAT_MAP = {
+    "ECONOMY":         "economy",
+    "PREMIUM_ECONOMY": "premium-economy",
+    "BUSINESS":        "business",
+    "FIRST":           "first",
+}
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _parse_offer(offer: dict) -> dict:
-    """Normalise a raw Amadeus flight-offer into the standard TravelerHub shape."""
-    itineraries = offer.get("itineraries", [])
-    price_info = offer.get("price", {})
-
-    # First itinerary / first segment for the headline fields
-    first_seg = {}
-    total_stops = 0
-    total_duration = ""
-    if itineraries:
-        first_it = itineraries[0]
-        segments = first_it.get("segments", [])
-        total_stops = max(len(segments) - 1, 0)
-        total_duration = first_it.get("duration", "")
-        if segments:
-            first_seg = segments[0]
-
-    departure = first_seg.get("departure", {})
-    arrival_seg = itineraries[0].get("segments", [{}])[-1].get("arrival", {}) if itineraries else {}
-
-    # Carrier: prefer marketing carrier code
-    carrier_code = first_seg.get("carrierCode", "")
-    operating = first_seg.get("operating", {})
-    airline = operating.get("carrierCode", carrier_code) or carrier_code
-
-    # Cabin class from traveler pricings
-    cabin_class = "ECONOMY"
-    traveler_pricings = offer.get("travelerPricings", [])
-    if traveler_pricings:
-        fare_details = traveler_pricings[0].get("fareDetailsBySegment", [])
-        if fare_details:
-            cabin_class = fare_details[0].get("cabin", "ECONOMY")
+def _parse_flight(flight, origin: str, destination: str, departure_date: str) -> dict:
+    """Normalise a fast-flights Flight object into the TravelerHub flight shape."""
+    price_str = ""
+    if flight.price:
+        # price is a string like "$250" or "250 USD" — strip currency symbols
+        price_str = flight.price.replace("$", "").replace("USD", "").replace(",", "").strip()
 
     return {
-        "id":             offer.get("id", ""),
-        "price":          price_info.get("total", "0"),
-        "currency":       price_info.get("currency", "USD"),
-        "origin":         departure.get("iataCode", ""),
-        "destination":    arrival_seg.get("iataCode", ""),
-        "departure_time": departure.get("at", ""),
-        "arrival_time":   arrival_seg.get("at", ""),
-        "duration":       total_duration,
-        "stops":          total_stops,
-        "airline":        airline,
-        "cabin_class":    cabin_class,
+        "id":             f"{origin}-{destination}-{flight.name}-{flight.departure}".replace(" ", "_"),
+        "price":          price_str or "0",
+        "currency":       "USD",
+        "origin":         origin.upper(),
+        "destination":    destination.upper(),
+        "departure_time": f"{departure_date}T{flight.departure}" if flight.departure else departure_date,
+        "arrival_time":   f"{departure_date}T{flight.arrival}" if flight.arrival else departure_date,
+        "duration":       flight.duration or "",
+        "stops":          flight.stops if isinstance(flight.stops, int) else (0 if flight.stops == "Nonstop" else 1),
+        "airline":        flight.name or "",
+        "cabin_class":    "ECONOMY",
     }
 
-
-# ── Public API ────────────────────────────────────────────────────────────────
 
 async def search_flights(
     origin: str,
@@ -87,62 +50,52 @@ async def search_flights(
     travel_class: str = "ECONOMY",
 ) -> dict:
     """
-    Search for flight offers via Amadeus Flight Offers Search.
+    Search for flights via fast-flights (no API key required).
 
     Args:
-        origin:         IATA code of the origin airport (e.g. "LAX")
-        destination:    IATA code of the destination airport (e.g. "JFK")
-        departure_date: ISO date string "YYYY-MM-DD"
-        adults:         Number of adult passengers (≥1)
+        origin:         IATA airport code (e.g. "LAX")
+        destination:    IATA airport code (e.g. "JFK")
+        departure_date: ISO date "YYYY-MM-DD"
+        adults:         Number of adult passengers
         travel_class:   "ECONOMY" | "PREMIUM_ECONOMY" | "BUSINESS" | "FIRST"
 
     Returns:
         {"data": [<flight>, ...], "error": None}  on success
         {"data": [],              "error": "<msg>"} on failure
     """
+    seat = _SEAT_MAP.get(travel_class.upper(), "economy")
+
     try:
-        client = _get_client()
-        response = client.shopping.flight_offers_search.get(
-            originLocationCode=origin.upper(),
-            destinationLocationCode=destination.upper(),
-            departureDate=departure_date,
-            adults=adults,
-            travelClass=travel_class.upper(),
-            max=20,
+        result = await asyncio.to_thread(
+            get_flights,
+            flight_data=[FlightData(date=departure_date, from_airport=origin.upper(), to_airport=destination.upper())],
+            trip="one-way",
+            seat=seat,
+            passengers=Passengers(adults=adults),
+            fetch_mode="fallback",
         )
-        flights = [_parse_offer(o) for o in (response.data or [])]
+
+        if not result or not result.flights:
+            return {"data": [], "error": "No flights found for this route and date."}
+
+        flights = [
+            _parse_flight(f, origin, destination, departure_date)
+            for f in result.flights[:20]
+        ]
         return {"data": flights, "error": None}
-    except ResponseError as e:
-        return {"data": [], "error": str(e)}
+
     except Exception as e:
-        return {"data": [], "error": str(e)}
+        return {"data": [], "error": f"Flight search unavailable: {str(e)}"}
 
 
 async def get_flight_details(offer_id: str) -> dict:
     """
-    Retrieve the cached details for a specific flight offer.
-
-    The Amadeus free-tier does not expose a single-offer GET endpoint;
-    this function returns a placeholder that instructs the caller to
-    use the offer data already returned by search_flights.
-
-    Args:
-        offer_id: The flight offer ID returned by search_flights.
-
-    Returns:
-        {"data": {"id": offer_id, "note": "..."}, "error": None}
+    fast-flights does not store offer state — clients use search result data directly.
     """
-    # Amadeus Self-Service does not provide a stateful offer-by-ID endpoint
-    # on the free tier.  The offer payload from the search response is the
-    # authoritative source; clients should cache it client-side or re-run
-    # the search to reprice.
     return {
         "data": {
-            "id": offer_id,
-            "note": (
-                "Full offer details are only available within the original "
-                "search response. Re-run search_flights to reprice this offer."
-            ),
+            "id":   offer_id,
+            "note": "Re-run search_flights to get full details for this offer.",
         },
         "error": None,
     }

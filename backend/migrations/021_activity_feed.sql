@@ -2,7 +2,7 @@
 -- Each event records who did what in which trip, with optional metadata
 CREATE TABLE IF NOT EXISTS trip_activity (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    trip_id     UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    trip_id     UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
     user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     action      TEXT NOT NULL,  -- e.g. 'voted', 'added_photo', 'checked_task', 'added_expense', 'pinned_location'
     subject     TEXT,           -- e.g. 'Paris', 'Eiffel Tower photo', 'Hotel booking'
@@ -33,7 +33,7 @@ CREATE INDEX IF NOT EXISTS idx_media_comments_media_id ON media_comments(media_i
 -- Trip todos (shared, group-synced — replaces the localStorage-only Todo page)
 CREATE TABLE IF NOT EXISTS trip_todos (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    trip_id     UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    trip_id     UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
     created_by  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     text        TEXT NOT NULL CHECK (char_length(text) <= 500),
     priority    TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('high','medium','low')),

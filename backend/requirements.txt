@@ -1,4 +1,4 @@
-amadeus==8.1.0
+fast-flights>=2.2.0
 icalendar>=5.0.0
 slowapi>=0.1.9
 aiohappyeyeballs==2.6.1
