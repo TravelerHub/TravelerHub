@@ -2,7 +2,7 @@ name: Deploy TravelerHub
 
 on:
   push:
-    branches: [main]
+    branches: [main, deployment]
 
 jobs:
   deploy:
@@ -89,6 +89,8 @@ jobs:
             curl -sf http://localhost:8000/health \
               || (echo "=== Container logs ===" && docker logs travelhub-backend --tail 50 && exit 1)
 
+            echo "==> Pruning old images..."
             docker image prune -f
+
             echo "==> Deploy complete ✓"
           ENDSSH
