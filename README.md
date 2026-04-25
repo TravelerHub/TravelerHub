@@ -1,86 +1,101 @@
-# Getting started
+# TravelerHub
+
+Group travel platform with smart routing, ranked-choice voting, encrypted chat, and real-time collaboration.
+
+---
+
+## Local Development
 
 ### Frontend
 
-**Step 1:** Install the [NodeJS and npm](https://nodejs.org/en)
-
-**Step 2:** Install Dependencies
-
-This command will install all the required dependencies listed in the package.json file.
-`npm install`
-
-**Step 3:** Start the Client
-
-run this command `npm run dev` and head to http://localhost:5173/ in your browser
+```bash
+cd frontend
+npm install
+npm run dev
+# → http://localhost:5173
+```
 
 ### Backend
 
-**Step 1:** Create an environment file **.env** in backend directory (detail in group)
-
-**Step 2:** Install and activate Vertual environment
-
-Install `python3 -m venv venv`
-
-Activate `source venv/bin/activate`
-
-**Step 3:** Install Dependencies
-
-This command will install all the required dependencies listed in the requirement.txt file.
-`pip install -r requirements.txt`
-
-**Step 4:** Start the Server
-
-run this command `uvicorn main:app --reload`
-
-## API for Map 
-Create a Mapbox Account
-
-Go to Mapbox:
-
-Visit: https://account.mapbox.com/auth/signup/
-OR just go to https://www.mapbox.com/ and click "Sign up"
-
-
-Sign up:
-
-Enter your email address
-Create a password
-Click "Get started"
-Verify your email 
-
-
-
-cd frontend
-npm install mapbox-gl react-map-gl @mapbox/mapbox-sdk
-
-Open your frontend/.env file
-VITE_MAPBOX_TOKEN=pk.your_actual_token_here
-
-## Email Setup Instructions
-
-### For Gmail:
-1. Go to: https://myaccount.google.com/security
-2. Enable "Less secure app access" OR use "App Password" (2FA NEED TO BE ENABLE)
-3. Create App Password
-4. Copy password to `.env` as `SENDER_PASSWORD`
-5. Set `SENDER_EMAIL` to your Gmail address
-
-### Environment Variables:
-```
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-SENDER_EMAIL=your-email@gmail.com
-SENDER_PASSWORD=app_password_16_chars
-OTP_EXPIRY_MINUTES=10
-MAX_OTP_ATTEMPTS=5
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env            # fill in your keys
+uvicorn main:app --reload
+# → http://localhost:8000
 ```
 
-# Important 
-## Google API key and Google API key places need to be added while using the navigation 
+The frontend Vite dev server proxies `/api` requests to the backend automatically — no extra config needed.
 
-The name of the varibales are 
-```
-GOOGLE_PLACES_API_KEY=
+---
 
-GOOGLE_API_KEY=
+## Production Deployment (Hetzner VPS)
+
+### Architecture
+
 ```
+Internet
+   │
+   ▼
+Host nginx (ports 80/443 — SSL via Let's Encrypt)
+   ├── travelhub.fozhan.dev      → frontend container (React, built by Vite)
+   └── api.travelhub.fozhan.dev  → backend container  (FastAPI)
+```
+
+### One-time server setup
+
+**1. Add DNS records** — two A records pointing to your Hetzner IP:
+```
+travelhub.fozhan.dev     A  <your-hetzner-ip>
+api.travelhub.fozhan.dev A  <your-hetzner-ip>
+```
+
+**2. SSH into the server and run the setup script:**
+```bash
+git clone https://github.com/TravelerHub/TravelerHub /opt/travelhub
+bash /opt/travelhub/scripts/server-setup.sh
+```
+
+The script installs Docker, nginx, certbot, copies the nginx config, and obtains SSL certificates. It pauses at each step to let you fill in your `.env`.
+
+**3. Create `/opt/travelhub/.env`** — copy from [`.env.server.example`](.env.server.example) and fill in every value. Key ones:
+
+| Variable | Value |
+|----------|-------|
+| `VITE_API_URL` | `https://api.travelhub.fozhan.dev` |
+| `VITE_SUPABASE_ANON_KEY` | Use the `eyJhbG...` JWT key — **not** the `sb_secret_` service key |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Run `python backend/generate_vapid_keys.py` |
+| `JWT_SECRET_KEY` | Run `openssl rand -hex 32` |
+
+**4. Add GitHub Secrets** — repo → Settings → Secrets → Actions:
+- `SERVER_IP` — your Hetzner server's public IP
+- `SERVER_SSH_KEY` — private SSH key with root access to the server
+
+### Auto-deploy
+
+Pushing to `main` triggers GitHub Actions, which SSHs into the server, pulls the latest code, and runs `docker compose -f docker-compose.prod.yml up --build -d`.
+
+---
+
+## Environment Variables
+
+| File | Used for |
+|------|----------|
+| `backend/.env` | Local backend dev |
+| `frontend/.env` | Local frontend dev |
+| `/opt/travelhub/.env` | Production server (all vars — backend + frontend build args) |
+| `.env.server.example` | Template for the production `.env` |
+
+---
+
+## API Keys Required
+
+| Key | Where to get |
+|-----|-------------|
+| `VITE_MAPBOX_TOKEN` | [mapbox.com](https://account.mapbox.com/auth/signup/) |
+| `GOOGLE_PLACES_API_KEY` / `GOOGLE_API_KEY` | Google Cloud Console |
+| `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | [supabase.com/dashboard](https://supabase.com/dashboard) |
+| `STRIPE_SECRET_KEY` | [stripe.com/docs/keys](https://stripe.com/docs/keys) |
+| `SENDER_EMAIL` / `SENDER_PASSWORD` | Gmail App Password (requires 2FA) — [myaccount.google.com/security](https://myaccount.google.com/security) |

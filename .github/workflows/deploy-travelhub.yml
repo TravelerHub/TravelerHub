@@ -2,13 +2,13 @@ name: Deploy TravelerHub
 
 on:
   push:
-    branches: [main, Booking-and-Maps]
+    branches: [main, deployment]
 
 jobs:
   deploy:
     name: Build & deploy on Hetzner
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Deploy via SSH
@@ -25,27 +25,18 @@ jobs:
             cd /opt/travelhub
 
             echo "==> Pulling latest code..."
-            git pull origin Booking-and-Maps
+            git pull origin main
 
-            echo "==> Building Docker image..."
-            docker build -t travelhub-backend:latest ./backend
+            echo "==> Building and starting all containers..."
+            docker compose -f docker-compose.prod.yml up --build -d
 
-            echo "==> Replacing container..."
-            docker stop travelhub 2>/dev/null || true
-            docker rm   travelhub 2>/dev/null || true
-
-            docker run -d \
-              --restart always \
-              --name travelhub \
-              -p 8000:8000 \
-              --env-file /opt/travelhub/.env \
-              travelhub-backend:latest
-
-            echo "==> Waiting for startup..."
-            sleep 5
+            echo "==> Waiting for backend to be ready..."
+            sleep 10
             curl -sf http://localhost:8000/health \
-              || (echo "--- Container logs ---" && docker logs travelhub --tail 40 && exit 1)
+              || (echo "--- Backend logs ---" && docker logs travelhub-backend --tail 40 && exit 1)
 
+            echo "==> Pruning old images..."
             docker image prune -f
+
             echo "==> Deploy complete ✓"
           ENDSSH
