@@ -1,0 +1,20 @@
+version: "3.9"
+
+# Production compose — used on the Hetzner server.
+# Frontend is served as static files via nginx (not Docker).
+# Backend only, bound to localhost so nginx proxies it.
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d --build
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: travelhub-backend
+    ports:
+      - "127.0.0.1:8000:8000"   # only reachable via nginx, not exposed publicly
+    env_file:
+      - /opt/travelhub/.env     # secrets live on the server, never in the repo
+    restart: unless-stopped

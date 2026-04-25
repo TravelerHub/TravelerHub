@@ -24,7 +24,7 @@ dist-ssr
 *.sw?
 
 
-# Environment variables — never commit real keys
+# Environment variables — never commit real secrets
 venv
 venv/
 .venv/
@@ -35,6 +35,13 @@ venv/
 env/
 .env/
 
+# frontend/.env.production is intentionally committed — it contains only
+# public VITE_ build-time tokens (Supabase anon key, Mapbox public token, etc.)
+# that are baked into the JS bundle anyway. No server-side secrets here.
+!frontend/.env.production
+
+# frontend/.env.local has real local overrides — keep ignored
+frontend/.env.local
 
 # Python cache / bytecode
 __pycache__/
@@ -50,6 +57,3 @@ CLAUDE.md
 *.mov
 *.avi
 *.mkv
-# Environment files with real secrets
-frontend/.env.production
-frontend/.env.local
