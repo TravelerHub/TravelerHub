@@ -309,6 +309,8 @@ function Expenses() {
                       <img
                         src={preview}
                         alt="Preview"
+                        loading="lazy"
+                        decoding="async"
                         className="w-full max-h-72 object-contain"
                         style={{ background: "#f9fafb" }}
                       />

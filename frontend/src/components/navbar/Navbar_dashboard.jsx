@@ -195,6 +195,8 @@ function SearchDropdown({ results, loading, query, onSelect }) {
                     <img
                       src={result.thumbnail}
                       alt=""
+                      loading="lazy"
+                      decoding="async"
                       style={{
                         width: 32,
                         height: 32,

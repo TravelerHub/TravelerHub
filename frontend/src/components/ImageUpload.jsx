@@ -61,10 +61,12 @@ export default function ImageUpload({ onUploadSuccess }) {
       {preview && (
         <div className="mt-4">
           <p className="text-sm text-gray-500 mb-2">Preview:</p>
-          <img 
-            src={preview} 
-            alt="Preview" 
-            className="w-full h-48 object-cover rounded-md border" 
+          <img
+            src={preview}
+            alt="Preview"
+            loading="lazy"
+            decoding="async"
+            className="w-full h-48 object-cover rounded-md border"
           />
         </div>
       )}

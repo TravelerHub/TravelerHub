@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import Navbar_Landing from "../../components/navbar/Navbar_landing";
 import Footer from "../../components/Footer";
+import LazyVideo from "../../components/LazyVideo";
 import {
   PlaneIcon,
   GroupIcon,
@@ -118,6 +119,8 @@ return (
 <img
 src={img}
 alt={title}
+loading="lazy"
+decoding="async"
 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
 />
 {/* base gradient */}
@@ -169,10 +172,12 @@ return (
 {/* ══ HERO ═════════════════════════════════════════════════════════════ */}
 <section className="relative min-h-[94vh] flex items-center justify-center text-white overflow-hidden">
 
-{/* Video background */}
+{/* Video background — hero / LCP, kept inline so it autoplays immediately */}
 <video
 className="absolute inset-0 w-full h-full object-cover"
 src={beachVideo}
+poster={LandingImg5}
+preload="metadata"
 autoPlay
 muted
 loop
@@ -422,6 +427,8 @@ border: "1px solid rgba(255,255,255,0.07)",
 <img
 src={LandingImg2}
 alt="Travel preview"
+loading="lazy"
+decoding="async"
 className="w-full h-[380px] object-cover"
 />
 <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
@@ -493,13 +500,10 @@ About us →
 
 {/* Quote photo */}
 <div className="rounded-2xl overflow-hidden h-60 md:h-72 relative">
-<video
+<LazyVideo
 src={vietnameVideo}
+poster={LandingImg5}
 className="w-full h-full object-cover"
-autoPlay
-muted
-loop
-playsInline
 />
 <div
 className="absolute inset-0"
@@ -580,14 +584,11 @@ ref={ctaRef}
 className="relative overflow-hidden text-white min-h-[600px] flex items-center"
 style={revealStyle(ctaVisible)}
 >
-{/* Video background */}
-<video
-className="absolute inset-0 w-full h-full object-cover"
+{/* Video background — offscreen on initial load, lazily loaded + auto-paused */}
+<LazyVideo
 src={drivingVideo}
-autoPlay
-muted
-loop
-playsInline
+poster={LandingImg5}
+className="absolute inset-0 w-full h-full object-cover"
 />
 
 {/* Dark gradient overlay — heavier on left so text stays readable */}
