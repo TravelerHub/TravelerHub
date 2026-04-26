@@ -66,7 +66,6 @@ import {
   ArrowUpIcon,
   ArrowUturnLeftIcon,
   ArrowUturnRightIcon,
-  Bars3Icon,
   AdjustmentsHorizontalIcon,
   ShareIcon,
 } from '@heroicons/react/24/outline';
@@ -1248,9 +1247,7 @@ function Navigation() {
 
       {/* ══ MAIN ═════════════════════════════════════════════════════════════════ */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <div className="hidden lg:block">
-          <Navbar_Dashboard />
-        </div>
+        <Navbar_Dashboard onMenuClick={() => setShowMobileSidebar(true)} />
 
         {/* Content: left tools panel + map */}
         <div className="flex flex-1 overflow-hidden relative">
@@ -2356,13 +2353,6 @@ function Navigation() {
             {!isNavigating && (
               <div className="absolute top-3 left-3 z-10 flex gap-2 lg:hidden">
                 <button
-                  onClick={() => setShowMobileSidebar(true)}
-                  className="w-10 h-10 rounded-xl shadow-lg flex items-center justify-center transition hover:opacity-80"
-                  style={{ background: '#000000' }}
-                >
-                  <Bars3Icon className="w-5 h-5 text-white" />
-                </button>
-                <button
                   onClick={() => setShowMobileTools(true)}
                   className="h-10 px-3 rounded-xl shadow-lg flex items-center gap-2 transition hover:opacity-80"
                   style={{ background: '#183a37' }}
@@ -2463,7 +2453,7 @@ function Navigation() {
             {!isNavigating && !addPinMode && (
               <div
                 ref={mapSearchRef}
-                className="absolute top-16 lg:top-4 left-1/2 -translate-x-1/2 z-20 w-full max-w-sm px-3"
+                className="absolute top-16 sm:top-4 left-1/2 -translate-x-1/2 z-20 w-full max-w-sm px-3"
               >
                 {/* Pill input */}
                 <div className="flex items-center bg-white rounded-full shadow-lg px-4 py-2.5 gap-2">

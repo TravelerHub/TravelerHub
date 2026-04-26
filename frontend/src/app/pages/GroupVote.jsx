@@ -4,7 +4,7 @@ import { HandRaisedIcon } from "@heroicons/react/24/outline";
 import { API_BASE } from "../../config";
 import { pollService } from "../../services/pollService";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
-import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
+import AppSidebar from "../../components/navbar/AppSidebar.jsx";
 import { logActivity } from "../../components/ActivityFeed.jsx";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -86,6 +86,7 @@ export default function GroupVote() {
   })();
 
   // ── State: trips ───────────────────────────────────────────────────────────
+  const [menuOpen, setMenuOpen]         = useState(false);
   const [trips, setTrips]               = useState([]);
   const [selectedTrip, setSelectedTrip] = useState(null);
 
@@ -324,26 +325,11 @@ export default function GroupVote() {
     <div className="flex h-screen overflow-hidden" style={{ background: "#f3f4f6" }}>
 
       {/* ══ SIDEBAR ══════════════════════════════════════════════════════════ */}
-      <aside className="w-52 shrink-0 flex flex-col" style={{ background: "#000000" }}>
-        <div className="px-5 pt-6 pb-5 border-b shrink-0" style={{ borderColor: "#374151" }}>
-          <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: "#6b7280" }}>Hi,</p>
-          <p className="font-bold text-lg leading-tight truncate" style={{ color: "#f9fafb" }}>{displayName}</p>
-        </div>
-
-        <nav className="flex flex-col gap-1 px-3 py-4 flex-1">
-          {SIDEBAR_ITEMS.map((item) => (
-            <button key={item.label}
-              onClick={() => item.path && navigate(item.path)}
-              className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition hover:bg-white/10"
-              style={{ background: "transparent", color: "#9ca3af" }}>
-              {item.label}
-            </button>
-          ))}
-        </nav>
-
-        {/* Group Vote label at bottom of sidebar */}
-        <div className="px-3 pb-6">
-          <div style={{ height: 1, background: "rgba(255,255,255,0.08)", marginBottom: 16 }} />
+      <AppSidebar
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        displayName={displayName}
+        footer={
           <div
             className="flex items-center gap-3 px-4 py-2.5 rounded-lg"
             style={{ background: "#3b1f1f" }}>
@@ -352,12 +338,12 @@ export default function GroupVote() {
               Group Vote
             </span>
           </div>
-        </div>
-      </aside>
+        }
+      />
 
       {/* ══ MAIN ═════════════════════════════════════════════════════════════ */}
       <div className="flex-1 flex flex-col min-w-0">
-        <Navbar_Dashboard />
+        <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
         <main className="flex-1 overflow-hidden flex gap-0">
 

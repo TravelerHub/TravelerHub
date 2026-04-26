@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
-import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
+import AppSidebar from "../../components/navbar/AppSidebar.jsx";
 
 // ── Color palette (matches Dashboard / Booking)
 // #000000  sidebar bg
@@ -61,9 +60,8 @@ const BLOOD_TYPES      = ["A+", "A−", "B+", "B−", "AB+", "AB−", "O+", "O�
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function Emergency() {
-  const navigate = useNavigate();
-
   // ── State ──────────────────────────────────────────────────────────────────
+  const [menuOpen,       setMenuOpen]       = useState(false);
   const [countrySearch,  setCountrySearch]  = useState("");
   const [pinnedCountry,  setPinnedCountry]  = useState(null);   // { country, ... }
   const [contacts,       setContacts]       = useState(loadContacts);
@@ -156,61 +154,46 @@ export default function Emergency() {
       style={{ background: sosFlash ? "#dc2626" : "#f3f4f6", transition: "background 0.15s" }}
     >
       {/* ══ SIDEBAR ═════════════════════════════════════════════════════════ */}
-      <aside className="w-52 shrink-0 flex flex-col" style={{ background: "#000000" }}>
-        <div className="px-5 pt-6 pb-5 border-b shrink-0" style={{ borderColor: "#374151" }}>
-          <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: "#6b7280" }}>
-            Safety
-          </p>
-          <p className="font-bold text-lg leading-tight text-white">Emergency</p>
-        </div>
-
-        <nav className="flex flex-col gap-1 px-3 py-4 flex-1">
-          {SIDEBAR_ITEMS.map((item) => {
-            const isActive = item.path === "/emergency";
-            return (
-              <button
-                key={item.label}
-                onClick={() => item.path && navigate(item.path)}
-                className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition hover:bg-white/10"
-                style={{
-                  background: isActive ? "#ffffff" : "transparent",
-                  color:      isActive ? "#000000" : "#9ca3af",
-                }}
+      <AppSidebar
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        header={
+          <>
+            <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: "#6b7280" }}>
+              Safety
+            </p>
+            <p className="font-bold text-lg leading-tight text-white">Emergency</p>
+          </>
+        }
+        footer={
+          <div className="space-y-2">
+            <p className="px-1 text-[10px] uppercase tracking-widest font-semibold" style={{ color: "#4b5563" }}>
+              Quick Dial
+            </p>
+            {contacts.slice(0, 3).map((c) => (
+              <a
+                key={c.id}
+                href={`tel:${c.phone}`}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition hover:bg-white/10"
+                style={{ color: "#d1d5db", background: "#111827" }}
               >
-                {item.label}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* Sidebar quick-dial */}
-        <div className="px-3 pb-5 space-y-2">
-          <p className="px-1 text-[10px] uppercase tracking-widest font-semibold" style={{ color: "#4b5563" }}>
-            Quick Dial
-          </p>
-          {contacts.slice(0, 3).map((c) => (
-            <a
-              key={c.id}
-              href={`tel:${c.phone}`}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition hover:bg-white/10"
-              style={{ color: "#d1d5db", background: "#111827" }}
-            >
-              <span className="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-[10px] font-bold shrink-0">
-                {c.name.slice(0, 1).toUpperCase()}
-              </span>
-              <span className="truncate flex-1">{c.name}</span>
-              <span className="text-[10px] shrink-0" style={{ color: "#6b7280" }}>📞</span>
-            </a>
-          ))}
-          {contacts.length === 0 && (
-            <p className="px-1 text-[10px]" style={{ color: "#4b5563" }}>No contacts saved</p>
-          )}
-        </div>
-      </aside>
+                <span className="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-[10px] font-bold shrink-0">
+                  {c.name.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="truncate flex-1">{c.name}</span>
+                <span className="text-[10px] shrink-0" style={{ color: "#6b7280" }}>📞</span>
+              </a>
+            ))}
+            {contacts.length === 0 && (
+              <p className="px-1 text-[10px]" style={{ color: "#4b5563" }}>No contacts saved</p>
+            )}
+          </div>
+        }
+      />
 
       {/* ══ MAIN ════════════════════════════════════════════════════════════ */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Navbar_Dashboard />
+        <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
         <main className="flex-1 overflow-y-auto p-4" style={{ background: "#f3f4f6" }}>
 

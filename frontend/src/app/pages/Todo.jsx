@@ -1,7 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
-import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
+import AppSidebar from "../../components/navbar/AppSidebar.jsx";
 import MiniCalendar from "../../components/dashboard/MiniCalendar.jsx";
 import { API_BASE } from "../../config";
 import { logActivity } from "../../components/ActivityFeed.jsx";
@@ -152,9 +151,8 @@ const priOf = (id) => PRIORITIES.find((p) => p.id === id) || PRIORITIES[1];
 
 // ── Component ──────────────────────────────────────────────────────────────────
 export default function Todo() {
-  const navigate = useNavigate();
-
   // ── State ──────────────────────────────────────────────────────────────────
+  const [menuOpen,    setMenuOpen]    = useState(false);
   const [todos,       setTodos]       = useState(loadTodos);
   const [activeFilter, setFilter]     = useState("All");
   const [activeCategory, setCategory] = useState("all");
@@ -398,62 +396,48 @@ export default function Todo() {
     <div className="flex h-screen overflow-hidden" style={{ background: "#f3f4f6" }}>
 
       {/* ══ SIDEBAR ═════════════════════════════════════════════════════════ */}
-      <aside className="w-52 shrink-0 flex flex-col" style={{ background: "#000000" }}>
-        <div className="px-5 pt-6 pb-5 border-b shrink-0" style={{ borderColor: "#374151" }}>
-          <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: "#6b7280" }}>
-            Trip Planner
-          </p>
-          <p className="font-bold text-lg leading-tight text-white">To-Do Hub</p>
-        </div>
-
-        {/* Category filter in sidebar */}
-        <nav className="flex flex-col gap-1 px-3 py-4 flex-1">
-          <p className="px-2 py-1 text-[10px] uppercase tracking-widest font-semibold mb-1" style={{ color: "#4b5563" }}>
-            Pages
-          </p>
-          {SIDEBAR_ITEMS.map((item) => (
+      <AppSidebar
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        header={
+          <>
+            <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: "#6b7280" }}>
+              Trip Planner
+            </p>
+            <p className="font-bold text-lg leading-tight text-white">To-Do Hub</p>
+          </>
+        }
+        topExtras={
+          <div className="pt-2 border-t" style={{ borderColor: "#374151" }}>
+            <p className="px-2 py-1 text-[10px] uppercase tracking-widest font-semibold mb-1 mt-2" style={{ color: "#4b5563" }}>
+              Filter by Category
+            </p>
             <button
-              key={item.label}
-              onClick={() => item.path && navigate(item.path)}
-              className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition hover:bg-white/10"
-              style={{ color: "#9ca3af" }}
-            >
-              {item.label}
-            </button>
-          ))}
-
-          <div className="my-2 border-t" style={{ borderColor: "#374151" }} />
-
-          <p className="px-2 py-1 text-[10px] uppercase tracking-widest font-semibold mb-1" style={{ color: "#4b5563" }}>
-            Filter by Category
-          </p>
-          <button
-            onClick={() => setCategory("all")}
-            className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition`}
-            style={{
-              background: activeCategory === "all" ? "#ffffff" : "transparent",
-              color:      activeCategory === "all" ? "#000000" : "#9ca3af",
-            }}
-          >
-            📋 All Categories
-          </button>
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setCategory(cat.id)}
-              className="w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition hover:bg-white/10"
+              onClick={() => setCategory("all")}
+              className="w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition"
               style={{
-                background: activeCategory === cat.id ? "#ffffff" : "transparent",
-                color:      activeCategory === cat.id ? "#000000" : "#9ca3af",
+                background: activeCategory === "all" ? "#ffffff" : "transparent",
+                color:      activeCategory === "all" ? "#000000" : "#9ca3af",
               }}
             >
-              {cat.icon} {cat.label}
+              📋 All Categories
             </button>
-          ))}
-        </nav>
-
-        {/* Stats footer */}
-        <div className="px-4 pb-5 space-y-1.5">
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setCategory(cat.id)}
+                className="w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition hover:bg-white/10"
+                style={{
+                  background: activeCategory === cat.id ? "#ffffff" : "transparent",
+                  color:      activeCategory === cat.id ? "#000000" : "#9ca3af",
+                }}
+              >
+                {cat.icon} {cat.label}
+              </button>
+            ))}
+          </div>
+        }
+        footer={
           <div className="rounded-xl p-3 text-xs" style={{ background: "#111827" }}>
             <div className="flex justify-between mb-1.5">
               <span style={{ color: "#9ca3af" }}>Progress</span>
@@ -472,12 +456,12 @@ export default function Todo() {
               )}
             </div>
           </div>
-        </div>
-      </aside>
+        }
+      />
 
       {/* ══ MAIN ════════════════════════════════════════════════════════════ */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Navbar_Dashboard />
+        <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
         <main className="flex-1 overflow-y-auto p-4" style={{ background: "#f3f4f6" }}>
 
