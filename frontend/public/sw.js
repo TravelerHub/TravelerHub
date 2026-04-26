@@ -63,10 +63,11 @@ async function limitCacheSize(cacheName, maxItems) {
 }
 
 function isApiRequest(url) {
-  // Requests to our own FastAPI backend
+  // Requests to our own FastAPI backend (dev or production)
   return (
     url.hostname === 'localhost' ||
     url.hostname === '127.0.0.1' ||
+    url.hostname === 'travelhub-api.fozhan.dev' ||
     url.pathname.startsWith('/api/')
   );
 }
