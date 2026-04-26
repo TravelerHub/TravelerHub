@@ -11,7 +11,7 @@ Endpoints:
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from supabase_client import supabase
+from supabase_client import supabase, safe_single
 from utils import oauth2
 
 router = APIRouter(prefix="/finance", tags=["Finance — Splitting"])
@@ -49,12 +49,10 @@ def _get_trip_member_ids(trip_id: str) -> List[str]:
 
     # Include the trip owner
     try:
-        owner = (
+        owner = safe_single(
             supabase.table("trips")
             .select("owner_id")
             .eq("id", trip_id)
-            .maybe_single()
-            .execute()
         )
         if owner.data:
             ids.add(owner.data["owner_id"])
@@ -106,12 +104,10 @@ def split_expense(
     user_id = current_user["id"]
 
     # Fetch the expense
-    exp = (
+    exp = safe_single(
         supabase.table("expenses")
         .select("id, total, trip_id, user_id")
         .eq("id", expense_id)
-        .maybe_single()
-        .execute()
     )
     if not exp.data:
         raise HTTPException(status_code=404, detail="Expense not found")

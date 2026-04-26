@@ -35,7 +35,6 @@ def _get_group_member_ids(group_id: str, current_user_id: str) -> List[str]:
         supabase.table("group_member")
         .select("user_id")
         .eq("group_id", group_id)
-        .is_("left_datetime", None)
         .execute()
     )
     member_ids = [m["user_id"] for m in (members_res.data or [])]

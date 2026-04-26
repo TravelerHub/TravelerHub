@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from utils import oauth2
-from supabase_client import supabase
+from supabase_client import supabase, safe_single
 
 # Reuse membership helpers from groups router
 from routers.groups import (
@@ -91,12 +91,10 @@ def preview_invite(token: str):
 
     # Fetch trip info
     try:
-        trip_res = (
+        trip_res = safe_single(
             supabase.table("trips")
             .select("id, name, owner_id")
             .eq("id", trip_id)
-            .maybe_single()
-            .execute()
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail="Error fetching trip")
@@ -122,12 +120,10 @@ def preview_invite(token: str):
     # Creator name
     created_by_name = None
     try:
-        creator_res = (
+        creator_res = safe_single(
             supabase.table("users")
             .select("username, email")
             .eq("id", invite["created_by"])
-            .maybe_single()
-            .execute()
         )
         if creator_res.data:
             created_by_name = creator_res.data.get("username") or creator_res.data.get("email")
@@ -158,12 +154,10 @@ def join_via_invite(
 
     # Fetch trip name for response
     try:
-        trip_res = (
+        trip_res = safe_single(
             supabase.table("trips")
             .select("id, name")
             .eq("id", trip_id)
-            .maybe_single()
-            .execute()
         )
     except Exception:
         raise HTTPException(status_code=500, detail="Error fetching trip")
@@ -207,12 +201,10 @@ def join_via_invite(
 def _get_valid_invite(token: str) -> dict:
     """Fetch a trip_invite row and validate it. Raises 404 on any failure."""
     try:
-        res = (
+        res = safe_single(
             supabase.table("trip_invites")
             .select("*")
             .eq("token", token)
-            .maybe_single()
-            .execute()
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail="Error looking up invite")

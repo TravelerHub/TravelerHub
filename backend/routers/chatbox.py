@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconn
 from typing import Dict, Set, Optional
 import asyncio
 from datetime import datetime
-from supabase_client import supabase
+from supabase_client import supabase, safe_single
 import schemas
 from utils import oauth2
 
@@ -51,15 +51,13 @@ def ensure_conversation_member(conversation_id: str, user_id: str):
 
 def ensure_trip_member(trip_id: str, user_id: str):
     try:
-        membership = (
+        membership = safe_single(
             supabase
             .from_("trip_members")
             .select("id")
             .eq("trip_id", trip_id)
             .eq("user_id", user_id)
             .is_("left_at", None)
-            .maybe_single()
-            .execute()
         )
         if membership.data:
             return
@@ -67,29 +65,24 @@ def ensure_trip_member(trip_id: str, user_id: str):
         pass
 
     try:
-        membership = (
+        membership = safe_single(
             supabase
             .from_("group_member")
             .select("id")
             .eq("group_id", trip_id)
             .eq("user_id", user_id)
-            .is_("left_datetime", None)
-            .maybe_single()
-            .execute()
         )
         if membership.data:
             return
     except Exception:
         pass
 
-    owner = (
+    owner = safe_single(
         supabase
         .from_("trips")
         .select("id")
         .eq("id", trip_id)
         .eq("owner_id", user_id)
-        .maybe_single()
-        .execute()
     )
     if not owner.data:
         raise HTTPException(status_code=403, detail="Not a member of this group")

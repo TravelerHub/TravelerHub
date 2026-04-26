@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from utils import oauth2
-from supabase_client import supabase
+from supabase_client import supabase, safe_single
 
 router = APIRouter(
     prefix="/groups",
@@ -124,13 +124,11 @@ def require_leader(group_id: str, user_id: str) -> None:
         return
 
     # Backward-compatible fallback for old trips without group_member rows.
-    owner = (
+    owner = safe_single(
         supabase.table("trips")
         .select("id")
         .eq("id", group_id)
         .eq("owner_id", user_id)
-        .maybe_single()
-        .execute()
     )
     if not owner.data:
         raise HTTPException(
@@ -145,13 +143,11 @@ def require_group_member(group_id: str, user_id: str) -> None:
         return
 
     # Backward-compatible fallback for old owner-only trips.
-    owner = (
+    owner = safe_single(
         supabase.table("trips")
         .select("id")
         .eq("id", group_id)
         .eq("owner_id", user_id)
-        .maybe_single()
-        .execute()
     )
     if not owner.data:
         raise HTTPException(status_code=403, detail="Not a member of this group")
@@ -360,12 +356,10 @@ def add_group_member(
             raise HTTPException(status_code=400, detail="user_id is required")
 
         # Ensure target user exists
-        target_user = (
+        target_user = safe_single(
             supabase.table("users")
             .select("id")
             .eq("id", new_user_id)
-            .maybe_single()
-            .execute()
         )
         if not target_user.data:
             raise HTTPException(status_code=404, detail="User not found")

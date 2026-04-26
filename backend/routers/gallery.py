@@ -18,7 +18,7 @@ import secrets
 from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Query
 from pydantic import BaseModel
-from supabase_client import supabase, supabase_admin
+from supabase_client import supabase, supabase_admin, safe_single
 from utils import oauth2
 from services.photo_clusterer import PhotoClusterer
 
@@ -55,14 +55,12 @@ def _uid(current_user: dict) -> str:
 
 def _is_trip_leader(trip_id: str, user_id: str) -> bool:
     try:
-        res = (
+        res = safe_single(
             supabase.table("trip_members")
             .select("role")
             .eq("trip_id", trip_id)
             .eq("user_id", user_id)
             .is_("left_at", None)
-            .maybe_single()
-            .execute()
         )
         if res.data and res.data.get("role") == "leader":
             return True
@@ -70,13 +68,11 @@ def _is_trip_leader(trip_id: str, user_id: str) -> bool:
         pass
 
     try:
-        owner = (
+        owner = safe_single(
             supabase.table("trips")
             .select("id")
             .eq("id", trip_id)
             .eq("owner_id", user_id)
-            .maybe_single()
-            .execute()
         )
         if owner.data:
             return True
@@ -277,13 +273,11 @@ async def update_media_caption(
     """Update the caption on a photo. Owner or trip leader can edit."""
     user_id = _uid(current_user)
 
-    existing = (
+    existing = safe_single(
         supabase.table("trip_media")
         .select("id, uploaded_by")
         .eq("id", media_id)
         .eq("trip_id", trip_id)
-        .maybe_single()
-        .execute()
     )
     if not existing.data:
         raise HTTPException(status_code=404, detail="Photo not found")
@@ -313,13 +307,11 @@ async def delete_trip_media(
     """Delete a photo. Owner or trip leader can delete."""
     user_id = _uid(current_user)
 
-    existing = (
+    existing = safe_single(
         supabase.table("trip_media")
         .select("id, uploaded_by, storage_path")
         .eq("id", media_id)
         .eq("trip_id", trip_id)
-        .maybe_single()
-        .execute()
     )
     if not existing.data:
         raise HTTPException(status_code=404, detail="Photo not found")
@@ -448,20 +440,18 @@ async def toggle_like(
     """Like or unlike a photo. Returns the new like state and count."""
     user_id = _uid(current_user)
 
-    existing = (
+    existing = safe_single(
         supabase.table("media_likes")
         .select("id")
         .eq("media_id", media_id)
         .eq("user_id", user_id)
-        .maybe_single()
-        .execute()
     )
 
     if existing.data:
         # Unlike
         supabase.table("media_likes").delete().eq("id", existing.data["id"]).execute()
         # Decrement count
-        photo = supabase.table("trip_media").select("like_count").eq("id", media_id).maybe_single().execute()
+        photo = safe_single(supabase.table("trip_media").select("like_count").eq("id", media_id))
         new_count = max(0, (photo.data or {}).get("like_count", 1) - 1)
         supabase.table("trip_media").update({"like_count": new_count}).eq("id", media_id).execute()
         return {"liked": False, "like_count": new_count}
@@ -471,7 +461,7 @@ async def toggle_like(
             "media_id": media_id,
             "user_id": user_id,
         }).execute()
-        photo = supabase.table("trip_media").select("like_count").eq("id", media_id).maybe_single().execute()
+        photo = safe_single(supabase.table("trip_media").select("like_count").eq("id", media_id))
         new_count = ((photo.data or {}).get("like_count", 0) or 0) + 1
         supabase.table("trip_media").update({"like_count": new_count}).eq("id", media_id).execute()
         return {"liked": True, "like_count": new_count}
@@ -488,13 +478,11 @@ async def toggle_save(
     """Save or unsave a photo to personal collection."""
     user_id = _uid(current_user)
 
-    existing = (
+    existing = safe_single(
         supabase.table("media_saves")
         .select("id")
         .eq("media_id", media_id)
         .eq("user_id", user_id)
-        .maybe_single()
-        .execute()
     )
 
     if existing.data:

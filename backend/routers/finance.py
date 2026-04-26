@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from supabase_client import supabase
+from supabase_client import supabase, safe_single
 from utils import oauth2
 from services.anomaly_detection import ExpenseAnomalyDetector
 
@@ -15,14 +15,12 @@ router = APIRouter(
 
 def _ensure_trip_member(trip_id: str, user_id: str) -> None:
     try:
-        member = (
+        member = safe_single(
             supabase.table("trip_members")
             .select("id")
             .eq("trip_id", trip_id)
             .eq("user_id", user_id)
             .is_("left_at", None)
-            .maybe_single()
-            .execute()
         )
         if member.data:
             return
@@ -30,27 +28,23 @@ def _ensure_trip_member(trip_id: str, user_id: str) -> None:
         pass
 
     try:
-        member = (
+        member = safe_single(
             supabase.table("group_member")
             .select("id")
             .eq("group_id", trip_id)
             .eq("user_id", user_id)
             .is_("left_datetime", None)
-            .maybe_single()
-            .execute()
         )
         if member.data:
             return
     except Exception:
         pass
 
-    owner = (
+    owner = safe_single(
         supabase.table("trips")
         .select("id")
         .eq("id", trip_id)
         .eq("owner_id", user_id)
-        .maybe_single()
-        .execute()
     )
     if not owner.data:
         raise HTTPException(status_code=403, detail="Not a member of this group")
@@ -58,15 +52,13 @@ def _ensure_trip_member(trip_id: str, user_id: str) -> None:
 
 def _is_trip_leader(trip_id: str, user_id: str) -> bool:
     try:
-        member = (
+        member = safe_single(
             supabase.table("trip_members")
             .select("id")
             .eq("trip_id", trip_id)
             .eq("user_id", user_id)
             .eq("role", "leader")
             .is_("left_at", None)
-            .maybe_single()
-            .execute()
         )
         if member.data:
             return True
@@ -74,28 +66,24 @@ def _is_trip_leader(trip_id: str, user_id: str) -> bool:
         pass
 
     try:
-        member = (
+        member = safe_single(
             supabase.table("group_member")
             .select("id")
             .eq("group_id", trip_id)
             .eq("user_id", user_id)
             .eq("role", "leader")
             .is_("left_datetime", None)
-            .maybe_single()
-            .execute()
         )
         if member.data:
             return True
     except Exception:
         pass
 
-    owner = (
+    owner = safe_single(
         supabase.table("trips")
         .select("id")
         .eq("id", trip_id)
         .eq("owner_id", user_id)
-        .maybe_single()
-        .execute()
     )
     return bool(owner.data)
 

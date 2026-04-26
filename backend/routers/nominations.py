@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from typing import Optional, List
 from utils import oauth2
-from supabase_client import supabase
+from supabase_client import supabase, safe_single
 import math
 
 router = APIRouter(
@@ -52,14 +52,12 @@ def _haversine_km(lat1, lng1, lat2, lng2) -> float:
 
 def _verify_membership(group_id: str, user_id: str) -> None:
     """Raise 403 if user is not in the group."""
-    res = (
+    res = safe_single(
         supabase.table("group_member")
         .select("id")
         .eq("group_id", group_id)
         .eq("user_id", user_id)
         .is_("left_datetime", None)
-        .maybe_single()
-        .execute()
     )
     if not res.data:
         raise HTTPException(status_code=403, detail="Not a member of this group")
@@ -138,13 +136,11 @@ def vote_on_nomination(
 
     try:
         # Upsert — update if already voted, insert if not
-        existing = (
+        existing = safe_single(
             supabase.table("place_votes")
             .select("id")
             .eq("nomination_id", body.nomination_id)
             .eq("user_id", user_id)
-            .maybe_single()
-            .execute()
         )
 
         if existing.data:
@@ -285,12 +281,10 @@ def delete_nomination(
 
     try:
         # Get the nomination
-        nom_res = (
+        nom_res = safe_single(
             supabase.table("place_nominations")
             .select("id, nominated_by, group_id")
             .eq("id", nomination_id)
-            .maybe_single()
-            .execute()
         )
 
         if not nom_res.data:
@@ -300,14 +294,12 @@ def delete_nomination(
 
         # Check permission: must be nominator or group leader
         if nom["nominated_by"] != user_id:
-            leader_check = (
+            leader_check = safe_single(
                 supabase.table("group_member")
                 .select("role")
                 .eq("group_id", nom["group_id"])
                 .eq("user_id", user_id)
                 .is_("left_datetime", None)
-                .maybe_single()
-                .execute()
             )
             if not leader_check.data or leader_check.data.get("role") != "leader":
                 raise HTTPException(status_code=403, detail="Only the nominator or group leader can delete")

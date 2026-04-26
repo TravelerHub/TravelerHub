@@ -18,7 +18,7 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from utils import oauth2
-from supabase_client import supabase
+from supabase_client import supabase, safe_single
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -742,12 +742,10 @@ async def veto_check(
     the group's Social Contract setting.
     """
     # 1. Load group settings (social contract)
-    settings_res = (
+    settings_res = safe_single(
         supabase.table("group_settings")
         .select("*")
         .eq("trip_id", body.trip_id)
-        .maybe_single()
-        .execute()
     )
     settings = settings_res.data if settings_res.data else {
         "vote_mode": "majority",
@@ -878,12 +876,10 @@ def get_group_settings(
 ):
     """Get the group's social contract settings."""
     try:
-        res = (
+        res = safe_single(
             supabase.table("group_settings")
             .select("*")
             .eq("trip_id", trip_id)
-            .maybe_single()
-            .execute()
         )
         if res and res.data:
             return res.data
@@ -937,12 +933,10 @@ def update_group_settings(
     update_data["updated_at"] = "now()"
 
     # Upsert
-    existing = (
+    existing = safe_single(
         supabase.table("group_settings")
         .select("id")
         .eq("trip_id", trip_id)
-        .maybe_single()
-        .execute()
     )
     if existing.data:
         res = (
