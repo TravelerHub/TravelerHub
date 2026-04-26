@@ -15,7 +15,7 @@
  * To update the cache version, bump CACHE_VERSION below and re-deploy.
  */
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const SHELL_CACHE   = `travelerhub-shell-${CACHE_VERSION}`;
 const API_CACHE     = `travelerhub-api-${CACHE_VERSION}`;
 const ASSET_CACHE   = `travelerhub-assets-${CACHE_VERSION}`;
@@ -87,6 +87,9 @@ self.addEventListener('fetch', (event) => {
   // Skip non-GET mutations — let them go to the network (or fail offline)
   if (event.request.method !== 'GET') return;
 
+  // Skip Google APIs entirely — network-only, never cache (prevents stale 403s)
+  if (url.hostname.endsWith('.googleapis.com')) return;
+
   // ── 1. SPA navigation — serve index.html from cache when offline ──
   if (isNavigationRequest(event.request)) {
     event.respondWith(
@@ -152,8 +155,10 @@ self.addEventListener('fetch', (event) => {
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
       return fetch(event.request).then((response) => {
-        const clone = response.clone();
-        caches.open(ASSET_CACHE).then((c) => c.put(event.request, clone));
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(ASSET_CACHE).then((c) => c.put(event.request, clone));
+        }
         return response;
       });
     })
