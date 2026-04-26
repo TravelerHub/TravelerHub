@@ -119,17 +119,19 @@ def signup(request: Request, data: SignupRequest):
 @router.post("/login")
 @limiter.limit("10/minute")
 def login(request: Request, data: LoginRequest):
-    # Get user by username
-    res = (
-        supabase
-        .table("users")
-        .select("*")
-        .eq("username", data.username)
-        .single()
-        .execute()
-    )
-
-    user = res.data
+    # Get user by username — .single() raises in supabase-py v2 when no row found
+    try:
+        res = (
+            supabase
+            .table("users")
+            .select("*")
+            .eq("username", data.username)
+            .single()
+            .execute()
+        )
+        user = res.data
+    except Exception:
+        user = None
 
     if not user:
         raise HTTPException(

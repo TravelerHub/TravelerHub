@@ -278,66 +278,91 @@ export default function ChatWindow({
   useEffect(() => {
     if (!conversationID) return;
     let isActive = true;
-    const wsBase = API_BASE.replace(/^http/, "ws");
-    const ws = new WebSocket(`${wsBase}/api/ws/conversations/${conversationID}`);
-    wsRef.current = ws;
+    let retryCount = 0;
+    let reconnectTimer = null;
+    let pingInterval = null;
 
-    ws.onopen = () => {
-      // On (re)connect send our current read position so peers see it
-      if (currentUserId && lastMessageId) {
-        ws.send(JSON.stringify({
-          type: "read",
-          user_id: currentUserId,
-          last_read_message_id: lastMessageId,
-        }));
-      }
-    };
-
-    ws.onmessage = (event) => {
+    const connect = () => {
       if (!isActive) return;
-      let data;
-      try { data = JSON.parse(event.data); } catch { return; }
+      clearInterval(pingInterval);
 
-      if (data.type === "typing") {
-        setTypingUsers((prev) => {
-          const next = new Map(prev);
-          next.set(data.user_id, data.username || data.user_id);
-          return next;
-        });
-      } else if (data.type === "typing_stop") {
-        setTypingUsers((prev) => {
-          const next = new Map(prev);
-          next.delete(data.user_id);
-          return next;
-        });
-      } else if (data.type === "read") {
-        setReadStatus((prev) => {
-          const next = new Map(prev);
-          next.set(data.user_id, data.last_read_message_id);
-          return next;
-        });
-      } else {
-        // Regular chat message
-        const msg = data;
-        if (msg.message_id) {
-          setLocalMessages((prev) => {
-            if (prev.some((m) => m.message_id === msg.message_id)) return prev;
-            return [...prev, msg];
-          });
+      const wsBase = API_BASE.replace(/^http/, "ws");
+      const ws = new WebSocket(`${wsBase}/api/ws/conversations/${conversationID}`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        retryCount = 0;
+        if (currentUserId && lastMessageId) {
+          ws.send(JSON.stringify({
+            type: "read",
+            user_id: currentUserId,
+            last_read_message_id: lastMessageId,
+          }));
         }
-      }
+      };
+
+      ws.onmessage = (event) => {
+        if (!isActive) return;
+        let data;
+        try { data = JSON.parse(event.data); } catch { return; }
+
+        if (data.type === "typing") {
+          setTypingUsers((prev) => {
+            const next = new Map(prev);
+            next.set(data.user_id, data.username || data.user_id);
+            return next;
+          });
+        } else if (data.type === "typing_stop") {
+          setTypingUsers((prev) => {
+            const next = new Map(prev);
+            next.delete(data.user_id);
+            return next;
+          });
+        } else if (data.type === "read") {
+          setReadStatus((prev) => {
+            const next = new Map(prev);
+            next.set(data.user_id, data.last_read_message_id);
+            return next;
+          });
+        } else {
+          const msg = data;
+          if (msg.message_id) {
+            setLocalMessages((prev) => {
+              if (prev.some((m) => m.message_id === msg.message_id)) return prev;
+              return [...prev, msg];
+            });
+          }
+        }
+      };
+
+      ws.onerror = (e) => { if (isActive) console.error("WebSocket error:", e); };
+
+      ws.onclose = () => {
+        if (!isActive) return;
+        clearInterval(pingInterval);
+        wsRef.current = null;
+        // Exponential backoff: 1s → 2s → 4s → 8s → 16s → 30s max
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+        retryCount = Math.min(retryCount + 1, 5);
+        reconnectTimer = setTimeout(connect, delay);
+      };
+
+      pingInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "ping" }));
+        }
+      }, 25000);
     };
 
-    ws.onerror  = (e) => { if (isActive) console.error("WebSocket error:", e); };
-    ws.onclose  = ()  => { if (isActive) console.log("WebSocket closed"); };
-    const ping  = setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send("ping"); }, 25000);
+    connect();
 
     return () => {
       isActive = false;
-      clearInterval(ping);
+      clearTimeout(reconnectTimer);
+      clearInterval(pingInterval);
+      const ws = wsRef.current;
       wsRef.current = null;
-      ws.close();
-      // Clear typing state when leaving conversation
+      if (ws) ws.close();
       setTypingUsers(new Map());
       setReadStatus(new Map());
     };

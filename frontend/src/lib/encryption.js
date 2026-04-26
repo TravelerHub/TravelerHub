@@ -1,3 +1,9 @@
+import nacl from "tweetnacl";
+import { encodeBase64, decodeBase64, encodeUTF8, decodeUTF8 } from "tweetnacl-util";
+
+// Re-export as nacl.util shape so the rest of the file doesn't need to change
+nacl.util = { encodeBase64, decodeBase64, encodeUTF8, decodeUTF8 };
+
 /**
  * End-to-End Encryption utilities for frontend
  * Uses TweetNaCl.js for hybrid encryption.
