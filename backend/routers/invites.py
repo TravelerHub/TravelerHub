@@ -16,6 +16,7 @@ Required SQL (run once in Supabase):
 -- );
 """
 
+import os
 import secrets
 from datetime import datetime, timedelta
 
@@ -35,7 +36,7 @@ router = APIRouter(
     tags=["Invites"],
 )
 
-INVITE_BASE_URL = "http://localhost:5173/join"
+INVITE_BASE_URL = os.getenv("INVITE_BASE_URL", "https://travelhub.fozhan.dev/join")
 
 
 # ---------------------------------------------------------------------------
