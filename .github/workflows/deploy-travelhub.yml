@@ -89,7 +89,7 @@ jobs:
             echo "==> Waiting for startup (up to 60s)..."
             for i in $(seq 1 12); do
               sleep 5
-              if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              if curl -sf http://localhost:8001/health > /dev/null 2>&1; then
                 echo "==> Health check passed after $((i*5))s ✓"
                 break
               fi
