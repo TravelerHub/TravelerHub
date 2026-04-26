@@ -50,7 +50,10 @@ app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-_cors_env = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+_cors_env = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173,https://travelhub.fozhan.dev",
+)
 _allowed_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
 
 @app.middleware("http")
