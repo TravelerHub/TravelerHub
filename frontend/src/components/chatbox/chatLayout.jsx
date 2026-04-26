@@ -81,11 +81,15 @@ export default function ChatLayout({ currentUser, onNewChat, tripId }) {
   );
   const displayTitle = selectedConv?.conversation_name?.trim() || conversationTitle;
 
+  // On mobile, show conversation list when no conversation selected,
+  // and switch to chat window when one is picked. On md+, show side-by-side.
   return (
     <div className="h-full flex gap-3">
 
       {/* ── Conversation list panel ──────────────────────────────────── */}
-      <Panel className="w-64 shrink-0 flex flex-col">
+      <Panel
+        className={`w-full md:w-64 md:shrink-0 flex-col ${selectedId ? "hidden md:flex" : "flex"}`}
+      >
         {/* Header */}
         <div className="px-4 py-3 shrink-0" style={{ borderBottom: "1px solid #ebebeb" }}>
           <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#374151" }}>
@@ -110,22 +114,37 @@ export default function ChatLayout({ currentUser, onNewChat, tripId }) {
       </Panel>
 
       {/* ── Chat window panel ────────────────────────────────────────── */}
-      <Panel className="flex-1 flex flex-col min-w-0">
+      <Panel
+        className={`flex-1 flex-col min-w-0 ${selectedId ? "flex" : "hidden md:flex"}`}
+      >
         {!selectedId ? (
           <EmptyState
             title="Select a conversation"
             subtitle="Choose one from the left to start chatting."
           />
         ) : (
-          <ChatWindow
-            loading={loadingRight}
-            title={displayTitle}
-            currentUserId={currentUser?.id}
-            members={selectedMembers}
-            messages={selectedMessages}
-            error={error}
-            conversationID={selectedId}
-          />
+          <>
+            {/* Mobile: back button to return to conversation list */}
+            <button
+              onClick={() => setSelectedId(null)}
+              className="md:hidden flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b shrink-0"
+              style={{ color: "#160f29", borderColor: "#ebebeb" }}
+            >
+              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              Conversations
+            </button>
+            <ChatWindow
+              loading={loadingRight}
+              title={displayTitle}
+              currentUserId={currentUser?.id}
+              members={selectedMembers}
+              messages={selectedMessages}
+              error={error}
+              conversationID={selectedId}
+            />
+          </>
         )}
       </Panel>
 

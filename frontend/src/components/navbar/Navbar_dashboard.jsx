@@ -393,7 +393,7 @@ function TripSwitcher() {
 
 // ── Main navbar ──────────────────────────────────────────────────────────────
 
-function Navbar_Dashboard() {
+function Navbar_Dashboard({ onMenuClick }) {
   const navigate = useNavigate();
 
   // Profile dropdown
@@ -503,14 +503,30 @@ function Navbar_Dashboard() {
 
   return (
     <header
-      className="h-14 shrink-0 flex items-center gap-4 px-6 border-b"
+      className="h-14 shrink-0 flex items-center gap-2 sm:gap-4 px-3 sm:px-6 border-b"
       style={{ background: "#fbfbf2", borderColor: "#d1d1c7", paddingTop: "var(--sat, 0px)" }}
     >
+      {/* ── Mobile menu toggle (only shown when onMenuClick provided) ── */}
+      {onMenuClick && (
+        <button
+          onClick={onMenuClick}
+          aria-label="Open menu"
+          className="lg:hidden w-9 h-9 shrink-0 flex items-center justify-center rounded-lg hover:bg-black/5 transition"
+        >
+          <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#160f29" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+      )}
+
       {/* ── Search area ── */}
       <div
         ref={searchWrapRef}
         style={{
           flex: 1,
+          minWidth: 0,
           maxWidth: 440,
           position: "relative",
           display: "flex",
@@ -519,7 +535,7 @@ function Navbar_Dashboard() {
       >
         {/* Collapsed: icon button */}
         {!searchOpen && (
-          <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
+          <div style={{ display: "flex", alignItems: "center", width: "100%", minWidth: 0 }}>
             <button
               onClick={openSearch}
               title="Search"
@@ -536,12 +552,26 @@ function Navbar_Dashboard() {
                 fontSize: 13,
                 transition: "background 0.15s",
                 width: "100%",
+                minWidth: 0,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
               }}
               onMouseEnter={(e) => (e.currentTarget.style.background = "#dcdcd4")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "#e8e8e0")}
             >
-              <IconSearch />
-              <span>Search trips, expenses, photos…</span>
+              <span style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
+                <IconSearch />
+              </span>
+              <span
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  minWidth: 0,
+                }}
+              >
+                Search trips, expenses, photos…
+              </span>
             </button>
           </div>
         )}
@@ -614,31 +644,31 @@ function Navbar_Dashboard() {
       <TripSwitcher />
 
       {/* ── Right actions ── */}
-      <div className="flex items-center gap-3 ml-auto">
-        {/* Language badge */}
+      <div className="flex items-center gap-1 sm:gap-3 ml-auto shrink-0">
+        {/* Language badge — hidden on small screens */}
         <span
-          className="text-xs font-semibold px-2 py-1 rounded select-none"
+          className="hidden sm:inline-block text-xs font-semibold px-2 py-1 rounded select-none"
           style={{ color: "#5c6b73", background: "#e2e2da" }}
         >
           EN
         </span>
 
-        {/* Chat notifications */}
+        {/* Chat notifications — hidden on small (use bottom nav instead) */}
         <button
           onClick={() => navigate("/message")}
           aria-label="Messages"
-          className="relative w-8 h-8 flex items-center justify-center rounded-lg hover:bg-black/5 transition"
+          className="hidden sm:flex relative w-8 h-8 items-center justify-center rounded-lg hover:bg-black/5 transition"
         >
           <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="#5c6b73" strokeWidth={1.8}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.77 9.77 0 01-4-.84L3 20l1.09-3.27A7.958 7.958 0 013 12C3 7.582 7.03 4 12 4s9 3.582 9 8z" />
           </svg>
         </button>
 
-        {/* Event notifications */}
+        {/* Event notifications — hidden on small */}
         <button
           onClick={() => navigate("/calendar")}
           aria-label="Events calendar"
-          className="relative w-8 h-8 flex items-center justify-center rounded-lg hover:bg-black/5 transition"
+          className="hidden sm:flex relative w-8 h-8 items-center justify-center rounded-lg hover:bg-black/5 transition"
         >
           <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="#5c6b73" strokeWidth={1.8}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
