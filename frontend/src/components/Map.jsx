@@ -65,6 +65,11 @@ const Map = forwardRef(function Map({
       return;
     }
 
+    if (!mapboxgl.supported()) {
+      console.error('Map: WebGL not supported in this browser');
+      return;
+    }
+
     try {
       mapRef.current = new mapboxgl.Map({
         container: mapContainer.current,
@@ -76,6 +81,12 @@ const Map = forwardRef(function Map({
       console.error('Map: failed to initialize Mapbox GL —', err.message);
       return;
     }
+
+    // Swallow async Mapbox GL internal errors (WebGL context loss, style fetch failures)
+    // so they don't propagate to React's global error handler and trigger ErrorBoundary.
+    mapRef.current.on('error', (e) => {
+      console.error('Map: Mapbox GL error —', e?.error?.message || e);
+    });
 
     // Navigation controls
     mapRef.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
