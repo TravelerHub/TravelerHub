@@ -1,14 +1,42 @@
+import time
 from typing import Optional, List
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from utils import oauth2
 from supabase_client import supabase, safe_single
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(
     prefix="/groups",
     tags=["Groups"]
 )
+
+# ---- Membership cache (READ-only, 30-second TTL) ----
+# Avoids redundant DB round-trips for the hot membership-check path.
+_membership_cache: dict = {}  # {(trip_id, user_id): (is_member: bool, expires: float)}
+_CACHE_TTL = 30  # seconds
+
+
+def _check_membership_cached(trip_id: str, user_id: str) -> bool:
+    """Return True if user is an active member of trip_id. Result is cached for 30 s."""
+    key = (trip_id, user_id)
+    cached = _membership_cache.get(key)
+    if cached is not None:
+        result, expires = cached
+        if time.time() < expires:
+            return result
+    members = _get_trip_members(trip_id)
+    is_member = any(m.get("user_id") == user_id for m in members)
+    _membership_cache[key] = (is_member, time.time() + _CACHE_TTL)
+    return is_member
+
+
+def _invalidate_membership_cache(trip_id: str, user_id: str) -> None:
+    """Remove a specific entry from the cache (call after any write that changes membership)."""
+    _membership_cache.pop((trip_id, user_id), None)
 
 
 # ---- Schemas ----
@@ -35,8 +63,8 @@ def _get_trip_members(group_id: str) -> List[dict]:
             .execute()
         )
         return res.data or []
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_get_trip_members] trip_members query failed for group=%s: %s", group_id, e, exc_info=True)
 
     try:
         res = (
@@ -52,13 +80,13 @@ def _get_trip_members(group_id: str) -> List[dict]:
             "role": r.get("role", "member"),
             "joined_at": r.get("join_datetime"),
         } for r in rows]
-    except Exception:
+    except Exception as e:
+        logger.warning("[_get_trip_members] group_member fallback failed for group=%s: %s", group_id, e, exc_info=True)
         return []
 
 
 def _is_trip_member(group_id: str, user_id: str) -> bool:
-    members = _get_trip_members(group_id)
-    return any(m.get("user_id") == user_id for m in members)
+    return _check_membership_cached(group_id, user_id)
 
 
 def _is_trip_leader(group_id: str, user_id: str) -> bool:
@@ -78,9 +106,10 @@ def _insert_trip_member(group_id: str, user_id: str, role: str) -> bool:
             "role": role,
             "joined_at": now_iso,
         }).execute()
+        _invalidate_membership_cache(group_id, user_id)
         return True
     except Exception as e:
-        print(f"trip_members insert failed for trip={group_id}, user={user_id}: {e}")
+        logger.warning("[_insert_trip_member] trip_members insert failed for trip=%s, user=%s: %s", group_id, user_id, e, exc_info=True)
 
     # Fallback: group_member requires a conversation_id (it's part of the PK).
     # Create or find a conversation for this trip first.
@@ -102,7 +131,7 @@ def _insert_trip_member(group_id: str, user_id: str, role: str) -> bool:
                 "trip_id": group_id,
             }).execute()
             if not conv_insert.data:
-                print(f"Failed to create conversation for trip {group_id}")
+                logger.error("[_insert_trip_member] failed to create conversation for trip=%s", group_id)
                 return False
             conv_id = conv_insert.data[0]["conversation_id"]
 
@@ -113,9 +142,10 @@ def _insert_trip_member(group_id: str, user_id: str, role: str) -> bool:
             "role": role,
             "join_datetime": now_iso,
         }).execute()
+        _invalidate_membership_cache(group_id, user_id)
         return True
     except Exception as e:
-        print(f"group_member fallback insert failed for trip={group_id}, user={user_id}: {e}")
+        logger.error("[_insert_trip_member] group_member fallback insert failed for trip=%s, user=%s: %s", group_id, user_id, e, exc_info=True)
         return False
 
 def require_leader(group_id: str, user_id: str) -> None:
@@ -175,8 +205,9 @@ def create_group(
 
         try:
             trip_res = supabase.table("trips").insert(trip_payload).execute()
-        except Exception:
+        except Exception as e:
             # Fallback for deployments where trips.description is not present.
+            logger.warning("[create_group] trips insert with description failed (schema compat fallback): %s", e)
             trip_res = supabase.table("trips").insert({
                 "name": body.name,
                 "owner_id": current_user["id"],
@@ -191,8 +222,7 @@ def create_group(
         if not _is_trip_member(trip["id"], current_user["id"]):
             ok = _insert_trip_member(trip["id"], current_user["id"], "leader")
             if not ok:
-                print(f"WARNING: Group {trip['id']} created but leader membership failed. "
-                      f"The owner_id fallback in require_leader() will still grant access.")
+                logger.warning("[create_group] group %s created but leader membership insert failed — owner_id fallback will still grant access", trip["id"])
 
         return {
             "trip": trip,
@@ -203,7 +233,7 @@ def create_group(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error creating group: {e}")
+        logger.error("[create_group] unexpected error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Error creating group")
 
 
@@ -224,7 +254,8 @@ def get_my_groups(current_user=Depends(oauth2.get_current_user)):
             )
             membership_rows = memberships_res.data or []
             membership_map = {m["trip_id"]: m.get("role", "member") for m in membership_rows if m.get("trip_id")}
-        except Exception:
+        except Exception as e:
+            logger.warning("[get_my_groups] trip_members query failed for user=%s: %s", current_user["id"], e, exc_info=True)
             try:
                 memberships_res = (
                     supabase.table("group_member")
@@ -235,7 +266,8 @@ def get_my_groups(current_user=Depends(oauth2.get_current_user)):
                 )
                 membership_rows = memberships_res.data or []
                 membership_map = {m["group_id"]: m.get("role", "member") for m in membership_rows if m.get("group_id")}
-            except Exception:
+            except Exception as e2:
+                logger.warning("[get_my_groups] group_member fallback also failed for user=%s: %s", current_user["id"], e2, exc_info=True)
                 membership_map = {}
 
         # Backfill older data where creator has no explicit membership row yet.
@@ -270,7 +302,7 @@ def get_my_groups(current_user=Depends(oauth2.get_current_user)):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error fetching groups: {e}")
+        logger.error("[get_my_groups] unexpected error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching groups")
 
 
@@ -311,7 +343,7 @@ def get_group_members(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error fetching members: {e}")
+        logger.error("[get_group_members] unexpected error for group=%s: %s", group_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching members")
 
 
@@ -337,7 +369,7 @@ def update_member_role(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error updating role: {e}")
+        logger.error("[update_member_role] unexpected error for group=%s: %s", group_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Error updating role")
 
 
@@ -379,5 +411,5 @@ def add_group_member(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error adding member: {e}")
+        logger.error("[add_group_member] unexpected error for group=%s: %s", group_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Error adding member")

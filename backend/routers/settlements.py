@@ -13,6 +13,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from supabase_client import supabase, safe_single
 from utils import oauth2
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/finance", tags=["Finance — Splitting"])
 
@@ -32,8 +35,8 @@ def _get_trip_member_ids(trip_id: str) -> List[str]:
             .execute()
         )
         ids.update(r["user_id"] for r in (res.data or []))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_get_trip_member_ids] trip_members query failed for trip=%s: %s", trip_id, e, exc_info=True)
 
     try:
         res = (
@@ -44,8 +47,8 @@ def _get_trip_member_ids(trip_id: str) -> List[str]:
             .execute()
         )
         ids.update(r["user_id"] for r in (res.data or []))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_get_trip_member_ids] group_member query failed for trip=%s: %s", trip_id, e, exc_info=True)
 
     # Include the trip owner
     try:
@@ -56,8 +59,8 @@ def _get_trip_member_ids(trip_id: str) -> List[str]:
         )
         if owner.data:
             ids.add(owner.data["owner_id"])
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_get_trip_member_ids] trips owner query failed for trip=%s: %s", trip_id, e, exc_info=True)
 
     return list(ids)
 

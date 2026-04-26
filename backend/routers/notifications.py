@@ -1,3 +1,4 @@
+import asyncio
 import os
 from datetime import datetime
 from typing import Optional, List
@@ -5,6 +6,9 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from supabase_client import supabase
 from utils.oauth2 import get_current_user
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
@@ -31,15 +35,15 @@ def create_notification(user_id: str, type: str, title: str, body: str, trip_id:
             "read": False,
             "trip_id": trip_id,
         }).execute()
-    except Exception:
-        pass  # non-fatal
+    except Exception as e:
+        logger.warning("[create_notification] failed: %s", e, exc_info=True)  # non-fatal
 
 
 @router.get("", response_model=List[NotificationOut])
-def get_notifications(current_user=Depends(get_current_user)):
+async def get_notifications(current_user=Depends(get_current_user)):
     user_id = current_user["id"]
-    res = (
-        supabase.table("notifications")
+    res = await asyncio.to_thread(
+        lambda: supabase.table("notifications")
         .select("*")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
@@ -50,10 +54,10 @@ def get_notifications(current_user=Depends(get_current_user)):
 
 
 @router.get("/unread-count")
-def get_unread_count(current_user=Depends(get_current_user)):
+async def get_unread_count(current_user=Depends(get_current_user)):
     user_id = current_user["id"]
-    res = (
-        supabase.table("notifications")
+    res = await asyncio.to_thread(
+        lambda: supabase.table("notifications")
         .select("id", count="exact")
         .eq("user_id", user_id)
         .eq("read", False)
@@ -63,13 +67,17 @@ def get_unread_count(current_user=Depends(get_current_user)):
 
 
 @router.post("/{notification_id}/read")
-def mark_read(notification_id: str, current_user=Depends(get_current_user)):
-    supabase.table("notifications").update({"read": True}).eq("id", notification_id).execute()
+async def mark_read(notification_id: str, current_user=Depends(get_current_user)):
+    await asyncio.to_thread(
+        lambda: supabase.table("notifications").update({"read": True}).eq("id", notification_id).execute()
+    )
     return {"ok": True}
 
 
 @router.post("/read-all")
-def mark_all_read(current_user=Depends(get_current_user)):
+async def mark_all_read(current_user=Depends(get_current_user)):
     user_id = current_user["id"]
-    supabase.table("notifications").update({"read": True}).eq("user_id", user_id).execute()
+    await asyncio.to_thread(
+        lambda: supabase.table("notifications").update({"read": True}).eq("user_id", user_id).execute()
+    )
     return {"ok": True}

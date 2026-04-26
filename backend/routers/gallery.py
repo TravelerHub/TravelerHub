@@ -16,11 +16,18 @@ Endpoints:
 
 import secrets
 from typing import Optional
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Query
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Query, Request
 from pydantic import BaseModel
 from supabase_client import supabase, supabase_admin, safe_single
 from utils import oauth2
+from utils.logger import get_logger
 from services.photo_clusterer import PhotoClusterer
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
+
+logger = get_logger(__name__)
 
 router = APIRouter(
     prefix="/trips",
@@ -64,8 +71,8 @@ def _is_trip_leader(trip_id: str, user_id: str) -> bool:
         )
         if res.data and res.data.get("role") == "leader":
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_is_trip_leader] trip_members query failed for trip=%s, user=%s: %s", trip_id, user_id, e, exc_info=True)
 
     try:
         owner = safe_single(
@@ -76,8 +83,8 @@ def _is_trip_leader(trip_id: str, user_id: str) -> bool:
         )
         if owner.data:
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_is_trip_leader] trips owner fallback failed for trip=%s, user=%s: %s", trip_id, user_id, e, exc_info=True)
 
     return False
 
@@ -143,7 +150,7 @@ async def get_trip_media(
         return {"photos": photos, "next_cursor": next_cursor, "has_more": has_more}
 
     except Exception as e:
-        print(f"Error fetching media: {e}")
+        logger.error("[get_trip_media] trip=%s: %s", trip_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch media")
 
 
@@ -204,7 +211,7 @@ async def get_trip_media_grouped(
         return {"groups": groups}
 
     except Exception as e:
-        print(f"Error fetching grouped media: {e}")
+        logger.error("[get_trip_media_grouped] trip=%s: %s", trip_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch grouped media")
 
 
@@ -253,7 +260,7 @@ async def upload_trip_media(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error uploading media: {e}")
+        logger.error("[upload_trip_media] trip=%s: %s", trip_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to upload media")
 
 
@@ -323,8 +330,8 @@ async def delete_trip_media(
     # Delete from storage
     try:
         supabase_admin.storage.from_(BUCKET_NAME).remove([existing.data["storage_path"]])
-    except Exception:
-        pass  # Storage cleanup failure shouldn't block DB deletion
+    except Exception as e:
+        logger.warning("[delete_trip_media] storage cleanup failed for path=%s: %s", existing.data["storage_path"], e, exc_info=True)  # non-blocking
 
     supabase.table("trip_media").delete().eq("id", media_id).execute()
 
@@ -352,8 +359,8 @@ async def get_my_albums(
             .execute()
         )
         trip_ids.update(r["trip_id"] for r in (tm.data or []))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[get_my_albums] trip_members query failed for user=%s: %s", user_id, e, exc_info=True)
 
     try:
         gm = (
@@ -364,8 +371,8 @@ async def get_my_albums(
             .execute()
         )
         trip_ids.update(r["group_id"] for r in (gm.data or []))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[get_my_albums] group_member query failed for user=%s: %s", user_id, e, exc_info=True)
 
     try:
         owned = (
@@ -375,8 +382,8 @@ async def get_my_albums(
             .execute()
         )
         trip_ids.update(r["id"] for r in (owned.data or []))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[get_my_albums] owned trips query failed for user=%s: %s", user_id, e, exc_info=True)
 
     if not trip_ids:
         return {"albums": []}

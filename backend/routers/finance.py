@@ -1,11 +1,18 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from supabase_client import supabase, safe_single
 from utils import oauth2
+from utils.logger import get_logger
 from services.anomaly_detection import ExpenseAnomalyDetector
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
+
+logger = get_logger(__name__)
 
 router = APIRouter(
     prefix="/finance",
@@ -24,8 +31,8 @@ def _ensure_trip_member(trip_id: str, user_id: str) -> None:
         )
         if member.data:
             return
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_ensure_trip_member] trip_members query failed for trip=%s, user=%s: %s", trip_id, user_id, e, exc_info=True)
 
     try:
         member = safe_single(
@@ -37,8 +44,8 @@ def _ensure_trip_member(trip_id: str, user_id: str) -> None:
         )
         if member.data:
             return
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_ensure_trip_member] group_member fallback failed for trip=%s, user=%s: %s", trip_id, user_id, e, exc_info=True)
 
     owner = safe_single(
         supabase.table("trips")
@@ -62,8 +69,8 @@ def _is_trip_leader(trip_id: str, user_id: str) -> bool:
         )
         if member.data:
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_is_trip_leader] trip_members query failed for trip=%s, user=%s: %s", trip_id, user_id, e, exc_info=True)
 
     try:
         member = safe_single(
@@ -76,8 +83,8 @@ def _is_trip_leader(trip_id: str, user_id: str) -> bool:
         )
         if member.data:
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_is_trip_leader] group_member fallback failed for trip=%s, user=%s: %s", trip_id, user_id, e, exc_info=True)
 
     owner = safe_single(
         supabase.table("trips")
@@ -125,7 +132,9 @@ def _normalize_expense_row(row: dict):
 
 
 @router.get("/transactions")
+@limiter.limit("60/minute")
 def get_transactions(
+    request: Request,
     trip_id: Optional[str] = None,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -155,12 +164,14 @@ def get_transactions(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error fetching finance transactions: {e}")
+        logger.error("[get_transactions] %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching finance transactions")
 
 
 @router.post("/transactions")
+@limiter.limit("30/minute")
 def create_transaction(
+    request: Request,
     payload: CreateTransactionPayload,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -207,12 +218,14 @@ def create_transaction(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error creating transaction: {e}")
+        logger.error("[create_transaction] %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Error creating transaction")
 
 
 @router.get("/trips/{trip_id}/expenses/anomalies")
+@limiter.limit("10/minute")
 def get_expense_anomalies(
+    request: Request,
     trip_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -270,12 +283,14 @@ def get_expense_anomalies(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error detecting expense anomalies: {e}")
+        logger.error("[get_expense_anomalies] %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Error detecting expense anomalies")
 
 
 @router.delete("/transactions/{transaction_id}")
+@limiter.limit("30/minute")
 def delete_transaction(
+    request: Request,
     transaction_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -314,5 +329,5 @@ def delete_transaction(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error deleting transaction: {e}")
+        logger.error("[delete_transaction] %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Error deleting transaction")
