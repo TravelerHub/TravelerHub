@@ -204,7 +204,11 @@ export default function Gallery() {
 
   const handleUpload = (e) => {
     e.preventDefault();
-    if (!uploadFile || !activeTrip) return;
+    if (!uploadFile) return;
+    if (!activeTrip) {
+      setUploadError("No trip selected. Please select a trip album first.");
+      return;
+    }
     setUploadError("");
     uploadMutation.mutate({ file: uploadFile, caption: uploadCaption, tripId: activeTrip });
   };
