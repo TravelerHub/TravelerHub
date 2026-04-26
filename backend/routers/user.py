@@ -1,10 +1,11 @@
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
 
 import schemas
 from utils import oauth2, hasing
 
-from supabase_client import supabase  
+from supabase_client import supabase
 
 router = APIRouter(
     prefix="/users",
@@ -14,18 +15,17 @@ router = APIRouter(
 
 #  get current user
 @router.get("/me", response_model=schemas.UserOut)
-def read_me(current_user =  Depends(oauth2.get_current_user)):
+def read_me(current_user=Depends(oauth2.get_current_user)):
     # NOTE: This still depends on how oauth2.get_current_user is implemented.
     # If oauth2 currently uses SQLAlchemy, you'll want to migrate that to Supabase too.
     return current_user
 
 
-#get all user lists
-
+# get all user lists
 @router.get("/", response_model=List[schemas.UserOut])
-def get_users(current_user=Depends(oauth2.get_current_user)):
+async def get_users(current_user=Depends(oauth2.get_current_user)):
     try:
-        response = supabase.table("users").select("*").execute()
+        response = await asyncio.to_thread(lambda: supabase.table("users").select("*").execute())
         users = response.data  # list[dict]
         return users
     except Exception as e:
@@ -36,14 +36,12 @@ def get_users(current_user=Depends(oauth2.get_current_user)):
         )
 
 
-#get user by ID
-
+# get user by ID
 @router.get("/{id}", response_model=schemas.UserOut)
-def get_user(id: int):
+async def get_user(id: int):
     try:
-        # SELECT * FROM users WHERE id = id LIMIT 1;
-        response = (
-            supabase
+        response = await asyncio.to_thread(
+            lambda: supabase
             .table("users")
             .select("*")
             .eq("id", id)
@@ -71,11 +69,11 @@ def get_user(id: int):
 
 # create a new user in supabase
 @router.post("/", response_model=schemas.UserOut, status_code=status.HTTP_201_CREATED)
-def create_user(user: schemas.UserCreate):
+async def create_user(user: schemas.UserCreate):
     # check if email already exists
     try:
-        existing = (
-            supabase
+        existing = await asyncio.to_thread(
+            lambda: supabase
             .table("users")
             .select("id")
             .eq("email", user.email)
@@ -108,12 +106,12 @@ def create_user(user: schemas.UserCreate):
             "city": user.city,
             "state": user.state,
             "zip_code": user.zip_code
-            
+
         }
 
         # Insert and return the new row in one shot
-        response = (
-            supabase
+        response = await asyncio.to_thread(
+            lambda: supabase
             .table("users")
             .insert(insert_payload)
             .select("*")
@@ -130,10 +128,11 @@ def create_user(user: schemas.UserCreate):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error creating user"
         )
-    
+
+
 # Update current user's profile
 @router.put("/me", response_model=schemas.UserOut)
-def update_me(
+async def update_me(
     user_update: schemas.UserUpdate,
     current_user=Depends(oauth2.get_current_user)
 ):
@@ -151,8 +150,8 @@ def update_me(
             return current_user  # Nothing to update
 
         # Update user in Supabase
-        response = (
-            supabase
+        response = await asyncio.to_thread(
+            lambda: supabase
             .table("users")
             .update(update_data)
             .eq("id", current_user["id"])
@@ -168,10 +167,11 @@ def update_me(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error updating profile"
         )
-    
+
+
 # Change password
 @router.put("/me/password")
-def change_password(
+async def change_password(
     password_data: schemas.PasswordChange,
     current_user=Depends(oauth2.get_current_user)
 ):
@@ -187,8 +187,8 @@ def change_password(
         new_hashed = hasing.hash_password(password_data.new_password)
 
         # Update in Supabase
-        response = (
-            supabase
+        response = await asyncio.to_thread(
+            lambda: supabase
             .table("users")
             .update({"password": new_hashed})
             .eq("id", current_user["id"])

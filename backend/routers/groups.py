@@ -1,11 +1,16 @@
+import asyncio
 import time
 from typing import Optional, List
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel
 from utils import oauth2
-from supabase_client import supabase, safe_single
+from supabase_client import supabase, async_safe_single
 from utils.logger import get_logger
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 logger = get_logger(__name__)
 
@@ -20,7 +25,7 @@ _membership_cache: dict = {}  # {(trip_id, user_id): (is_member: bool, expires: 
 _CACHE_TTL = 30  # seconds
 
 
-def _check_membership_cached(trip_id: str, user_id: str) -> bool:
+async def _check_membership_cached(trip_id: str, user_id: str) -> bool:
     """Return True if user is an active member of trip_id. Result is cached for 30 s."""
     key = (trip_id, user_id)
     cached = _membership_cache.get(key)
@@ -28,7 +33,7 @@ def _check_membership_cached(trip_id: str, user_id: str) -> bool:
         result, expires = cached
         if time.time() < expires:
             return result
-    members = _get_trip_members(trip_id)
+    members = await _get_trip_members(trip_id)
     is_member = any(m.get("user_id") == user_id for m in members)
     _membership_cache[key] = (is_member, time.time() + _CACHE_TTL)
     return is_member
@@ -52,11 +57,11 @@ class RoleUpdate(BaseModel):
 
 # ---- Helpers ----
 
-def _get_trip_members(group_id: str) -> List[dict]:
+async def _get_trip_members(group_id: str) -> List[dict]:
     """Read group membership rows from trip_members first, then legacy group_member."""
     try:
-        res = (
-            supabase.table("trip_members")
+        res = await asyncio.to_thread(
+            lambda: supabase.table("trip_members")
             .select("user_id, role, joined_at")
             .eq("trip_id", group_id)
             .is_("left_at", None)
@@ -67,8 +72,8 @@ def _get_trip_members(group_id: str) -> List[dict]:
         logger.warning("[_get_trip_members] trip_members query failed for group=%s: %s", group_id, e, exc_info=True)
 
     try:
-        res = (
-            supabase.table("group_member")
+        res = await asyncio.to_thread(
+            lambda: supabase.table("group_member")
             .select("user_id, role, join_datetime")
             .eq("group_id", group_id)
             .is_("left_datetime", None)
@@ -85,27 +90,29 @@ def _get_trip_members(group_id: str) -> List[dict]:
         return []
 
 
-def _is_trip_member(group_id: str, user_id: str) -> bool:
-    return _check_membership_cached(group_id, user_id)
+async def _is_trip_member(group_id: str, user_id: str) -> bool:
+    return await _check_membership_cached(group_id, user_id)
 
 
-def _is_trip_leader(group_id: str, user_id: str) -> bool:
-    members = _get_trip_members(group_id)
+async def _is_trip_leader(group_id: str, user_id: str) -> bool:
+    members = await _get_trip_members(group_id)
     return any(m.get("user_id") == user_id and m.get("role") == "leader" for m in members)
 
 
-def _insert_trip_member(group_id: str, user_id: str, role: str) -> bool:
+async def _insert_trip_member(group_id: str, user_id: str, role: str) -> bool:
     """Insert membership into trip_members. Falls back to group_member only with a conversation."""
     now_iso = datetime.utcnow().isoformat()
 
     # Primary path: trip_members table (the correct table for group membership)
     try:
-        supabase.table("trip_members").insert({
-            "trip_id": group_id,
-            "user_id": user_id,
-            "role": role,
-            "joined_at": now_iso,
-        }).execute()
+        await asyncio.to_thread(
+            lambda: supabase.table("trip_members").insert({
+                "trip_id": group_id,
+                "user_id": user_id,
+                "role": role,
+                "joined_at": now_iso,
+            }).execute()
+        )
         _invalidate_membership_cache(group_id, user_id)
         return True
     except Exception as e:
@@ -115,8 +122,8 @@ def _insert_trip_member(group_id: str, user_id: str, role: str) -> bool:
     # Create or find a conversation for this trip first.
     try:
         # Check if a conversation already exists for this trip
-        conv_res = (
-            supabase.table("conversation")
+        conv_res = await asyncio.to_thread(
+            lambda: supabase.table("conversation")
             .select("conversation_id")
             .eq("trip_id", group_id)
             .limit(1)
@@ -126,35 +133,39 @@ def _insert_trip_member(group_id: str, user_id: str, role: str) -> bool:
             conv_id = conv_res.data[0]["conversation_id"]
         else:
             # Create a conversation for this trip
-            conv_insert = supabase.table("conversation").insert({
-                "conversation_name": "Group Chat",
-                "trip_id": group_id,
-            }).execute()
+            conv_insert = await asyncio.to_thread(
+                lambda: supabase.table("conversation").insert({
+                    "conversation_name": "Group Chat",
+                    "trip_id": group_id,
+                }).execute()
+            )
             if not conv_insert.data:
                 logger.error("[_insert_trip_member] failed to create conversation for trip=%s", group_id)
                 return False
             conv_id = conv_insert.data[0]["conversation_id"]
 
-        supabase.table("group_member").insert({
-            "conversation_id": conv_id,
-            "group_id": group_id,
-            "user_id": user_id,
-            "role": role,
-            "join_datetime": now_iso,
-        }).execute()
+        await asyncio.to_thread(
+            lambda: supabase.table("group_member").insert({
+                "conversation_id": conv_id,
+                "group_id": group_id,
+                "user_id": user_id,
+                "role": role,
+                "join_datetime": now_iso,
+            }).execute()
+        )
         _invalidate_membership_cache(group_id, user_id)
         return True
     except Exception as e:
         logger.error("[_insert_trip_member] group_member fallback insert failed for trip=%s, user=%s: %s", group_id, user_id, e, exc_info=True)
         return False
 
-def require_leader(group_id: str, user_id: str) -> None:
+async def require_leader(group_id: str, user_id: str) -> None:
     """Raise 403 if the user is not leader of the group."""
-    if _is_trip_leader(group_id, user_id):
+    if await _is_trip_leader(group_id, user_id):
         return
 
     # Backward-compatible fallback for old trips without group_member rows.
-    owner = safe_single(
+    owner = await async_safe_single(
         supabase.table("trips")
         .select("id")
         .eq("id", group_id)
@@ -167,13 +178,13 @@ def require_leader(group_id: str, user_id: str) -> None:
         )
 
 
-def require_group_member(group_id: str, user_id: str) -> None:
+async def require_group_member(group_id: str, user_id: str) -> None:
     """Raise 403 if user is not an active member of this group."""
-    if _is_trip_member(group_id, user_id):
+    if await _is_trip_member(group_id, user_id):
         return
 
     # Backward-compatible fallback for old owner-only trips.
-    owner = safe_single(
+    owner = await async_safe_single(
         supabase.table("trips")
         .select("id")
         .eq("id", group_id)
@@ -186,7 +197,9 @@ def require_group_member(group_id: str, user_id: str) -> None:
 # ---- Endpoints ----
 
 @router.post("/")
-def create_group(
+@limiter.limit("30/minute")
+async def create_group(
+    request: Request,
     body: TripCreate,
     current_user=Depends(oauth2.get_current_user)
 ):
@@ -204,14 +217,16 @@ def create_group(
             trip_payload["description"] = body.description
 
         try:
-            trip_res = supabase.table("trips").insert(trip_payload).execute()
+            trip_res = await asyncio.to_thread(lambda: supabase.table("trips").insert(trip_payload).execute())
         except Exception as e:
             # Fallback for deployments where trips.description is not present.
             logger.warning("[create_group] trips insert with description failed (schema compat fallback): %s", e)
-            trip_res = supabase.table("trips").insert({
-                "name": body.name,
-                "owner_id": current_user["id"],
-            }).execute()
+            trip_res = await asyncio.to_thread(
+                lambda: supabase.table("trips").insert({
+                    "name": body.name,
+                    "owner_id": current_user["id"],
+                }).execute()
+            )
 
         if not trip_res.data:
             raise HTTPException(status_code=500, detail="Failed to create trip")
@@ -219,8 +234,8 @@ def create_group(
         trip = trip_res.data[0]
 
         # Add the creator as the leader of the group.
-        if not _is_trip_member(trip["id"], current_user["id"]):
-            ok = _insert_trip_member(trip["id"], current_user["id"], "leader")
+        if not await _is_trip_member(trip["id"], current_user["id"]):
+            ok = await _insert_trip_member(trip["id"], current_user["id"], "leader")
             if not ok:
                 logger.warning("[create_group] group %s created but leader membership insert failed — owner_id fallback will still grant access", trip["id"])
 
@@ -238,15 +253,16 @@ def create_group(
 
 
 @router.get("/me")
-def get_my_groups(current_user=Depends(oauth2.get_current_user)):
+@limiter.limit("60/minute")
+async def get_my_groups(request: Request, current_user=Depends(oauth2.get_current_user)):
     """
     List all groups where current user is an active member.
     """
     try:
         membership_map = {}
         try:
-            memberships_res = (
-                supabase.table("trip_members")
+            memberships_res = await asyncio.to_thread(
+                lambda: supabase.table("trip_members")
                 .select("trip_id, role")
                 .eq("user_id", current_user["id"])
                 .is_("left_at", None)
@@ -257,8 +273,8 @@ def get_my_groups(current_user=Depends(oauth2.get_current_user)):
         except Exception as e:
             logger.warning("[get_my_groups] trip_members query failed for user=%s: %s", current_user["id"], e, exc_info=True)
             try:
-                memberships_res = (
-                    supabase.table("group_member")
+                memberships_res = await asyncio.to_thread(
+                    lambda: supabase.table("group_member")
                     .select("group_id, role")
                     .eq("user_id", current_user["id"])
                     .is_("left_datetime", None)
@@ -271,8 +287,8 @@ def get_my_groups(current_user=Depends(oauth2.get_current_user)):
                 membership_map = {}
 
         # Backfill older data where creator has no explicit membership row yet.
-        owner_trips_res = (
-            supabase.table("trips")
+        owner_trips_res = await asyncio.to_thread(
+            lambda: supabase.table("trips")
             .select("*")
             .eq("owner_id", current_user["id"])
             .execute()
@@ -285,8 +301,8 @@ def get_my_groups(current_user=Depends(oauth2.get_current_user)):
         if not group_ids:
             return []
 
-        trips_res = (
-            supabase.table("trips")
+        trips_res = await asyncio.to_thread(
+            lambda: supabase.table("trips")
             .select("*")
             .in_("id", group_ids)
             .execute()
@@ -307,15 +323,17 @@ def get_my_groups(current_user=Depends(oauth2.get_current_user)):
 
 
 @router.get("/{group_id}/members")
-def get_group_members(
+@limiter.limit("60/minute")
+async def get_group_members(
+    request: Request,
     group_id: str,
     current_user=Depends(oauth2.get_current_user)
 ):
     """List all active members of a group with their roles."""
     try:
-        require_group_member(group_id, current_user["id"])
+        await require_group_member(group_id, current_user["id"])
 
-        members = _get_trip_members(group_id)
+        members = await _get_trip_members(group_id)
         if not members:
             members = [{
                 "user_id": current_user["id"],
@@ -324,12 +342,15 @@ def get_group_members(
             }]
 
         user_ids = [m["user_id"] for m in members if m.get("user_id")]
-        users_res = (
-            supabase.table("users")
-            .select("id, username, email")
-            .in_("id", user_ids)
-            .execute()
-        ) if user_ids else None
+        if user_ids:
+            users_res = await asyncio.to_thread(
+                lambda: supabase.table("users")
+                .select("id, username, email")
+                .in_("id", user_ids)
+                .execute()
+            )
+        else:
+            users_res = None
         user_map = {u["id"]: u for u in ((users_res.data or []) if users_res else [])}
 
         return [{
@@ -348,7 +369,9 @@ def get_group_members(
 
 
 @router.put("/{group_id}/members/{user_id}/role")
-def update_member_role(
+@limiter.limit("30/minute")
+async def update_member_role(
+    request: Request,
     group_id: str,
     user_id: str,
     body: RoleUpdate,
@@ -359,7 +382,7 @@ def update_member_role(
         raise HTTPException(status_code=400, detail="Role must be 'leader' or 'member'")
 
     try:
-        require_leader(group_id, current_user["id"])
+        await require_leader(group_id, current_user["id"])
 
         # No separate group membership table — role updates not supported
         raise HTTPException(status_code=501, detail="Role management not yet supported")
@@ -374,21 +397,23 @@ def update_member_role(
 
 
 @router.post("/{group_id}/members")
-def add_group_member(
+@limiter.limit("30/minute")
+async def add_group_member(
+    request: Request,
     group_id: str,
     body: dict,
     current_user=Depends(oauth2.get_current_user)
 ):
     """Add a new member to a group. Only the leader can do this."""
     try:
-        require_leader(group_id, current_user["id"])
+        await require_leader(group_id, current_user["id"])
 
         new_user_id = body.get("user_id")
         if not new_user_id:
             raise HTTPException(status_code=400, detail="user_id is required")
 
         # Ensure target user exists
-        target_user = safe_single(
+        target_user = await async_safe_single(
             supabase.table("users")
             .select("id")
             .eq("id", new_user_id)
@@ -396,10 +421,10 @@ def add_group_member(
         if not target_user.data:
             raise HTTPException(status_code=404, detail="User not found")
 
-        if _is_trip_member(group_id, new_user_id):
+        if await _is_trip_member(group_id, new_user_id):
             return {"success": True, "message": "User is already a member"}
 
-        ok = _insert_trip_member(group_id, new_user_id, "member")
+        ok = await _insert_trip_member(group_id, new_user_id, "member")
         if not ok:
             raise HTTPException(
                 status_code=500,
