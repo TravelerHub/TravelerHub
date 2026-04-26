@@ -18,7 +18,7 @@ import secrets
 from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Query
 from pydantic import BaseModel
-from supabase_client import supabase
+from supabase_client import supabase, supabase_admin
 from utils import oauth2
 from services.photo_clusterer import PhotoClusterer
 
@@ -230,13 +230,13 @@ async def upload_trip_media(
 
     try:
         file_content = await file.read()
-        supabase.storage.from_(BUCKET_NAME).upload(
+        supabase_admin.storage.from_(BUCKET_NAME).upload(
             path=file_path,
             file=file_content,
             file_options={"content-type": file.content_type},
         )
 
-        public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(file_path)
+        public_url = supabase_admin.storage.from_(BUCKET_NAME).get_public_url(file_path)
 
         db_record = {
             "trip_id": trip_id,
@@ -330,7 +330,7 @@ async def delete_trip_media(
 
     # Delete from storage
     try:
-        supabase.storage.from_(BUCKET_NAME).remove([existing.data["storage_path"]])
+        supabase_admin.storage.from_(BUCKET_NAME).remove([existing.data["storage_path"]])
     except Exception:
         pass  # Storage cleanup failure shouldn't block DB deletion
 

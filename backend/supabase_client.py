@@ -8,6 +8,7 @@ load_dotenv()
 
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY") or os.getenv("SUPABASE_ANON_KEY")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_ANON_KEY:
     raise RuntimeError("Supabase URL or anon key not set in environment")
@@ -23,4 +24,12 @@ supabase.postgrest.session = httpx.Client(
     base_url=str(_old_session.base_url),
     headers=dict(_old_session.headers),
     http2=False,
+)
+
+# Admin client using service role key — bypasses RLS for server-side storage ops.
+# Falls back to the anon client if the key is not configured.
+supabase_admin: Client = (
+    create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    if SUPABASE_SERVICE_ROLE_KEY
+    else supabase
 )
