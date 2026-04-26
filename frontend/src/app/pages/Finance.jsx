@@ -196,8 +196,8 @@ function PaymentHandlesModal({ userId, onClose }) {
     >
       <div
         ref={modalRef}
-        className="w-full rounded-2xl overflow-hidden"
-        style={{ maxWidth: 420, background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
+        className="w-full rounded-2xl overflow-y-auto"
+        style={{ maxWidth: 420, maxHeight: "90vh", background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #f3f4f6" }}>
@@ -609,7 +609,7 @@ function Finance() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 pb-24 md:pb-6">
 
           {/* Page header */}
           <div className="flex items-center justify-between mb-6">
@@ -1321,8 +1321,8 @@ function Finance() {
         >
           <div
             ref={splitModalRef}
-            className="w-full rounded-2xl overflow-hidden"
-            style={{ maxWidth: 420, background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
+            className="w-full rounded-2xl overflow-y-auto"
+            style={{ maxWidth: 420, maxHeight: "90vh", background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #f3f4f6" }}>
@@ -1378,9 +1378,10 @@ function Finance() {
         >
           <div
             ref={addTransactionModalRef}
-            className="w-full rounded-2xl overflow-hidden"
+            className="w-full rounded-2xl overflow-y-auto"
             style={{
               maxWidth: 520,
+              maxHeight: "90vh",
               background: "#fff",
               boxShadow: "0 24px 64px rgba(0,0,0,0.2)",
             }}
@@ -1578,8 +1579,8 @@ function Finance() {
         >
           <div
             ref={chargeCardModalRef}
-            className="w-full rounded-2xl overflow-hidden"
-            style={{ maxWidth: 520, background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
+            className="w-full rounded-2xl overflow-y-auto"
+            style={{ maxWidth: 520, maxHeight: "90vh", background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #f3f4f6" }}>

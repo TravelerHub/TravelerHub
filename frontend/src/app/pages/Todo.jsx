@@ -463,7 +463,7 @@ export default function Todo() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
-        <main className="flex-1 overflow-y-auto p-4" style={{ background: "#f3f4f6" }}>
+        <main className="flex-1 overflow-y-auto p-4 pb-24 md:pb-4" style={{ background: "#f3f4f6" }}>
 
           {/* ── Page header ─────────────────────────────────────────────── */}
           <div className="flex items-center justify-between mb-4 px-1">
@@ -513,10 +513,10 @@ export default function Todo() {
           </div>
 
           {/* ── Two-column body ──────────────────────────────────────────── */}
-          <div className="flex gap-4">
+          <div className="flex flex-col lg:flex-row gap-4">
 
             {/* ── LEFT: Todo list ─────────────────────────────────────── */}
-            <div className="flex-1 min-w-0 flex flex-col gap-4">
+            <div className="w-full lg:flex-1 lg:min-w-0 flex flex-col gap-4">
 
               {/* Add form */}
               {showForm && (
@@ -823,7 +823,7 @@ export default function Todo() {
                           <div className="shrink-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
                               onClick={() => startEdit(todo)}
-                              className="w-7 h-7 flex items-center justify-center rounded-lg transition hover:bg-gray-200"
+                              className="w-9 h-9 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg transition hover:bg-gray-200"
                               title="Edit"
                             >
                               <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth={2}>
@@ -832,7 +832,7 @@ export default function Todo() {
                             </button>
                             <button
                               onClick={() => deleteTodo(todo.id)}
-                              className="w-7 h-7 flex items-center justify-center rounded-lg transition hover:bg-red-50"
+                              className="w-9 h-9 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg transition hover:bg-red-50"
                               title="Delete"
                             >
                               <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth={2}>
@@ -849,7 +849,7 @@ export default function Todo() {
             </div>
 
             {/* ── RIGHT: Calendar + Templates ──────────────────────────── */}
-            <div className="w-72 shrink-0 flex flex-col gap-4">
+            <div className="w-full lg:w-72 lg:shrink-0 flex flex-col gap-4">
 
               {/* Mini Calendar */}
               <div
@@ -1050,11 +1050,11 @@ function ClickableMiniCalendar({ events = [], selectedDate, onDateClick }) {
   return (
     <div className="select-none">
       <div className="flex items-center justify-between mb-2">
-        <button onClick={prev} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-black/10 transition text-gray-400 text-lg">‹</button>
+        <button onClick={prev} className="w-9 h-9 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg hover:bg-black/10 transition text-gray-400 text-lg">‹</button>
         <span className="font-semibold text-xs tracking-wide" style={{ color: "#160f29" }}>
           {MONTHS[month]} {year}
         </span>
-        <button onClick={next} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-black/10 transition text-gray-400 text-lg">›</button>
+        <button onClick={next} className="w-9 h-9 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg hover:bg-black/10 transition text-gray-400 text-lg">›</button>
       </div>
 
       <div className="grid grid-cols-7 mb-1">

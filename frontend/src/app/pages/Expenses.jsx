@@ -188,7 +188,7 @@ function Expenses() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 pb-24 md:pb-6">
           {/* Page header */}
           <div className="mb-6">
             <h1 className="text-2xl font-bold mb-1" style={{ color: "#160f29" }}>

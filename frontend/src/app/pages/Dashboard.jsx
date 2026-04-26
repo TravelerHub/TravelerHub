@@ -374,7 +374,7 @@ export default function Dashboard() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
-        <main className="flex-1 overflow-y-auto p-4" style={{ background: "#f3f4f6" }}>
+        <main className="flex-1 overflow-y-auto p-4 pb-24 md:pb-4" style={{ background: "#f3f4f6" }}>
           <div className="flex items-center justify-between mb-4 px-1">
             <div>
               <h2 className="text-xl font-bold" style={{ color: "#160f29" }}>Your Trip Groups</h2>
@@ -693,7 +693,7 @@ export default function Dashboard() {
       {/* ══ CREATE TRIP MODAL ════════════════════════════════════════════════ */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="rounded-2xl shadow-2xl max-w-md w-full p-6" style={{ background: "#fbfbf2" }}>
+          <div className="rounded-2xl shadow-2xl max-w-md w-full p-5 sm:p-6 max-h-[90vh] overflow-y-auto" style={{ background: "#fbfbf2" }}>
             <h3 className="text-xl font-bold mb-1" style={{ color: "#000000" }}>Create New Trip</h3>
             <p className="text-sm mb-5" style={{ color: "#6b7280" }}>Give your adventure a name and get started.</p>
 
@@ -876,7 +876,7 @@ export default function Dashboard() {
       {/* ══ INVITE MODAL (two-tab: link + search) ════════════════════════════ */}
       {showInviteModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="rounded-2xl shadow-2xl max-w-md w-full p-6" style={{ background: "#160f29" }}>
+          <div className="rounded-2xl shadow-2xl max-w-md w-full p-5 sm:p-6 max-h-[90vh] overflow-y-auto" style={{ background: "#160f29" }}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold" style={{ color: "#fbfbf2" }}>Add People to Trip</h3>
               <button
@@ -1053,7 +1053,7 @@ export default function Dashboard() {
       {/* ══ MEMBERS MODAL ════════════════════════════════════════════════════ */}
       {showMembersModal && selectedGroup && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="rounded-2xl shadow-2xl max-w-md w-full p-6" style={{ background: "#fbfbf2" }}>
+          <div className="rounded-2xl shadow-2xl max-w-md w-full p-5 sm:p-6 max-h-[90vh] overflow-y-auto" style={{ background: "#fbfbf2" }}>
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h3 className="text-xl font-bold" style={{ color: "#160f29" }}>{selectedGroup.name}</h3>

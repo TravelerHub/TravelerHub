@@ -256,7 +256,7 @@ function CalendarPage() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
-        <main className="flex-1 overflow-hidden p-4 flex flex-col gap-3" style={{ background: "#f3f4f6" }}>
+        <main className="flex-1 overflow-y-auto md:overflow-hidden p-3 sm:p-4 pb-24 md:pb-4 flex flex-col gap-3" style={{ background: "#f3f4f6" }}>
 
           {/* ── Top controls bar ────────────────────────────────────────── */}
           <div
@@ -480,7 +480,7 @@ function CalendarPage() {
           onClick={() => setSelectedEvent(null)}
         >
           <div
-            className="rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden"
+            className="rounded-2xl max-w-sm w-full shadow-2xl overflow-y-auto max-h-[90vh]"
             style={{ background: '#fbfbf2' }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -508,7 +508,7 @@ function CalendarPage() {
               </div>
               <button
                 onClick={() => setSelectedEvent(null)}
-                className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/10 transition"
+                className="w-9 h-9 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg hover:bg-white/10 transition"
               >
                 <XMarkIcon className="w-4 h-4 text-gray-400" />
               </button>

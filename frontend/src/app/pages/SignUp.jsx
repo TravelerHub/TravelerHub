@@ -92,6 +92,11 @@ function SignUp() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  autoComplete="email"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                 />
               </div>
@@ -107,6 +112,10 @@ function SignUp() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                 />
               </div>
@@ -122,6 +131,7 @@ function SignUp() {
                   value={street}
                   onChange={(e) => setStreet(e.target.value)}
                   required
+                  autoComplete="street-address"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                 />
               </div>
@@ -137,6 +147,7 @@ function SignUp() {
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     required
+                    autoComplete="address-level2"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                   />
                 </div>
@@ -151,6 +162,7 @@ function SignUp() {
                     value={stateValue}
                     onChange={(e) => setStateValue(e.target.value)}
                     required
+                    autoComplete="address-level1"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                   />
                 </div>
@@ -166,6 +178,8 @@ function SignUp() {
                   value={zipCode}
                   onChange={(e) => setZipCode(e.target.value)}
                   required
+                  autoComplete="postal-code"
+                  inputMode="numeric"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                 />
               </div>
@@ -181,6 +195,7 @@ function SignUp() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  autoComplete="new-password"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                 />
               </div>
@@ -196,6 +211,7 @@ function SignUp() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
+                  autoComplete="new-password"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                 />
               </div>
