@@ -479,14 +479,23 @@ const Map = forwardRef(function Map({
       });
     };
 
-    renderExpenseClusters();
-    mapRef.current.on('moveend', renderExpenseClusters);
-    mapRef.current.on('zoomend', renderExpenseClusters);
+    const attachExpenseClusters = () => {
+      renderExpenseClusters();
+      mapRef.current.on('moveend', renderExpenseClusters);
+      mapRef.current.on('zoomend', renderExpenseClusters);
+    };
+
+    if (mapRef.current.isStyleLoaded()) {
+      attachExpenseClusters();
+    } else {
+      mapRef.current.once('load', attachExpenseClusters);
+    }
 
     return () => {
       if (mapRef.current) {
         mapRef.current.off('moveend', renderExpenseClusters);
         mapRef.current.off('zoomend', renderExpenseClusters);
+        mapRef.current.off('load', attachExpenseClusters);
       }
     };
   }, [expenseMarkers]);
@@ -696,14 +705,23 @@ const Map = forwardRef(function Map({
       });
     };
 
-    renderSharedPinClusters();
-    mapRef.current.on('moveend', renderSharedPinClusters);
-    mapRef.current.on('zoomend', renderSharedPinClusters);
+    const attachSharedPinClusters = () => {
+      renderSharedPinClusters();
+      mapRef.current.on('moveend', renderSharedPinClusters);
+      mapRef.current.on('zoomend', renderSharedPinClusters);
+    };
+
+    if (mapRef.current.isStyleLoaded()) {
+      attachSharedPinClusters();
+    } else {
+      mapRef.current.once('load', attachSharedPinClusters);
+    }
 
     return () => {
       if (mapRef.current) {
         mapRef.current.off('moveend', renderSharedPinClusters);
         mapRef.current.off('zoomend', renderSharedPinClusters);
+        mapRef.current.off('load', attachSharedPinClusters);
       }
     };
   }, [sharedPins]);
