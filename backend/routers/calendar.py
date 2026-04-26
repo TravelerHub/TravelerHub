@@ -23,7 +23,7 @@ def get_calendar_events(
 
     # 1. Bookings → calendar events
     try:
-        query = supabase.table("booking").select("*")
+        query = supabase.table("bookings").select("*")
         if trip_id:
             query = query.eq("trip_id", trip_id)
         else:
@@ -42,7 +42,7 @@ def get_calendar_events(
                     "vendor": b.get("vendor"),
                     "booking_type": b.get("type"),
                     "confirmation_code": b.get("confirmation_code"),
-                    "cost": b.get("cost"),
+                    "cost": b.get("cost") if b.get("cost") is not None else b.get("price"),
                     "currency": b.get("currency"),
                     "status": b.get("status"),
                 },

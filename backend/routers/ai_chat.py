@@ -205,7 +205,7 @@ def execute_get_user_trips(user_id: str) -> str:
 
 def execute_get_trip_bookings(trip_id: str) -> str:
     try:
-        bookings = supabase.table("booking").select("*").eq(
+        bookings = supabase.table("bookings").select("*").eq(
             "trip_id", trip_id
         ).execute()
         return json.dumps({"bookings": bookings.data or []})

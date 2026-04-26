@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, Depends, UploadFile, File
 from typing import Dict, Set, Optional
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import secrets
 import re
 from supabase_client import supabase, supabase_admin
@@ -40,6 +40,8 @@ CHAT_MEDIA_BUCKET = "Media"
 MAX_CHAT_IMAGE_BYTES = 8 * 1024 * 1024
 MAX_CHAT_VOICEMAIL_BYTES = 15 * 1024 * 1024
 MAX_CHAT_VIDEO_BYTES = 40 * 1024 * 1024
+MESSAGE_EDIT_WINDOW_MINUTES = 15
+MESSAGE_DELETE_WINDOW_HOURS = 24
 ALLOWED_CHAT_IMAGE_TYPES = {
     "image/jpeg",
     "image/png",
@@ -172,6 +174,25 @@ def resolve_video_upload_content_type(content_type: str, filename: str) -> str:
         "3g2": "video/3gpp2",
     }
     return ext_to_type.get(ext, "video/mp4")
+
+
+def parse_sent_datetime(value) -> Optional[datetime]:
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, str):
+        text = value.strip()
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(text)
+        except Exception:
+            return None
+    else:
+        return None
+
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def ensure_conversation_member(conversation_id: str, user_id: str):
@@ -915,6 +936,173 @@ async def post_message(
         await broadcast_to_conversation(conversation_id, created)
 
         return created
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/conversations/{conversation_id}/messages/{message_id}")
+async def edit_message(
+    conversation_id: str,
+    message_id: str,
+    payload: schemas.MessageEdit,
+    current_user: dict = Depends(oauth2.get_current_user)
+):
+    """
+    PATCH /api/conversations/{conversation_id}/messages/{message_id}
+    Edit an existing message from the sender within 15 minutes of sent time.
+    """
+    ensure_conversation_member(conversation_id, current_user["id"])
+
+    if not payload.content:
+        raise HTTPException(status_code=400, detail="Missing content")
+
+    try:
+        existing = (
+            supabase
+            .from_("message")
+            .select("message_id, from_user, content, sent_datetime, conversation_id, is_encrypted")
+            .eq("conversation_id", conversation_id)
+            .eq("message_id", message_id)
+            .maybe_single()
+            .execute()
+        )
+
+        row = existing.data
+        if not row:
+            raise HTTPException(status_code=404, detail="Message not found")
+
+        if str(row.get("from_user")) != str(current_user["id"]):
+            raise HTTPException(status_code=403, detail="You can only edit your own messages")
+
+        sent_dt = parse_sent_datetime(row.get("sent_datetime"))
+        if not sent_dt:
+            raise HTTPException(status_code=400, detail="Message has invalid sent timestamp")
+
+        now_utc = datetime.now(timezone.utc)
+        if now_utc - sent_dt > timedelta(minutes=MESSAGE_EDIT_WINDOW_MINUTES):
+            raise HTTPException(status_code=403, detail="Message can only be edited within 15 minutes")
+
+        updated_res = (
+            supabase
+            .from_("message")
+            .update({
+                "content": payload.content,
+                "is_encrypted": payload.is_encrypted,
+            })
+            .eq("conversation_id", conversation_id)
+            .eq("message_id", message_id)
+            .execute()
+        )
+
+        updated = (updated_res.data or [None])[0]
+        if not updated:
+            refetched = (
+                supabase
+                .from_("message")
+                .select("message_id, from_user, content, sent_datetime, conversation_id, is_encrypted")
+                .eq("conversation_id", conversation_id)
+                .eq("message_id", message_id)
+                .maybe_single()
+                .execute()
+            )
+            updated = refetched.data
+
+        if not updated:
+            raise HTTPException(status_code=500, detail="Failed to update message")
+
+        await broadcast_to_conversation(
+            conversation_id,
+            {
+                "type": "message_edited",
+                "message": updated,
+            },
+        )
+
+        return updated
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/conversations/{conversation_id}/messages/{message_id}")
+async def delete_message(
+    conversation_id: str,
+    message_id: str,
+    current_user: dict = Depends(oauth2.get_current_user)
+):
+    """
+    DELETE /api/conversations/{conversation_id}/messages/{message_id}
+    Remove an existing message from the sender within 24 hours of sent time.
+    """
+    ensure_conversation_member(conversation_id, current_user["id"])
+
+    try:
+        existing = (
+            supabase
+            .from_("message")
+            .select("message_id, from_user, sent_datetime, conversation_id")
+            .eq("conversation_id", conversation_id)
+            .eq("message_id", message_id)
+            .maybe_single()
+            .execute()
+        )
+
+        row = existing.data
+        if not row:
+            raise HTTPException(status_code=404, detail="Message not found")
+
+        if str(row.get("from_user")) != str(current_user["id"]):
+            raise HTTPException(status_code=403, detail="You can only delete your own messages")
+
+        sent_dt = parse_sent_datetime(row.get("sent_datetime"))
+        if not sent_dt:
+            raise HTTPException(status_code=400, detail="Message has invalid sent timestamp")
+
+        now_utc = datetime.now(timezone.utc)
+        if now_utc - sent_dt > timedelta(hours=MESSAGE_DELETE_WINDOW_HOURS):
+            raise HTTPException(status_code=403, detail="Message can only be removed within 24 hours")
+
+        delete_res = (
+            supabase
+            .from_("message")
+            .delete()
+            .eq("conversation_id", conversation_id)
+            .eq("message_id", message_id)
+            .execute()
+        )
+
+        if delete_res.data is None:
+            verify = (
+                supabase
+                .from_("message")
+                .select("message_id")
+                .eq("conversation_id", conversation_id)
+                .eq("message_id", message_id)
+                .maybe_single()
+                .execute()
+            )
+            if verify.data:
+                raise HTTPException(status_code=500, detail="Failed to delete message")
+
+        await broadcast_to_conversation(
+            conversation_id,
+            {
+                "type": "message_deleted",
+                "message_id": message_id,
+                "conversation_id": conversation_id,
+            },
+        )
+
+        return {
+            "success": True,
+            "message_id": message_id,
+            "conversation_id": conversation_id,
+        }
 
     except HTTPException:
         raise

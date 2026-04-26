@@ -38,6 +38,14 @@ export default function Gallery() {
   // Active trip selection
   const [activeTrip, setActiveTrip] = useState(localStorage.getItem("active_group_id") || localStorage.getItem("activeGroupId") || "");
 
+  const setActiveTripAndPersist = useCallback((tripId) => {
+    setActiveTrip(tripId || "");
+    if (tripId) {
+      localStorage.setItem("active_group_id", String(tripId));
+      localStorage.setItem("activeGroupId", String(tripId));
+    }
+  }, []);
+
   // Upload
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
@@ -85,11 +93,15 @@ export default function Gallery() {
 
   // Auto-select first album when none is active
   useEffect(() => {
-    if (!activeTrip && albums.length > 0) {
-      setActiveTrip(albums[0].trip_id);
+    if (!albums.length) {
+      return;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [albumsData]);
+
+    const hasActive = albums.some((a) => a.trip_id === activeTrip);
+    if (!activeTrip || !hasActive) {
+      setActiveTripAndPersist(albums[0].trip_id);
+    }
+  }, [activeTrip, albums, setActiveTripAndPersist]);
 
   // ── React Query: photos for the active trip (infinite/paginated) ─────────
 
@@ -204,7 +216,11 @@ export default function Gallery() {
 
   const handleUpload = (e) => {
     e.preventDefault();
-    if (!uploadFile || !activeTrip) return;
+    if (!activeTrip) {
+      setUploadError("Select a group album before uploading");
+      return;
+    }
+    if (!uploadFile) return;
     setUploadError("");
     uploadMutation.mutate({ file: uploadFile, caption: uploadCaption, tripId: activeTrip });
   };
@@ -497,7 +513,7 @@ export default function Gallery() {
                 {albums.map((album) => (
                   <button
                     key={album.trip_id}
-                    onClick={() => setActiveTrip(album.trip_id)}
+                    onClick={() => setActiveTripAndPersist(album.trip_id)}
                     className="shrink-0 px-4 py-2 rounded-xl text-xs font-semibold transition"
                     style={
                       activeTrip === album.trip_id

@@ -125,7 +125,7 @@ def export_calendar_ics(
 
     # Fetch bookings
     bookings_res = (
-        supabase.table("booking")
+        supabase.table("bookings")
         .select("*")
         .eq("trip_id", trip_id)
         .execute()
@@ -155,9 +155,10 @@ def export_calendar_ics(
             desc_parts.append(f"Vendor: {b['vendor']}")
         if b.get("confirmation_code"):
             desc_parts.append(f"Confirmation: {b['confirmation_code']}")
-        if b.get("cost") is not None:
+        cost_value = b.get("cost") if b.get("cost") is not None else b.get("price")
+        if cost_value is not None:
             currency = b.get("currency") or "USD"
-            desc_parts.append(f"Cost: {b['cost']} {currency}")
+            desc_parts.append(f"Cost: {cost_value} {currency}")
         if b.get("notes"):
             desc_parts.append(f"Notes: {b['notes']}")
         if b.get("status"):
@@ -319,7 +320,7 @@ def export_trip_summary(
 
     # Bookings
     bookings_res = (
-        supabase.table("booking")
+        supabase.table("bookings")
         .select("*")
         .eq("trip_id", trip_id)
         .order("start_time", desc=False)

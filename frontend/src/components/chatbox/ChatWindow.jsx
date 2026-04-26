@@ -112,6 +112,7 @@ export default function ChatWindow({
   messages,
   error,
   conversationID,
+  tripId,
 }) {
   const listRef      = useRef(null);
   const inputRef     = useRef(null);
@@ -141,6 +142,13 @@ export default function ChatWindow({
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [typingUsers,     setTypingUsers]     = useState(new Map()); // user_id → username
   const [readStatus,      setReadStatus]      = useState(new Map()); // user_id → last_read_message_id
+  const [showTodoTab,     setShowTodoTab]     = useState(false);
+  const [tripTodos,       setTripTodos]       = useState([]);
+  const [todoLoading,     setTodoLoading]     = useState(false);
+  const [todoError,       setTodoError]       = useState("");
+  const [todoDraft,       setTodoDraft]       = useState("");
+  const [todoSaving,      setTodoSaving]      = useState(false);
+  const [todoTogglingId,  setTodoTogglingId]  = useState(null);
   const retryRef = useRef(null);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -161,6 +169,128 @@ export default function ChatWindow({
       ws.send(JSON.stringify(payload));
     }
   }, []);
+
+  const todoTripId = useMemo(() => tripId || "", [tripId]);
+
+  const pendingTodoCount = useMemo(
+    () => (tripTodos || []).filter((t) => !t.done).length,
+    [tripTodos]
+  );
+
+  const getAuthToken = useCallback(
+    () => localStorage.getItem("token") || localStorage.getItem("access_token") || sessionStorage.getItem("token") || "",
+    []
+  );
+
+  const fetchTripTodos = useCallback(async () => {
+    if (!todoTripId) {
+      setTripTodos([]);
+      return;
+    }
+
+    const token = getAuthToken();
+    if (!token) {
+      setTripTodos([]);
+      return;
+    }
+
+    setTodoLoading(true);
+    setTodoError("");
+    try {
+      const res = await fetch(`${API_BASE}/todos/?trip_id=${encodeURIComponent(todoTripId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.detail || "Failed to load checklist");
+      }
+
+      const data = await res.json();
+      setTripTodos(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setTodoError(err.message || "Failed to load checklist");
+    } finally {
+      setTodoLoading(false);
+    }
+  }, [getAuthToken, todoTripId]);
+
+  const toggleTodoDone = useCallback(
+    async (todo) => {
+      if (!todo?.id) return;
+      const token = getAuthToken();
+      if (!token) return;
+
+      const nextDone = !todo.done;
+      setTodoTogglingId(todo.id);
+      setTodoError("");
+      setTripTodos((prev) => prev.map((t) => (t.id === todo.id ? { ...t, done: nextDone } : t)));
+
+      try {
+        const res = await fetch(`${API_BASE}/todos/${todo.id}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ done: nextDone }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err?.detail || "Failed to update todo");
+        }
+
+        const updated = await res.json();
+        setTripTodos((prev) => prev.map((t) => (t.id === todo.id ? updated : t)));
+      } catch (err) {
+        setTripTodos((prev) => prev.map((t) => (t.id === todo.id ? { ...t, done: todo.done } : t)));
+        setTodoError(err.message || "Failed to update todo");
+      } finally {
+        setTodoTogglingId(null);
+      }
+    },
+    [getAuthToken]
+  );
+
+  const createTodo = useCallback(async () => {
+    const textValue = todoDraft.trim();
+    if (!textValue || !todoTripId) return;
+
+    const token = getAuthToken();
+    if (!token) return;
+
+    setTodoSaving(true);
+    setTodoError("");
+    try {
+      const res = await fetch(`${API_BASE}/todos/`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          trip_id: todoTripId,
+          text: textValue,
+          priority: "medium",
+          category: "other",
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.detail || "Failed to add todo");
+      }
+
+      const created = await res.json();
+      setTripTodos((prev) => [created, ...prev]);
+      setTodoDraft("");
+    } catch (err) {
+      setTodoError(err.message || "Failed to add todo");
+    } finally {
+      setTodoSaving(false);
+    }
+  }, [getAuthToken, todoDraft, todoTripId]);
 
   // ── Typing events ──────────────────────────────────────────────────────────
 
@@ -460,11 +590,37 @@ export default function ChatWindow({
     }
   };
 
+  const editMessage = useCallback(
+    async (messageId, nextPayload) => {
+      if (!conversationID) return;
+
+      const updated = await chatApi.editMessage(conversationID, messageId, nextPayload);
+      setLocalMessages((prev) =>
+        prev.map((m) => (m.message_id === messageId ? { ...m, ...updated } : m))
+      );
+    },
+    [conversationID]
+  );
+
+  const deleteMessage = useCallback(
+    async (messageId) => {
+      if (!conversationID) return;
+
+      await chatApi.deleteMessage(conversationID, messageId);
+      setLocalMessages((prev) => prev.filter((m) => m.message_id !== messageId));
+    },
+    [conversationID]
+  );
+
   // ── Sync messages from parent ──────────────────────────────────────────────
 
   useEffect(() => {
     setLocalMessages(messages || []);
   }, [messages, conversationID]);
+
+  useEffect(() => {
+    fetchTripTodos();
+  }, [fetchTripTodos]);
 
   // Stop any pending key-wait retry when conversation changes
   useEffect(() => {
@@ -633,6 +789,18 @@ export default function ChatWindow({
           next.set(data.user_id, data.last_read_message_id);
           return next;
         });
+      } else if (data.type === "message_edited") {
+        const updated = data.message;
+        if (updated?.message_id) {
+          setLocalMessages((prev) =>
+            prev.map((m) => (m.message_id === updated.message_id ? { ...m, ...updated } : m))
+          );
+        }
+      } else if (data.type === "message_deleted") {
+        const deletedId = data.message_id;
+        if (deletedId) {
+          setLocalMessages((prev) => prev.filter((m) => m.message_id !== deletedId));
+        }
       } else {
         // Regular chat message
         const msg = data;
@@ -691,7 +859,95 @@ export default function ChatWindow({
       {/* Inject keyframe CSS once */}
       <style>{typingDotsStyle}</style>
 
-      <div className="flex flex-col h-full">
+      <div className="relative flex flex-col h-full">
+
+        <button
+          type="button"
+          onClick={() => setShowTodoTab((prev) => !prev)}
+          className="absolute right-0 top-24 z-20 px-3 py-2 rounded-l-xl text-xs font-semibold shadow-md"
+          style={{
+            background: showTodoTab ? "#183a37" : "#111827",
+            color: "#f9fafb",
+          }}
+        >
+          Checklist ({pendingTodoCount})
+        </button>
+
+        {showTodoTab && (
+          <div
+            className="absolute right-0 top-16 bottom-20 z-20 w-[280px] flex flex-col"
+            style={{ background: "#ffffff", borderLeft: "1px solid #e5e7eb", boxShadow: "-6px 0 18px rgba(0,0,0,0.08)" }}
+          >
+            <div className="px-3 py-2.5" style={{ borderBottom: "1px solid #e5e7eb" }}>
+              <p className="text-xs font-bold" style={{ color: "#111827" }}>Trip Checklist</p>
+              <p className="text-[10px]" style={{ color: "#6b7280" }}>
+                {pendingTodoCount} pending
+              </p>
+            </div>
+
+            <div className="px-3 py-2" style={{ borderBottom: "1px solid #f3f4f6" }}>
+              <div className="flex gap-2">
+                <input
+                  value={todoDraft}
+                  onChange={(e) => setTodoDraft(e.target.value)}
+                  placeholder="Add checklist item..."
+                  className="flex-1 px-2.5 py-1.5 rounded-lg text-xs"
+                  style={{ border: "1px solid #e5e7eb", color: "#111827" }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      createTodo();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={createTodo}
+                  disabled={!todoDraft.trim() || todoSaving}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
+                  style={{ background: "#111827", color: "#f9fafb" }}
+                >
+                  Add
+                </button>
+              </div>
+              {todoError && (
+                <p className="text-[10px] mt-1" style={{ color: "#dc2626" }}>{todoError}</p>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {todoLoading ? (
+                <p className="text-xs px-3 py-3" style={{ color: "#6b7280" }}>Loading checklist...</p>
+              ) : tripTodos.length === 0 ? (
+                <p className="text-xs px-3 py-3" style={{ color: "#6b7280" }}>No checklist items yet.</p>
+              ) : (
+                tripTodos.map((todo) => (
+                  <label
+                    key={todo.id}
+                    className="flex items-start gap-2 px-3 py-2"
+                    style={{ borderBottom: "1px solid #f3f4f6" }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(todo.done)}
+                      onChange={() => toggleTodoDone(todo)}
+                      disabled={todoTogglingId === todo.id}
+                    />
+                    <span
+                      className="text-xs leading-relaxed"
+                      style={{
+                        color: todo.done ? "#9ca3af" : "#111827",
+                        textDecoration: todo.done ? "line-through" : "none",
+                      }}
+                    >
+                      {todo.text}
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ── Chat header ─────────────────────────────────────────────── */}
         <div
@@ -749,6 +1005,8 @@ export default function ChatWindow({
               conversationId={conversationID}
               members={members}
               readStatus={readStatus}
+              onEditMessage={editMessage}
+              onDeleteMessage={deleteMessage}
             />
           )}
 

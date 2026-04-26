@@ -114,6 +114,49 @@ export const chatApi = {
     });
   },
 
+  editMessage: (conversationId, messageId, payload) => {
+    const sessionKey = encryptionUtils.getCachedSessionKey(conversationId);
+    if (!sessionKey) {
+      throw new Error("No session key found for this conversation. Re-open the chat and try again.");
+    }
+
+    const envelope = normalizeMessageEnvelope(payload);
+    if (envelope.type === "image" && !envelope.image_url) {
+      throw new Error("Image message is missing an image URL");
+    }
+
+    if (envelope.type === "audio" && !envelope.audio_url) {
+      throw new Error("Voice message is missing an audio URL");
+    }
+
+    if (envelope.type === "video" && !envelope.video_url) {
+      throw new Error("Video message is missing a video URL");
+    }
+
+    if (envelope.type === "text" && !envelope.text.trim()) {
+      throw new Error("Message is empty");
+    }
+
+    const encryptedContent = encryptionUtils.encryptMessage(JSON.stringify(envelope), sessionKey);
+
+    return request(
+      `/api/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}`,
+      {
+        method: "PATCH",
+        body: {
+          content: encryptedContent,
+          is_encrypted: true,
+        },
+      }
+    );
+  },
+
+  deleteMessage: (conversationId, messageId) =>
+    request(
+      `/api/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}`,
+      { method: "DELETE" }
+    ),
+
   uploadConversationImage: async (conversationId, file) => {
     if (!file) throw new Error("No image selected");
 

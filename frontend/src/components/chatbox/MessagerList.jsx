@@ -1,6 +1,14 @@
 import MessageBubble from "./MessagerBubble";
 
-export default function MessageList({ messages, currentUserId, conversationId, members, readStatus }) {
+export default function MessageList({
+  messages,
+  currentUserId,
+  conversationId,
+  members,
+  readStatus,
+  onEditMessage,
+  onDeleteMessage,
+}) {
   if (!messages?.length) {
     return (
       <div className="text-sm text-gray-500 text-center mt-8">
@@ -31,6 +39,8 @@ export default function MessageList({ messages, currentUserId, conversationId, m
             conversationId={conversationId}
             members={members}
             readers={readers}
+            onEditMessage={onEditMessage}
+            onDeleteMessage={onDeleteMessage}
           />
         );
       })}

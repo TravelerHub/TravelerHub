@@ -5,6 +5,12 @@ import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
 import MiniCalendar from "../../components/dashboard/MiniCalendar.jsx";
 import { API_BASE } from "../../config";
 import { logActivity } from "../../components/ActivityFeed.jsx";
+import {
+  ensureActiveGroupId,
+  getActiveGroupId,
+  getMyGroups,
+  setActiveGroupId as persistActiveGroupId,
+} from "../../services/groupService";
 
 // ── Color palette (matches Dashboard / Booking)
 // #000000  sidebar bg
@@ -103,10 +109,6 @@ function getToken() {
   return localStorage.getItem("token") || sessionStorage.getItem("token") || "";
 }
 
-function getActiveTripId() {
-  return localStorage.getItem("active_group_id") || localStorage.getItem("activeGroupId") || null;
-}
-
 // Normalize a server todo to the local shape used in state
 function fromServer(t) {
   return {
@@ -155,6 +157,8 @@ export default function Todo() {
   const navigate = useNavigate();
 
   // ── State ──────────────────────────────────────────────────────────────────
+  const [groups,      setGroups]      = useState([]);
+  const [activeGroupId, setActiveGroupIdState] = useState("");
   const [todos,       setTodos]       = useState(loadTodos);
   const [activeFilter, setFilter]     = useState("All");
   const [activeCategory, setCategory] = useState("all");
@@ -179,11 +183,34 @@ export default function Todo() {
   const [selectedDate, setSelectedDate] = useState(null);
 
   const inputRef = useRef(null);
-  const tripId   = getActiveTripId();
+  const tripId   = activeGroupId;
+
+  useEffect(() => {
+    const bootGroupContext = async () => {
+      try {
+        const allGroups = await getMyGroups();
+        setGroups(allGroups);
+
+        let groupId = getActiveGroupId();
+        const found = allGroups.some((g) => String(g.group_id || g.id) === String(groupId));
+        if (!found) {
+          groupId = await ensureActiveGroupId();
+        }
+        setActiveGroupIdState(groupId || "");
+      } catch {
+        setGroups([]);
+        setActiveGroupIdState("");
+      }
+    };
+    bootGroupContext();
+  }, []);
 
   // ── Server sync ───────────────────────────────────────────────────────────
   const fetchServerTodos = useCallback(async () => {
-    if (!tripId || !getToken()) return;
+    if (!tripId || !getToken()) {
+      setSyncMode(false);
+      return;
+    }
     try {
       setSyncing(true);
       const res = await fetch(`${API_BASE}/todos/?trip_id=${tripId}`, {
@@ -195,12 +222,24 @@ export default function Todo() {
         setTodos(normalized);
         saveTodos(normalized);
         setSyncMode(true);
+      } else {
+        setSyncMode(false);
       }
-    } catch { /* offline — use localStorage */ }
+    } catch {
+      setSyncMode(false);
+      /* offline — use localStorage */
+    }
     finally { setSyncing(false); }
   }, [tripId]);
 
   useEffect(() => { fetchServerTodos(); }, [fetchServerTodos]);
+
+  const handleGroupChange = useCallback((groupId) => {
+    persistActiveGroupId(groupId);
+    setActiveGroupIdState(groupId);
+    setSelectedDate(null);
+    setFilter("All");
+  }, []);
 
   // ── Persist locally whenever todos change ──────────────────────────────────
   useEffect(() => { saveTodos(todos); }, [todos]);
@@ -499,6 +538,28 @@ export default function Todo() {
                   </>
                 )}
               </p>
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs font-semibold" style={{ color: "#6b7280" }}>Group</span>
+                <select
+                  value={activeGroupId}
+                  onChange={(e) => handleGroupChange(e.target.value)}
+                  className="px-3 py-1.5 rounded-lg text-xs"
+                  style={{ border: "1px solid #d1d5db", background: "#fff", color: "#111827" }}
+                >
+                  {groups.length === 0 ? (
+                    <option value="">No groups</option>
+                  ) : (
+                    groups.map((group) => {
+                      const gid = group.group_id || group.id;
+                      return (
+                        <option key={gid} value={gid}>
+                          {group.name || "Untitled Group"}
+                        </option>
+                      );
+                    })
+                  )}
+                </select>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               {/* Quick stats pills */}

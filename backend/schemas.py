@@ -73,6 +73,11 @@ class MessageCreate(BaseModel):
     conversation_id: Optional[str] = None
     is_encrypted: bool = True
 
+class MessageEdit(BaseModel):
+    """Edit encrypted message content within the allowed window."""
+    content: str  # base64-encoded encrypted content
+    is_encrypted: bool = True
+
 class MessageOut(BaseModel):
     message_id: str
     from_user: str

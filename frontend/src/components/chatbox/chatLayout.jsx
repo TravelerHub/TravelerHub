@@ -125,6 +125,7 @@ export default function ChatLayout({ currentUser, onNewChat, tripId }) {
             messages={selectedMessages}
             error={error}
             conversationID={selectedId}
+            tripId={tripId}
           />
         )}
       </Panel>
