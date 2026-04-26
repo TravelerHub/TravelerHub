@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Navbar_Dashboard from '../../components/navbar/Navbar_dashboard.jsx';
 import { SIDEBAR_ITEMS } from '../../constants/sidebarItems.js';
@@ -224,6 +224,8 @@ function Navigation() {
   const [currentRoute, setCurrentRoute] = useState(null);
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeError, setRouteError] = useState('');
+  // Stable departure time — only recomputed when a new route loads, not on every render
+  const routeDepartureTime = useMemo(() => new Date().toISOString(), [currentRoute]);
 
   const [showPlacesSearch, setShowPlacesSearch] = useState(false);
   const [placesQuery, setPlacesQuery] = useState('');
@@ -1984,7 +1986,7 @@ function Navigation() {
               <div className="px-4 py-3 border-b" style={{ borderColor: '#d1d1c7' }}>
                 <WeatherRouteAlert
                   waypoints={markers.map(m => ({ lat: m.coordinates[1], lng: m.coordinates[0] }))}
-                  departureTime={new Date().toISOString()}
+                  departureTime={routeDepartureTime}
                   routeDurationMinutes={
                     currentRoute.summary?.totalDuration
                       ? parseInt(currentRoute.summary.totalDuration)
