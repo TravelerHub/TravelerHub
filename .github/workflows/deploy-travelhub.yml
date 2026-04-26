@@ -82,7 +82,7 @@ jobs:
             docker run -d \
               --restart always \
               --name travelhub-backend \
-              -p 127.0.0.1:8000:8000 \
+              -p 127.0.0.1:8001:8000 \
               --env-file /opt/travelhub/.env \
               travelhub-backend:latest
 

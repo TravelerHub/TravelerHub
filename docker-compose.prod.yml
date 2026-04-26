@@ -14,7 +14,7 @@ services:
       dockerfile: Dockerfile
     container_name: travelhub-backend
     ports:
-      - "127.0.0.1:8000:8000"   # only reachable via nginx, not exposed publicly
+      - "127.0.0.1:8001:8000"   # only reachable via nginx, not exposed publicly
     env_file:
       - /opt/travelhub/.env     # secrets live on the server, never in the repo
     restart: unless-stopped
