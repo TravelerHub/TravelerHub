@@ -564,7 +564,8 @@ function Navbar_Dashboard() {
               {searchLoading ? <IconSpinner /> : <IconSearch />}
               <input
                 ref={inputRef}
-                type="text"
+                type="search"
+                aria-label="Search trips, expenses, photos"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -582,6 +583,7 @@ function Navbar_Dashboard() {
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
+                  aria-label="Clear search"
                   style={{
                     background: "none",
                     border: "none",
@@ -591,9 +593,8 @@ function Navbar_Dashboard() {
                     color: "#5c6b73",
                     fontSize: 16,
                   }}
-                  title="Clear"
                 >
-                  ×
+                  <span aria-hidden="true">×</span>
                 </button>
               )}
             </div>
@@ -625,10 +626,10 @@ function Navbar_Dashboard() {
         {/* Chat notifications */}
         <button
           onClick={() => navigate("/message")}
-          title="Messages"
+          aria-label="Messages"
           className="relative w-8 h-8 flex items-center justify-center rounded-lg hover:bg-black/5 transition"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="#5c6b73" strokeWidth={1.8}>
+          <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="#5c6b73" strokeWidth={1.8}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.77 9.77 0 01-4-.84L3 20l1.09-3.27A7.958 7.958 0 013 12C3 7.582 7.03 4 12 4s9 3.582 9 8z" />
           </svg>
         </button>
@@ -636,17 +637,17 @@ function Navbar_Dashboard() {
         {/* Event notifications */}
         <button
           onClick={() => navigate("/calendar")}
-          title="Events"
+          aria-label="Events calendar"
           className="relative w-8 h-8 flex items-center justify-center rounded-lg hover:bg-black/5 transition"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="#5c6b73" strokeWidth={1.8}>
+          <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="#5c6b73" strokeWidth={1.8}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
           </svg>
         </button>
 
         {/* Notifications bell */}
-        <Link to="/notifications" className="relative text-white/70 hover:text-white w-8 h-8 flex items-center justify-center rounded-lg hover:bg-black/5 transition" title="Notifications">
-          <span className="text-xl">🔔</span>
+        <Link to="/notifications" aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"} className="relative text-white/70 hover:text-white w-8 h-8 flex items-center justify-center rounded-lg hover:bg-black/5 transition">
+          <span aria-hidden="true" className="text-xl">🔔</span>
           {unreadCount > 0 && (
             <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold">
               {unreadCount > 9 ? '9+' : unreadCount}
@@ -658,6 +659,9 @@ function Navbar_Dashboard() {
         <div className="relative">
           <button
             onClick={() => setShowProfile((v) => !v)}
+            aria-label={`${displayName} profile menu`}
+            aria-expanded={showProfile}
+            aria-haspopup="true"
             className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold transition hover:opacity-90 select-none"
             style={{ background: "#183a37" }}
           >

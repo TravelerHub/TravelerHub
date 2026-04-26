@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getExchangeRates, convertAmount, CURRENCY_SYMBOLS } from "../../services/currencyService";
+import { useFocusTrap } from "../../hooks/useFocusTrap.js";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard";
 import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
 import {
@@ -183,30 +184,37 @@ function PaymentHandlesModal({ userId, onClose }) {
     onClose();
   };
 
+  const modalRef = useFocusTrap(true);
+
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="payment-handles-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.4)" }}
       onClick={onClose}
     >
       <div
+        ref={modalRef}
         className="w-full rounded-2xl overflow-hidden"
         style={{ maxWidth: 420, background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #f3f4f6" }}>
           <div>
-            <h2 className="text-base font-bold" style={{ color: "#160f29" }}>Payment Handles</h2>
+            <h2 id="payment-handles-title" className="text-base font-bold" style={{ color: "#160f29" }}>Payment Handles</h2>
             <p className="text-xs mt-0.5" style={{ color: "#9ca3af" }}>
               Used for Venmo, PayPal & Cash App deep-links
             </p>
           </div>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="w-8 h-8 flex items-center justify-center rounded-lg text-sm"
             style={{ color: "#5c6b73" }}
           >
-            ✕
+            <span aria-hidden="true">✕</span>
           </button>
         </div>
         <div className="px-6 py-5 space-y-4">
@@ -216,10 +224,11 @@ function PaymentHandlesModal({ userId, onClose }) {
             { key: "cashapp", label: "Cash App $cashtag", placeholder: "$cashtag" },
           ].map(({ key, label, placeholder }) => (
             <div key={key}>
-              <label className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
+              <label htmlFor={`handle-${key}`} className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
                 {label}
               </label>
               <input
+                id={`handle-${key}`}
                 type="text"
                 value={handles[key] || ""}
                 onChange={(e) => setHandles((prev) => ({ ...prev, [key]: e.target.value }))}
@@ -283,6 +292,11 @@ function Finance() {
   const [settledSteps, setSettledSteps] = useState(new Set());
   const [stepSettling, setStepSettling] = useState(null);
   const [showHandlesModal, setShowHandlesModal] = useState(false);
+
+  // Focus traps for modals
+  const splitModalRef = useFocusTrap(!!splitModalExpense);
+  const addTransactionModalRef = useFocusTrap(showModal);
+  const chargeCardModalRef = useFocusTrap(showChargeModal);
 
   // Currency conversion state
   const [displayCurrency, setDisplayCurrency] = useState('USD');
@@ -1341,23 +1355,28 @@ function Finance() {
       {/* ── Split Expense Modal ───────────────────────────────────────────── */}
       {splitModalExpense && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="split-expense-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: "rgba(0,0,0,0.4)" }}
           onClick={() => setSplitModalExpense(null)}
         >
           <div
+            ref={splitModalRef}
             className="w-full rounded-2xl overflow-hidden"
             style={{ maxWidth: 420, background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #f3f4f6" }}>
-              <h2 className="text-base font-bold" style={{ color: "#160f29" }}>Split Expense</h2>
+              <h2 id="split-expense-title" className="text-base font-bold" style={{ color: "#160f29" }}>Split Expense</h2>
               <button
                 onClick={() => setSplitModalExpense(null)}
+                aria-label="Close"
                 className="w-8 h-8 flex items-center justify-center rounded-lg text-sm"
                 style={{ color: "#5c6b73" }}
               >
-                ✕
+                <span aria-hidden="true">✕</span>
               </button>
             </div>
             <div className="px-6 py-5 space-y-4">
@@ -1393,11 +1412,15 @@ function Finance() {
       {/* ── Add Transaction Modal ─────────────────────────────────────────── */}
       {showModal && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-transaction-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: "rgba(0,0,0,0.4)" }}
           onClick={() => setShowModal(false)}
         >
           <div
+            ref={addTransactionModalRef}
             className="w-full rounded-2xl overflow-hidden"
             style={{
               maxWidth: 520,
@@ -1411,17 +1434,18 @@ function Finance() {
               className="flex items-center justify-between px-6 py-4"
               style={{ borderBottom: "1px solid #f3f4f6" }}
             >
-              <h2 className="text-base font-bold" style={{ color: "#160f29" }}>
+              <h2 id="add-transaction-title" className="text-base font-bold" style={{ color: "#160f29" }}>
                 Add Transaction
               </h2>
               <button
                 onClick={() => setShowModal(false)}
+                aria-label="Close"
                 className="w-8 h-8 flex items-center justify-center rounded-lg text-sm transition"
                 style={{ color: "#5c6b73" }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >
-                ✕
+                <span aria-hidden="true">✕</span>
               </button>
             </div>
 
@@ -1455,10 +1479,11 @@ function Finance() {
             {/* Form */}
             <form onSubmit={handleAddTransaction} className="px-6 py-5 space-y-4">
               <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
+                <label htmlFor="txn-description" className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
                   Description
                 </label>
                 <input
+                  id="txn-description"
                   type="text"
                   name="description"
                   value={formData.description}
@@ -1472,10 +1497,11 @@ function Finance() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
+                  <label htmlFor="txn-amount" className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
                     Amount (USD)
                   </label>
                   <input
+                    id="txn-amount"
                     type="number"
                     name="amount"
                     value={formData.amount}
@@ -1489,10 +1515,11 @@ function Finance() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
+                  <label htmlFor="txn-date" className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
                     Date
                   </label>
                   <input
+                    id="txn-date"
                     type="date"
                     name="date"
                     value={formData.date}
@@ -1585,32 +1612,38 @@ function Finance() {
       {/* ── Charge Card Modal ─────────────────────────────────────────────── */}
       {showChargeModal && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="charge-card-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: "rgba(0,0,0,0.4)" }}
           onClick={() => setShowChargeModal(false)}
         >
           <div
+            ref={chargeCardModalRef}
             className="w-full rounded-2xl overflow-hidden"
             style={{ maxWidth: 520, background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #f3f4f6" }}>
-              <h2 className="text-base font-bold" style={{ color: "#160f29" }}>Charge Saved Card</h2>
+              <h2 id="charge-card-title" className="text-base font-bold" style={{ color: "#160f29" }}>Charge Saved Card</h2>
               <button
                 onClick={() => setShowChargeModal(false)}
+                aria-label="Close"
                 className="w-8 h-8 flex items-center justify-center rounded-lg text-sm transition"
                 style={{ color: "#5c6b73" }}
               >
-                ✕
+                <span aria-hidden="true">✕</span>
               </button>
             </div>
 
             <form onSubmit={handleChargeCard} className="px-6 py-5 space-y-4">
               <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
+                <label htmlFor="charge-card-select" className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
                   Saved Card
                 </label>
                 <select
+                  id="charge-card-select"
                   value={chargeForm.payment_method_id}
                   onChange={(e) => setChargeForm((prev) => ({ ...prev, payment_method_id: e.target.value }))}
                   className="w-full px-3 py-2.5 rounded-xl text-sm"
@@ -1631,10 +1664,11 @@ function Finance() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
+                <label htmlFor="charge-amount" className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
                   Amount (USD)
                 </label>
                 <input
+                  id="charge-amount"
                   type="number"
                   value={chargeForm.amount}
                   onChange={(e) => setChargeForm((prev) => ({ ...prev, amount: e.target.value }))}
@@ -1648,10 +1682,11 @@ function Finance() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
+                <label htmlFor="charge-description" className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
                   Description
                 </label>
                 <input
+                  id="charge-description"
                   type="text"
                   value={chargeForm.description}
                   onChange={(e) => setChargeForm((prev) => ({ ...prev, description: e.target.value }))}

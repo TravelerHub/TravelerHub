@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE, getToken } from '../services/api.js';
 import { setActiveGroupId } from '../services/groupService.js';
+import { useFocusTrap } from '../hooks/useFocusTrap.js';
 
 export default function OnboardingModal({ onClose }) {
   const [step, setStep] = useState(1);
+  const modalRef = useFocusTrap(true);
   const [tripName, setTripName] = useState('');
   const [groupId, setGroupId] = useState(null);
   const [inviteLink, setInviteLink] = useState('');
@@ -83,12 +85,13 @@ export default function OnboardingModal({ onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="relative bg-[#160f29] border border-[#183a37] rounded-2xl p-8 w-full max-w-md mx-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="onboarding-modal-title">
+      <div ref={modalRef} className="relative bg-[#160f29] border border-[#183a37] rounded-2xl p-8 w-full max-w-md mx-4">
         <button
           onClick={onClose}
+          aria-label="Close"
           className="absolute top-4 right-4 text-white/40 hover:text-white/80 text-xl"
-        >✕</button>
+        ><span aria-hidden="true">✕</span></button>
 
         {/* Step indicator */}
         <div className="flex gap-2 mb-6">
@@ -99,9 +102,11 @@ export default function OnboardingModal({ onClose }) {
 
         {step === 1 && (
           <div>
-            <h2 className="text-white text-2xl font-bold mb-2">Plan your first trip ✈️</h2>
+            <h2 id="onboarding-modal-title" className="text-white text-2xl font-bold mb-2">Plan your first trip ✈️</h2>
             <p className="text-white/50 text-sm mb-6">Give your adventure a name to get started.</p>
+            <label htmlFor="trip-name" className="sr-only">Trip name</label>
             <input
+              id="trip-name"
               value={tripName}
               onChange={e => setTripName(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && tripName.trim() && !loading && handleCreateTrip()}
@@ -128,16 +133,20 @@ export default function OnboardingModal({ onClose }) {
 
         {step === 2 && (
           <div>
-            <h2 className="text-white text-2xl font-bold mb-2">Invite your crew 👥</h2>
+            <h2 id="onboarding-modal-title" className="text-white text-2xl font-bold mb-2">Invite your crew 👥</h2>
             <p className="text-white/50 text-sm mb-6">Share this link so your group can join.</p>
             <div className="flex gap-2 mb-4">
+              <label htmlFor="invite-link" className="sr-only">Invite link</label>
               <input
+                id="invite-link"
                 readOnly
                 value={inviteLink}
+                aria-label="Invite link"
                 className="flex-1 bg-[#183a37]/50 border border-[#183a37] rounded-xl px-4 py-3 text-white/70 text-sm focus:outline-none"
               />
               <button
                 onClick={handleCopyLink}
+                aria-label={copied ? 'Link copied' : 'Copy invite link'}
                 className="px-4 py-3 rounded-xl bg-[#183a37] text-[#c8a96e] text-sm font-semibold hover:bg-[#183a37]/80 transition-colors"
               >
                 {copied ? 'Copied!' : 'Copy'}
@@ -152,8 +161,8 @@ export default function OnboardingModal({ onClose }) {
 
         {step === 3 && (
           <div className="text-center">
-            <div className="text-6xl mb-4">🎉</div>
-            <h2 className="text-white text-2xl font-bold mb-2">You're all set!</h2>
+            <div className="text-6xl mb-4" aria-hidden="true">🎉</div>
+            <h2 id="onboarding-modal-title" className="text-white text-2xl font-bold mb-2">You're all set!</h2>
             <p className="text-white/50 text-sm mb-6">TravelerHub is ready. Start planning, voting on spots, and exploring together.</p>
             <button
               onClick={handleFinish}
