@@ -38,6 +38,22 @@ export default defineConfig({
     }
   },
 
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          mapbox: ['mapbox-gl', 'supercluster', '@mapbox/polyline'],
+          fullcalendar: ['@fullcalendar/react', '@fullcalendar/daygrid', '@fullcalendar/timegrid', '@fullcalendar/interaction'],
+          dnd: ['@hello-pangea/dnd'],
+          lottie: ['lottie-react'],
+          supabase: ['@supabase/supabase-js'],
+          query: ['@tanstack/react-query'],
+          react: ['react', 'react-dom', 'react-router-dom'],
+        },
+      },
+    },
+  },
+
   test: {
     environment: 'jsdom',
     globals: true,
