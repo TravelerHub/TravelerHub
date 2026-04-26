@@ -1,9 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
-from utils import oauth2  
-from supabase_client import supabase, safe_single 
+from utils import oauth2
+from supabase_client import supabase, safe_single
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/routes", tags=["Routes"])
 
@@ -94,7 +98,9 @@ class RouteResponse(BaseModel):
     created_at: datetime
 
 @router.post("/", response_model=RouteResponse)
+@limiter.limit("30/minute")
 async def save_route(
+    request: Request,
     route: RouteCreate,
     current_user=Depends(oauth2.get_current_user)
 ):
@@ -120,7 +126,9 @@ async def save_route(
     return result.data[0]
 
 @router.get("/", response_model=List[RouteResponse])
+@limiter.limit("60/minute")
 async def get_my_routes(
+    request: Request,
     trip_id: Optional[str] = None,
     current_user=Depends(oauth2.get_current_user)
 ):
@@ -137,7 +145,9 @@ async def get_my_routes(
     return result.data
 
 @router.delete("/{route_id}")
+@limiter.limit("30/minute")
 async def delete_route(
+    request: Request,
     route_id: str,
     current_user=Depends(oauth2.get_current_user)
 ):

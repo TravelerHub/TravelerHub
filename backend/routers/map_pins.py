@@ -13,11 +13,15 @@ Endpoints:
   PATCH  /map-pins/{pin_id}           — edit title/note/emoji (own pins only)
 """
 
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from pydantic import BaseModel
 from typing import Optional
 from utils import oauth2
 from supabase_client import supabase
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/map-pins", tags=["Map Pins"])
 
@@ -56,7 +60,9 @@ def _username(current_user: dict) -> str:
 # ─── Routes ──────────────────────────────────────────────────────────────────
 
 @router.get("/{trip_id}")
+@limiter.limit("60/minute")
 async def get_pins(
+    request: Request,
     trip_id: str,
     current_user: dict = Depends(oauth2.get_current_user),
 ):
@@ -72,7 +78,9 @@ async def get_pins(
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def create_pin(
+    request: Request,
     pin: PinCreate,
     current_user: dict = Depends(oauth2.get_current_user),
 ):
@@ -96,7 +104,9 @@ async def create_pin(
 
 
 @router.patch("/{pin_id}")
+@limiter.limit("30/minute")
 async def update_pin(
+    request: Request,
     pin_id: str,
     updates: PinUpdate,
     current_user: dict = Depends(oauth2.get_current_user),
@@ -118,7 +128,9 @@ async def update_pin(
 
 
 @router.delete("/{pin_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
 async def delete_pin(
+    request: Request,
     pin_id: str,
     current_user: dict = Depends(oauth2.get_current_user),
 ):
@@ -133,7 +145,9 @@ async def delete_pin(
 
 
 @router.post("/{pin_id}/upvote")
+@limiter.limit("60/minute")
 async def upvote_pin(
+    request: Request,
     pin_id: str,
     current_user: dict = Depends(oauth2.get_current_user),
 ):

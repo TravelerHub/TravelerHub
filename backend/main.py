@@ -1,10 +1,15 @@
 import os
 import time
+import logging
+import traceback
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+
+logger = logging.getLogger("travelhub")
 
 from routers import auth
 from routers import user
@@ -49,6 +54,24 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch-all handler: log every unhandled exception with structured context."""
+    logger.error(
+        "Unhandled exception",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "error": str(exc),
+            "traceback": traceback.format_exc(),
+        },
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
 
 _cors_env = os.getenv(
     "CORS_ORIGINS",
@@ -125,4 +148,19 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    from supabase_client import supabase
+    db_ok = False
+    db_error = None
+    try:
+        supabase.table("users").select("id").limit(1).execute()
+        db_ok = True
+    except Exception as e:
+        db_error = str(e)
+        logger.warning("Health check DB ping failed: %s", e)
+
+    if not db_ok:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "degraded", "db": "unreachable", "detail": db_error},
+        )
+    return {"status": "ok", "db": "reachable"}

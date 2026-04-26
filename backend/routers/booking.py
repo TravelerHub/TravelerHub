@@ -3,6 +3,11 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel, Field
 from supabase_client import supabase, safe_single
 from utils import oauth2
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from starlette.requests import Request
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/api/bookings", tags=["bookings"])
 
@@ -67,7 +72,9 @@ def ensure_trip_member(trip_id: str, user_id: str) -> None:
 # --- Routes ---
 
 @router.get("")
+@limiter.limit("60/minute")
 def list_bookings(
+    request: Request,
     trip_id: str = Query(...),
     current_user: dict = Depends(oauth2.get_current_user)
 ) -> List[Dict[str, Any]]:
@@ -84,7 +91,9 @@ def list_bookings(
 
 
 @router.get("/{booking_id}")
+@limiter.limit("60/minute")
 def get_booking(
+    request: Request,
     booking_id: str,
     current_user: dict = Depends(oauth2.get_current_user)
 ) -> Dict[str, Any]:
@@ -97,7 +106,9 @@ def get_booking(
 
 
 @router.post("")
+@limiter.limit("30/minute")
 def create_booking(
+    request: Request,
     body: BookingCreate,
     current_user: dict = Depends(oauth2.get_current_user)
 ) -> Dict[str, Any]:
@@ -115,7 +126,9 @@ def create_booking(
 
 
 @router.patch("/{booking_id}")
+@limiter.limit("30/minute")
 def update_booking(
+    request: Request,
     booking_id: str,
     body: BookingPatch,
     current_user: dict = Depends(oauth2.get_current_user)

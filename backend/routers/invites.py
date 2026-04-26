@@ -20,9 +20,13 @@ import os
 import secrets
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from utils import oauth2
 from supabase_client import supabase, safe_single
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 # Reuse membership helpers from groups router
 from routers.groups import (
@@ -44,7 +48,9 @@ INVITE_BASE_URL = os.getenv("INVITE_BASE_URL", "https://travelhub.fozhan.dev/joi
 # ---------------------------------------------------------------------------
 
 @router.post("/{group_id}/invite-link")
+@limiter.limit("30/minute")
 def create_invite_link(
+    request: Request,
     group_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -83,7 +89,8 @@ def create_invite_link(
 # ---------------------------------------------------------------------------
 
 @router.get("/invite/{token}")
-def preview_invite(token: str):
+@limiter.limit("60/minute")
+def preview_invite(request: Request, token: str):
     """Return a trip preview for a valid invite token. Does not join the trip."""
     invite = _get_valid_invite(token)
 
@@ -143,7 +150,9 @@ def preview_invite(token: str):
 # ---------------------------------------------------------------------------
 
 @router.post("/invite/{token}/join")
+@limiter.limit("30/minute")
 def join_via_invite(
+    request: Request,
     token: str,
     current_user=Depends(oauth2.get_current_user),
 ):

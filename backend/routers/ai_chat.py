@@ -327,7 +327,7 @@ class ChatHistoryItem(BaseModel):
 # --- Endpoints ---
 
 @router.post("/send")
-@limiter.limit("30/minute")
+@limiter.limit("10/minute")
 async def send_message(
     request: Request,
     payload: ChatMessage,
@@ -449,7 +449,9 @@ async def send_message(
 
 
 @router.get("/conversations")
+@limiter.limit("60/minute")
 async def get_conversations(
+    request: Request,
     current_user: dict = Depends(oauth2.get_current_user),
 ):
     """Get all AI chat conversations for the current user."""
@@ -461,7 +463,9 @@ async def get_conversations(
 
 
 @router.get("/conversations/{conversation_id}/messages")
+@limiter.limit("60/minute")
 async def get_conversation_messages(
+    request: Request,
     conversation_id: str,
     current_user: dict = Depends(oauth2.get_current_user),
 ):
@@ -482,7 +486,9 @@ async def get_conversation_messages(
 
 
 @router.delete("/conversations/{conversation_id}")
+@limiter.limit("30/minute")
 async def delete_conversation(
+    request: Request,
     conversation_id: str,
     current_user: dict = Depends(oauth2.get_current_user),
 ):

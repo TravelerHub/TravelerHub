@@ -11,13 +11,17 @@ import os
 import json
 import httpx
 from datetime import datetime, timedelta
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from pydantic import BaseModel
 from typing import Optional, List
 from utils import oauth2
 from supabase_client import supabase, safe_single
 from dotenv import load_dotenv
 from services.waypoint_predictor import WaypointPredictor
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 load_dotenv()
 
@@ -346,7 +350,9 @@ def _build_chapters(legs: list, departure_time: Optional[str] = None) -> list:
 # ---- Endpoints ----
 
 @router.post("/plan")
+@limiter.limit("10/minute")
 async def plan_smart_route(
+    request: Request,
     body: SmartRouteRequest,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -554,7 +560,9 @@ async def plan_smart_route(
 
 
 @router.post("/group-sync/{group_id}")
+@limiter.limit("60/minute")
 async def update_group_position(
+    request: Request,
     group_id: str,
     body: dict,
     current_user=Depends(oauth2.get_current_user),
@@ -627,7 +635,9 @@ async def update_group_position(
 
 
 @router.get("/group-positions/{group_id}")
+@limiter.limit("60/minute")
 async def get_group_positions(
+    request: Request,
     group_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -718,7 +728,9 @@ class PredictNextWaypointRequest(BaseModel):
 
 
 @router.post("/trips/{trip_id}/predict-next-waypoint")
+@limiter.limit("10/minute")
 async def predict_next_waypoint(
+    request: Request,
     trip_id: str,
     body: PredictNextWaypointRequest,
     current_user=Depends(oauth2.get_current_user),

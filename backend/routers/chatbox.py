@@ -1,10 +1,14 @@
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, Depends, Request
 from typing import Dict, Set, Optional
 import asyncio
 from datetime import datetime
 from supabase_client import supabase, safe_single
 import schemas
 from utils import oauth2
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 # conversation_id -> set of connected websockets
 rooms: Dict[str, Set[WebSocket]] = {}
@@ -91,7 +95,9 @@ def ensure_trip_member(trip_id: str, user_id: str):
 # ── Keypair endpoints ──────────────────────────────────────────────────────────
 
 @router.post("/users/keypair")
+@limiter.limit("30/minute")
 def store_public_key(
+    request: Request,
     payload: schemas.UserKeypair,
     current_user: dict = Depends(oauth2.get_current_user)
 ):
@@ -109,7 +115,9 @@ def store_public_key(
 
 
 @router.get("/users/{user_id}/public-key")
+@limiter.limit("60/minute")
 def get_public_key(
+    request: Request,
     user_id: str,
     current_user: dict = Depends(oauth2.get_current_user)
 ):
@@ -131,7 +139,9 @@ def get_public_key(
 # ── Session key endpoints ──────────────────────────────────────────────────────
 
 @router.get("/conversations/{conversation_id}/session-key")
+@limiter.limit("60/minute")
 def get_session_key(
+    request: Request,
     conversation_id: str,
     current_user: dict = Depends(oauth2.get_current_user)
 ):
@@ -159,7 +169,9 @@ def get_session_key(
 
 
 @router.post("/conversations/{conversation_id}/session-key")
+@limiter.limit("30/minute")
 async def store_session_keys(
+    request: Request,
     conversation_id: str,
     payload: schemas.ConversationSessionKeyBulk,
     current_user: dict = Depends(oauth2.get_current_user)
@@ -202,7 +214,9 @@ async def store_session_keys(
 
 
 @router.delete("/conversations/{conversation_id}/session-key")
+@limiter.limit("30/minute")
 def delete_my_session_key(
+    request: Request,
     conversation_id: str,
     current_user: dict = Depends(oauth2.get_current_user)
 ):
@@ -223,7 +237,9 @@ def delete_my_session_key(
 # ── Conversation endpoints ─────────────────────────────────────────────────────
 
 @router.get("/conversations")
+@limiter.limit("60/minute")
 def get_conversations(
+    request: Request,
     trip_id: Optional[str] = Query(None),
     current_user: dict = Depends(oauth2.get_current_user),
 ):
@@ -268,7 +284,9 @@ def get_conversations(
 
 
 @router.post("/conversations")
+@limiter.limit("30/minute")
 def create_conversation(
+    request: Request,
     payload: schemas.ConversationCreate,
     current_user: dict = Depends(oauth2.get_current_user)
 ):
@@ -344,7 +362,9 @@ def create_conversation(
 
 
 @router.post("/conversations/{conversation_id}/members")
+@limiter.limit("30/minute")
 def add_member(
+    request: Request,
     conversation_id: str,
     user_id: str = Query(..., description="User ID to add"),
     current_user: dict = Depends(oauth2.get_current_user)
@@ -386,7 +406,9 @@ def add_member(
 
 
 @router.get("/conversations/{conversation_id}/members")
+@limiter.limit("60/minute")
 def get_members(
+    request: Request,
     conversation_id: str,
     current_user: dict = Depends(oauth2.get_current_user)
 ):
@@ -430,7 +452,9 @@ def get_members(
 
 
 @router.get("/conversations/{conversation_id}/messages")
+@limiter.limit("60/minute")
 def get_messages(
+    request: Request,
     conversation_id: str,
     current_user: dict = Depends(oauth2.get_current_user)
 ):
@@ -522,7 +546,9 @@ async def ws_conversation(websocket: WebSocket, conversation_id: str):
 
 
 @router.post("/conversations/{conversation_id}/messages")
+@limiter.limit("60/minute")
 async def post_message(
+    request: Request,
     conversation_id: str,
     payload: schemas.MessageCreate,
     current_user: dict = Depends(oauth2.get_current_user)

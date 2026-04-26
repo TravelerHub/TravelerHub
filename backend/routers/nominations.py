@@ -9,12 +9,16 @@ Endpoints:
   GET  /nominations/{group_id}/conflicts    — detect scheduling conflicts between approved spots
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel
 from typing import Optional, List
 from utils import oauth2
 from supabase_client import supabase, safe_single
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 import math
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(
     prefix="/nominations",
@@ -78,7 +82,9 @@ def _get_member_count(group_id: str) -> int:
 # ---- Endpoints ----
 
 @router.post("/{group_id}/nominate", status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 def nominate_place(
+    request: Request,
     group_id: str,
     body: NominationCreate,
     current_user=Depends(oauth2.get_current_user),
@@ -122,7 +128,9 @@ def nominate_place(
 
 
 @router.post("/{group_id}/vote")
+@limiter.limit("30/minute")
 def vote_on_nomination(
+    request: Request,
     group_id: str,
     body: VoteCreate,
     current_user=Depends(oauth2.get_current_user),
@@ -175,7 +183,9 @@ def vote_on_nomination(
 
 
 @router.get("/{group_id}/shortlist")
+@limiter.limit("60/minute")
 def get_shortlist(
+    request: Request,
     group_id: str,
     trip_id: Optional[str] = None,
     current_user=Depends(oauth2.get_current_user),
@@ -272,7 +282,9 @@ def get_shortlist(
 
 
 @router.delete("/{nomination_id}")
+@limiter.limit("30/minute")
 def delete_nomination(
+    request: Request,
     nomination_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -317,7 +329,9 @@ def delete_nomination(
 
 
 @router.get("/{group_id}/conflicts")
+@limiter.limit("60/minute")
 def detect_conflicts(
+    request: Request,
     group_id: str,
     trip_id: Optional[str] = None,
     max_distance_km: float = 50,

@@ -1,11 +1,15 @@
 import asyncio
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from typing import List
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 import schemas
 from utils import oauth2, hasing
 
 from supabase_client import supabase
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(
     prefix="/users",
@@ -15,7 +19,8 @@ router = APIRouter(
 
 #  get current user
 @router.get("/me", response_model=schemas.UserOut)
-def read_me(current_user=Depends(oauth2.get_current_user)):
+@limiter.limit("60/minute")
+def read_me(request: Request, current_user=Depends(oauth2.get_current_user)):
     # NOTE: This still depends on how oauth2.get_current_user is implemented.
     # If oauth2 currently uses SQLAlchemy, you'll want to migrate that to Supabase too.
     return current_user
@@ -23,7 +28,8 @@ def read_me(current_user=Depends(oauth2.get_current_user)):
 
 # get all user lists
 @router.get("/", response_model=List[schemas.UserOut])
-async def get_users(current_user=Depends(oauth2.get_current_user)):
+@limiter.limit("60/minute")
+async def get_users(request: Request, current_user=Depends(oauth2.get_current_user)):
     try:
         response = await asyncio.to_thread(lambda: supabase.table("users").select("*").execute())
         users = response.data  # list[dict]
@@ -38,7 +44,8 @@ async def get_users(current_user=Depends(oauth2.get_current_user)):
 
 # get user by ID
 @router.get("/{id}", response_model=schemas.UserOut)
-async def get_user(id: int):
+@limiter.limit("60/minute")
+async def get_user(request: Request, id: int):
     try:
         response = await asyncio.to_thread(
             lambda: supabase
@@ -69,7 +76,8 @@ async def get_user(id: int):
 
 # create a new user in supabase
 @router.post("/", response_model=schemas.UserOut, status_code=status.HTTP_201_CREATED)
-async def create_user(user: schemas.UserCreate):
+@limiter.limit("10/minute")
+async def create_user(request: Request, user: schemas.UserCreate):
     # check if email already exists
     try:
         existing = await asyncio.to_thread(
@@ -132,7 +140,9 @@ async def create_user(user: schemas.UserCreate):
 
 # Update current user's profile
 @router.put("/me", response_model=schemas.UserOut)
+@limiter.limit("30/minute")
 async def update_me(
+    request: Request,
     user_update: schemas.UserUpdate,
     current_user=Depends(oauth2.get_current_user)
 ):
@@ -171,7 +181,9 @@ async def update_me(
 
 # Change password
 @router.put("/me/password")
+@limiter.limit("10/minute")
 async def change_password(
+    request: Request,
     password_data: schemas.PasswordChange,
     current_user=Depends(oauth2.get_current_user)
 ):

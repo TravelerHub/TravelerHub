@@ -82,7 +82,8 @@ async def mark_read(request: Request, notification_id: str, current_user=Depends
 
 
 @router.post("/read-all")
-async def mark_all_read(current_user=Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def mark_all_read(request: Request, current_user=Depends(get_current_user)):
     user_id = current_user["id"]
     await asyncio.to_thread(
         lambda: supabase.table("notifications").update({"read": True}).eq("user_id", user_id).execute()

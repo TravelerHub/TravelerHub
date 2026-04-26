@@ -27,9 +27,13 @@ Returns a single unified payload:
 
 import uuid
 from collections import Counter, defaultdict
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from supabase_client import supabase, safe_single
 from utils import oauth2
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(
     prefix="/trips",
@@ -168,7 +172,9 @@ def _build_story_payload(trip_id: str) -> dict:
 
 
 @router.get("/{trip_id}/story")
+@limiter.limit("60/minute")
 async def get_trip_story(
+    request: Request,
     trip_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -187,7 +193,9 @@ async def get_trip_story(
 # ---------------------------------------------------------------------------
 
 @router.post("/{trip_id}/story/share")
+@limiter.limit("10/minute")
 async def generate_story_share_token(
+    request: Request,
     trip_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -271,7 +279,8 @@ def _public_story_base_url() -> str:
 
 
 @public_router.get("/{token}")
-async def get_public_story(token: str):
+@limiter.limit("60/minute")
+async def get_public_story(request: Request, token: str):
     """
     No-auth endpoint. Validates the share token, resolves the trip, and
     returns the same story payload as the authenticated endpoint.

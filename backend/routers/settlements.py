@@ -9,11 +9,15 @@ Endpoints:
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from supabase_client import supabase, safe_single
 from utils import oauth2
 from utils.logger import get_logger
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 logger = get_logger(__name__)
 
@@ -94,7 +98,9 @@ class SettleRequest(BaseModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/split/{expense_id}")
+@limiter.limit("30/minute")
 def split_expense(
+    request: Request,
     expense_id: str,
     payload: SplitRequest,
     current_user=Depends(oauth2.get_current_user),
@@ -176,7 +182,9 @@ def split_expense(
 
 
 @router.get("/balances/{trip_id}")
+@limiter.limit("60/minute")
 def get_balances(
+    request: Request,
     trip_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -322,7 +330,9 @@ def get_balances(
 
 
 @router.post("/settle")
+@limiter.limit("30/minute")
 def record_settlement(
+    request: Request,
     payload: SettleRequest,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -353,7 +363,9 @@ def record_settlement(
 
 
 @router.get("/trips/{trip_id}/settlement-summary")
+@limiter.limit("60/minute")
 def get_settlement_summary(
+    request: Request,
     trip_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -498,7 +510,9 @@ def get_settlement_summary(
 
 
 @router.get("/settlements/{trip_id}")
+@limiter.limit("60/minute")
 def list_settlements(
+    request: Request,
     trip_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):

@@ -7,10 +7,14 @@ Endpoints:
   GET /discovery/expense-markers            — geo-tagged expense markers for map
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from typing import Optional, List
 from utils import oauth2
 from supabase_client import supabase
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(
     prefix="/discovery",
@@ -48,7 +52,9 @@ def _get_group_member_ids(group_id: str, current_user_id: str) -> List[str]:
 # ---- Endpoints ----
 
 @router.get("/group-activity/{group_id}")
+@limiter.limit("60/minute")
 def get_group_activity(
+    request: Request,
     group_id: str,
     category: Optional[str] = None,
     current_user=Depends(oauth2.get_current_user),
@@ -122,7 +128,9 @@ def get_group_activity(
 
 
 @router.get("/vibes/{group_id}")
+@limiter.limit("60/minute")
 def get_group_vibes(
+    request: Request,
     group_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -206,7 +214,9 @@ def get_group_vibes(
 
 
 @router.get("/expense-markers")
+@limiter.limit("60/minute")
 def get_expense_markers(
+    request: Request,
     trip_id: Optional[str] = None,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -250,7 +260,9 @@ def get_expense_markers(
 
 
 @router.get("/group-expense-summary/{group_id}")
+@limiter.limit("60/minute")
 def get_group_expense_summary(
+    request: Request,
     group_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):

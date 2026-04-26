@@ -115,7 +115,9 @@ async def analyze_receipt(
 
 
 @router.post("/analyze-document")
+@limiter.limit("10/minute")
 async def analyze_document(
+    request: Request,
     file: UploadFile = File(...),
     current_user: dict = Depends(oauth2.get_current_user)
 ):
@@ -207,7 +209,9 @@ class ExpenseData(BaseModel):
 
 
 @router.post("/save-expense")
+@limiter.limit("30/minute")
 async def save_expense(
+    request: Request,
     expense: ExpenseData,
     current_user: dict = Depends(oauth2.get_current_user)
 ):
