@@ -69,15 +69,15 @@ def ensure_trip_member(trip_id: str, user_id: str) -> None:
 
 @router.get("")
 def list_bookings(
-    tripId: str = Query(...),
+    trip_id: str = Query(...),
     current_user: dict = Depends(oauth2.get_current_user)
 ) -> List[Dict[str, Any]]:
-    ensure_trip_member(tripId, current_user["id"])
+    ensure_trip_member(trip_id, current_user["id"])
 
     res = (
         supabase.table("booking")
         .select("*")
-        .eq("trip_id", tripId)
+        .eq("trip_id", trip_id)
         .order("start_time", desc=True)
         .execute()
     )
