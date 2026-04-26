@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from supabase_client import supabase, supabase_admin, safe_single
 from utils import oauth2
 from utils.logger import get_logger
+from utils.trip_access import require_trip_member
 from services.photo_clusterer import PhotoClusterer
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -110,9 +111,10 @@ async def get_trip_media(
     current_user=Depends(oauth2.get_current_user),
 ):
     """Fetches media for a trip with like/save status for the current user. Supports cursor-based pagination."""
-    try:
-        user_id = _uid(current_user)
+    user_id = _uid(current_user)
+    await require_trip_member(trip_id, user_id)
 
+    try:
         query = supabase.table("trip_media").select("*").eq("trip_id", trip_id)
 
         if cursor:
@@ -183,6 +185,8 @@ async def get_trip_media_grouped(
     Returns:
         {"groups": [{"label": "Stop 1", "photos": [...], "cover": <first photo>}, ...]}
     """
+    await require_trip_member(trip_id, _uid(current_user))
+
     try:
         response = (
             supabase.table("trip_media")
@@ -241,6 +245,7 @@ async def upload_trip_media(
 ):
     """Upload a photo to a trip album via Supabase Storage."""
     user_id = _uid(current_user)
+    await require_trip_member(trip_id, user_id)
 
     # Validate file type
     if file.content_type not in ALLOWED_CONTENT_TYPES:
@@ -487,6 +492,7 @@ async def toggle_like(
 ):
     """Like or unlike a photo. Returns the new like state and count."""
     user_id = _uid(current_user)
+    await require_trip_member(trip_id, user_id)
 
     existing = safe_single(
         supabase.table("media_likes")
@@ -527,6 +533,7 @@ async def toggle_save(
 ):
     """Save or unsave a photo to personal collection."""
     user_id = _uid(current_user)
+    await require_trip_member(trip_id, user_id)
 
     existing = safe_single(
         supabase.table("media_saves")
