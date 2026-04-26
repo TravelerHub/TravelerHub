@@ -50,6 +50,7 @@ from routers import export as export_router
 from routers import notifications
 from routers import push
 from routers import currency
+from routers import trip_wrapup
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
@@ -139,6 +140,7 @@ app.include_router(export_router.router)  # /export (iCal, CSV, JSON summary)
 app.include_router(notifications.router)  # /notifications
 app.include_router(push.router)            # /push (web push subscriptions)
 app.include_router(currency.router)       # /api/currency (exchange rates)
+app.include_router(trip_wrapup.router)    # /trips/{trip_id}/wrapup-data|complete
 
 
 

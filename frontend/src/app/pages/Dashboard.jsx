@@ -20,6 +20,7 @@ import GalleryWidget       from "../../components/dashboard/GalleryWidget.jsx";
 import ActivityFeed        from "../../components/ActivityFeed.jsx";
 import EmptyState          from "../../components/EmptyState.jsx";
 import OnboardingModal     from "../../components/OnboardingModal.jsx";
+import TripWrapUpModal     from "../../components/TripWrapUpModal.jsx";
 
 // ── Color palette ─────────────────────────────────────────────────────────────
 // #160f29  deep dark   (sidebar, widget backgrounds)
@@ -74,6 +75,7 @@ export default function Dashboard() {
   );
 
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [wrapUpTrip,     setWrapUpTrip]     = useState(null);
 
   const queryClient = useQueryClient();
 
@@ -370,6 +372,83 @@ export default function Dashboard() {
                 subtitle="Create your first trip and invite your crew."
                 action={{ label: "Plan a trip", onClick: () => { setShowCreateModal(true); setCreateError(""); } }}
               />
+            </div>
+          )}
+
+          {/* ── Wrap-Up Banner ──────────────────────────────────────────────── */}
+          {(() => {
+            const groups = Array.isArray(myGroupsData) ? myGroupsData : [];
+            const tripsToWrapUp = groups.filter(
+              (g) => g.end_date && new Date(g.end_date) < new Date() && g.status !== "completed"
+            );
+            if (tripsToWrapUp.length === 0) return null;
+            const first = tripsToWrapUp[0];
+            return (
+              <div
+                className="rounded-xl p-4 mb-4 flex items-center justify-between gap-3"
+                style={{ background: "linear-gradient(135deg, rgba(93,26,138,0.25), rgba(24,58,55,0.35))", border: "1px solid rgba(255,255,255,0.08)" }}
+              >
+                <p className="text-sm font-medium" style={{ color: "#f9fafb" }}>
+                  🎒 <span className="font-bold">{first.name}</span> is over — ready to wrap up?
+                </p>
+                <button
+                  onClick={() => setWrapUpTrip(first)}
+                  className="shrink-0 px-4 py-2 rounded-xl text-xs font-semibold transition hover:opacity-90 active:scale-95"
+                  style={{ background: "linear-gradient(135deg, #2dd4bf, #183a37)", color: "#fff" }}
+                >
+                  Wrap up →
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* ── Trip Cards (with per-card Wrap Up button) ───────────────────── */}
+          {Array.isArray(myGroupsData) && myGroupsData.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {myGroupsData.map((g) => {
+                const gid = g.group_id || g.id;
+                const isPast = g.end_date && new Date(g.end_date) < new Date();
+                const isCompleted = g.status === "completed";
+                return (
+                  <div
+                    key={gid}
+                    className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm transition hover:bg-black/5"
+                    style={{
+                      background: activeTripId === gid ? "#000" : "#f3f4f6",
+                      color:      activeTripId === gid ? "#fff"  : "#111827",
+                      border:     "1px solid rgba(0,0,0,0.08)",
+                      cursor:     "pointer",
+                    }}
+                    onClick={() => {
+                      setActiveGroupId(gid);
+                      setActiveTripId(gid);
+                    }}
+                  >
+                    <span className="font-medium truncate max-w-[160px]">{g.name}</span>
+                    {isCompleted && (
+                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(45,212,191,0.15)", color: "#0d9488" }}>
+                        Wrapped
+                      </span>
+                    )}
+                    {isPast && !isCompleted && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setWrapUpTrip(g); }}
+                        className="text-xs px-2.5 py-1 rounded-lg font-semibold transition hover:opacity-80 shrink-0"
+                        style={{ background: "linear-gradient(135deg, #2dd4bf, #183a37)", color: "#fff" }}
+                      >
+                        Wrap up
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleViewMembers(g); }}
+                      className="text-xs opacity-50 hover:opacity-80 transition ml-1 shrink-0"
+                      style={{ color: activeTripId === gid ? "#fff" : "#6b7280" }}
+                    >
+                      👥
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -759,6 +838,18 @@ export default function Dashboard() {
           onClose={() => {
             localStorage.setItem("onboarding_done", "1");
             setShowOnboarding(false);
+          }}
+        />
+      )}
+
+      {/* ══ TRIP WRAP-UP MODAL ═══════════════════════════════════════════════ */}
+      {wrapUpTrip && (
+        <TripWrapUpModal
+          trip={wrapUpTrip}
+          onClose={() => setWrapUpTrip(null)}
+          onComplete={() => {
+            setWrapUpTrip(null);
+            queryClient.invalidateQueries({ queryKey: ["my-groups"] });
           }}
         />
       )}
