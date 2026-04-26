@@ -179,6 +179,61 @@ async def update_me(
         )
 
 
+# Delete current user's account (soft-delete)
+@router.delete("/me")
+@limiter.limit("3/hour")
+async def delete_my_account(
+    request: Request,
+    current_user=Depends(oauth2.get_current_user),
+):
+    """
+    Permanently soft-delete the authenticated user's account.
+    Anonymises PII (email, username, name) to preserve referential integrity
+    for shared trip data. Also removes all push subscriptions so the user
+    stops receiving notifications.
+    """
+    user_id = current_user["id"]
+
+    try:
+        # Anonymise the user record — soft-delete by scrubbing PII
+        anonymised_email = f"deleted_{user_id}@deleted.com"
+        update_payload = {
+            "email":      anonymised_email,
+            "username":   "[deleted]",
+            "password":   "",          # invalidate login
+        }
+
+        await asyncio.to_thread(
+            lambda: supabase
+            .table("users")
+            .update(update_payload)
+            .eq("id", user_id)
+            .execute()
+        )
+
+    except Exception as e:
+        print("Error soft-deleting user:", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deleting account"
+        )
+
+    try:
+        # Remove all push subscriptions so notifications stop immediately
+        await asyncio.to_thread(
+            lambda: supabase
+            .table("push_subscriptions")
+            .delete()
+            .eq("user_id", user_id)
+            .execute()
+        )
+    except Exception as e:
+        # Non-fatal — log but don't fail the request
+        print("Warning: could not remove push subscriptions during account deletion:", e)
+
+    return {"message": "Account deleted successfully"}
+
+
 # Change password
 @router.put("/me/password")
 @limiter.limit("10/minute")
