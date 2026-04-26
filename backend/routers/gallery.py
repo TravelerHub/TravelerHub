@@ -35,6 +35,15 @@ router = APIRouter(
 )
 
 BUCKET_NAME = "trip-media"
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB — matches nginx client_max_body_size
+ALLOWED_CONTENT_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "image/heic",
+    "image/heif",
+}
 
 
 def _add_image_variants(photo: dict) -> dict:
@@ -92,7 +101,9 @@ def _is_trip_leader(trip_id: str, user_id: str) -> bool:
 # ── GET: Fetch all photos for a trip ──────────────────────────────────────────
 
 @router.get("/{trip_id}/media")
+@limiter.limit("60/minute")
 async def get_trip_media(
+    request: Request,
     trip_id: str,
     limit: int = Query(20, ge=1, le=100),
     cursor: Optional[str] = Query(None),  # cursor = last photo's created_at ISO string
@@ -157,7 +168,9 @@ async def get_trip_media(
 # ── GET: Fetch photos grouped by location / date ─────────────────────────────
 
 @router.get("/{trip_id}/media/grouped")
+@limiter.limit("60/minute")
 async def get_trip_media_grouped(
+    request: Request,
     trip_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -218,7 +231,9 @@ async def get_trip_media_grouped(
 # ── POST: Upload a new photo ──────────────────────────────────────────────────
 
 @router.post("/{trip_id}/upload")
+@limiter.limit("30/minute")
 async def upload_trip_media(
+    request: Request,
     trip_id: str,
     file: UploadFile = File(...),
     caption: Optional[str] = Form(None),
@@ -227,12 +242,30 @@ async def upload_trip_media(
     """Upload a photo to a trip album via Supabase Storage."""
     user_id = _uid(current_user)
 
+    # Validate file type
+    if file.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported file type '{file.content_type}'. Allowed: JPEG, PNG, WEBP, GIF, HEIC.",
+        )
+
     random_hex = secrets.token_hex(4)
-    safe_filename = file.filename.replace(" ", "_")
+    # Guard against None filename (can happen with some mobile browsers/programmatic uploads)
+    raw_filename = file.filename or "photo"
+    safe_filename = raw_filename.replace(" ", "_")
     file_path = f"{trip_id}/{random_hex}_{safe_filename}"
 
     try:
         file_content = await file.read()
+
+        # Validate file size after reading (nginx enforces 20 MB, but catch it here too
+        # to give a clear error message instead of a silent storage failure)
+        if len(file_content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum allowed size is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
+            )
+
         supabase_admin.storage.from_(BUCKET_NAME).upload(
             path=file_path,
             file=file_content,
@@ -271,7 +304,9 @@ class CaptionUpdate(BaseModel):
 
 
 @router.patch("/{trip_id}/media/{media_id}")
+@limiter.limit("30/minute")
 async def update_media_caption(
+    request: Request,
     trip_id: str,
     media_id: str,
     body: CaptionUpdate,
@@ -306,7 +341,9 @@ async def update_media_caption(
 # ── DELETE: Remove a photo ────────────────────────────────────────────────────
 
 @router.delete("/{trip_id}/media/{media_id}")
+@limiter.limit("30/minute")
 async def delete_trip_media(
+    request: Request,
     trip_id: str,
     media_id: str,
     current_user=Depends(oauth2.get_current_user),
@@ -341,7 +378,9 @@ async def delete_trip_media(
 # ── GET: My albums (all trips with photo counts) ─────────────────────────────
 
 @router.get("/my-albums")
+@limiter.limit("60/minute")
 async def get_my_albums(
+    request: Request,
     current_user=Depends(oauth2.get_current_user),
 ):
     """List all trips the user belongs to, with photo count per trip."""
@@ -439,7 +478,9 @@ async def get_my_albums(
 # ── POST: Toggle like ────────────────────────────────────────────────────────
 
 @router.post("/{trip_id}/media/{media_id}/like")
+@limiter.limit("60/minute")
 async def toggle_like(
+    request: Request,
     trip_id: str,
     media_id: str,
     current_user=Depends(oauth2.get_current_user),
@@ -477,7 +518,9 @@ async def toggle_like(
 # ── POST: Toggle save/bookmark ───────────────────────────────────────────────
 
 @router.post("/{trip_id}/media/{media_id}/save")
+@limiter.limit("60/minute")
 async def toggle_save(
+    request: Request,
     trip_id: str,
     media_id: str,
     current_user=Depends(oauth2.get_current_user),
@@ -506,7 +549,9 @@ async def toggle_save(
 # ── GET: Saved photos ────────────────────────────────────────────────────────
 
 @router.get("/saved-photos")
+@limiter.limit("60/minute")
 async def get_saved_photos(
+    request: Request,
     current_user=Depends(oauth2.get_current_user),
 ):
     """Get all photos the user has saved/bookmarked across all trips."""

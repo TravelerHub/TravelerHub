@@ -195,6 +195,20 @@ export default function Gallery() {
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Client-side validation to give instant feedback before hitting the server
+    const MAX_BYTES = 20 * 1024 * 1024; // 20 MB — matches server limit
+    const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"];
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setUploadError("Only image files are allowed (JPG, PNG, WEBP, GIF, HEIC).");
+      return;
+    }
+    if (file.size > MAX_BYTES) {
+      setUploadError("File is too large. Maximum size is 20 MB.");
+      return;
+    }
+
     setUploadFile(file);
     setUploadError("");
     const reader = new FileReader();
@@ -983,7 +997,7 @@ export default function Gallery() {
                       </svg>
                     </div>
                     <p className="text-sm font-medium" style={{ color: "#374151" }}>Click to select a photo</p>
-                    <p className="text-xs mt-1" style={{ color: "#9ca3af" }}>JPG, PNG, WEBP up to 10MB</p>
+                    <p className="text-xs mt-1" style={{ color: "#9ca3af" }}>JPG, PNG, WEBP up to 20MB</p>
                   </div>
                 )}
               </div>
