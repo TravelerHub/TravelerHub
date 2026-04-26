@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from utils import oauth2
+from utils.trip_access import require_trip_member_sync
 from supabase_client import supabase
 
 router = APIRouter(prefix="/media-comments", tags=["Media Comments"])
@@ -27,6 +28,7 @@ def list_comments(media_id: str = Query(...), current_user=Depends(oauth2.get_cu
 @router.post("/", status_code=201)
 def add_comment(body: CommentCreate, current_user=Depends(oauth2.get_current_user)):
     user_id = current_user["id"]
+    require_trip_member_sync(body.trip_id, user_id)
     if not body.body.strip():
         raise HTTPException(status_code=400, detail="Comment body cannot be empty")
     result = supabase.table("media_comments").insert({
