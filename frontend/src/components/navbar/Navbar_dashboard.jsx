@@ -393,7 +393,7 @@ function TripSwitcher() {
 
 // ── Main navbar ──────────────────────────────────────────────────────────────
 
-function Navbar_Dashboard() {
+function Navbar_Dashboard({ onMenuClick }) {
   const navigate = useNavigate();
 
   // Profile dropdown
@@ -503,9 +503,22 @@ function Navbar_Dashboard() {
 
   return (
     <header
-      className="h-14 shrink-0 flex items-center gap-4 px-6 border-b"
+      className="h-14 shrink-0 flex items-center gap-4 px-4 md:px-6 border-b"
       style={{ background: "#fbfbf2", borderColor: "#d1d1c7", paddingTop: "var(--sat, 0px)" }}
     >
+      {/* ── Hamburger (mobile only) ── */}
+      {onMenuClick && (
+        <button
+          onClick={onMenuClick}
+          aria-label="Open menu"
+          className="md:hidden flex flex-col justify-center items-center w-8 h-8 gap-1 rounded-lg hover:bg-black/5 transition shrink-0"
+        >
+          <span className="block w-5 h-0.5 bg-gray-600 rounded" />
+          <span className="block w-5 h-0.5 bg-gray-600 rounded" />
+          <span className="block w-5 h-0.5 bg-gray-600 rounded" />
+        </button>
+      )}
+
       {/* ── Search area ── */}
       <div
         ref={searchWrapRef}

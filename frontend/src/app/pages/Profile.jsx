@@ -395,7 +395,7 @@ function Profile() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Navbar_Dashboard />
 
-        <main className="flex-1 overflow-y-auto" style={{ background: "#f3f4f6" }}>
+        <main className="flex-1 overflow-y-auto pb-20 md:pb-0" style={{ background: "#f3f4f6" }}>
           <div className="max-w-2xl mx-auto px-6 py-8">
 
             {/* ── Hero banner ─────────────────────────────────────────────── */}

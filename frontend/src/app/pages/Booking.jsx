@@ -588,7 +588,7 @@ export default function Booking({ tripId: tripIdProp }) {
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar_Dashboard />
 
-        <main className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+        <main className="flex-1 overflow-y-auto p-5 pb-20 md:pb-5 flex flex-col gap-4">
 
           {/* ── Header row ── */}
           <div className="flex items-center justify-between gap-4 flex-wrap">

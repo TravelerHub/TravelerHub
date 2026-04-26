@@ -83,6 +83,7 @@ export default function Dashboard() {
 
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [wrapUpTrip,     setWrapUpTrip]     = useState(null);
+  const [sidebarOpen,    setSidebarOpen]    = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -353,8 +354,19 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "#f3f4f6" }}>
 
+      {/* ══ MOBILE BACKDROP ═════════════════════════════════════════════════ */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-20 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* ══ SIDEBAR ══════════════════════════════════════════════════════════ */}
-      <aside className="w-52 shrink-0 flex flex-col" style={{ background: "#000000" }}>
+      <aside
+        className={`${sidebarOpen ? "flex" : "hidden"} md:flex w-52 shrink-0 flex-col fixed md:relative inset-y-0 left-0 z-30 md:z-auto`}
+        style={{ background: "#000000" }}
+      >
         <div className="px-5 pt-6 pb-5 border-b shrink-0" style={{ borderColor: "#374151" }}>
           <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: "#6b7280" }}>Hi,</p>
           <p className="font-bold text-lg leading-tight truncate" style={{ color: "#f9fafb" }}>{displayName}</p>
@@ -396,9 +408,9 @@ export default function Dashboard() {
 
       {/* ══ MAIN ═════════════════════════════════════════════════════════════ */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Navbar_Dashboard />
+        <Navbar_Dashboard onMenuClick={() => setSidebarOpen((v) => !v)} />
 
-        <main className="flex-1 overflow-y-auto p-4" style={{ background: "#f3f4f6" }}>
+        <main className="flex-1 overflow-y-auto p-4 pb-20 md:pb-4" style={{ background: "#f3f4f6" }}>
           <div className="flex items-center justify-between mb-4 px-1">
             <div>
               <h2 className="text-xl font-bold" style={{ color: "#160f29" }}>Your Trip Groups</h2>
@@ -504,10 +516,10 @@ export default function Dashboard() {
             </div>
           )}
 
-          <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1.4fr 1fr" }}>
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
 
             {/* ── ROW 1 · Weather (col 1-2) + Map Snapshot (col 3) ────────── */}
-            <Widget title="Weather" className="col-span-2" style={{ minHeight: "88px" }}>
+            <Widget title="Weather" className="md:col-span-2" style={{ minHeight: "88px" }}>
               <WeatherWidget />
             </Widget>
 
@@ -678,7 +690,7 @@ export default function Dashboard() {
               <TodoWidget />
             </Widget>
 
-            <Widget title="Calendar" className="col-span-2" style={{ minHeight: "220px" }}>
+            <Widget title="Calendar" className="md:col-span-2" style={{ minHeight: "220px" }}>
               <div className="h-full p-4">
                 <MiniCalendar events={calendarEvents} />
               </div>
@@ -689,17 +701,17 @@ export default function Dashboard() {
               <LocalInfoWidget />
             </Widget>
 
-            <Widget title="Booking Summary" className="col-span-2" style={{ minHeight: "260px" }}>
+            <Widget title="Booking Summary" className="md:col-span-2" style={{ minHeight: "260px" }}>
               <BookingSummaryWidget bookings={upcomingBookings} />
             </Widget>
 
             {/* ── ROW 5 · Trip Gallery ──────────────────────────────────────── */}
-            <Widget title="Trip Gallery" className="col-span-2" style={{ minHeight: "260px" }}>
+            <Widget title="Trip Gallery" className="md:col-span-2" style={{ minHeight: "260px" }}>
               <GalleryWidget />
             </Widget>
 
             {/* ── ROW 6 · Group Activity Feed ──────────────────────────────── */}
-            <Widget title="Group Activity" className="col-span-3" style={{ minHeight: "200px" }}>
+            <Widget title="Group Activity" className="md:col-span-3" style={{ minHeight: "200px" }}>
               {activeTripId ? (
                 <ActivityFeed tripId={activeTripId} limit={15} />
               ) : (
@@ -1165,6 +1177,7 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
     </div>
   );
 }
