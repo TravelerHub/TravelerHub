@@ -1,5 +1,15 @@
-import polyline from '@mapbox/polyline';
 import { API_BASE } from '../config';
+
+// @mapbox/polyline is only needed when we actually decode a route. Importing it
+// dynamically lets Rollup put it in the mapbox vendor chunk instead of the
+// initial bundle. Cache the module promise so repeated calls share one fetch.
+let polylinePromise;
+function loadPolyline() {
+  if (!polylinePromise) {
+    polylinePromise = import('@mapbox/polyline').then(m => m.default ?? m);
+  }
+  return polylinePromise;
+}
 
 // Map our mode names to Google Directions API mode names
 const MODE_MAP = {
@@ -61,7 +71,7 @@ export async function getOptimizedRoute(waypoints, mode = 'driving') {
     route = pickBestTransitRoute(data.routes);
   }
 
-  return parseGoogleRoute(route);
+  return await parseGoogleRoute(route);
 }
 
 
@@ -119,7 +129,7 @@ export async function getMultiModalRoute(waypoints, legModes) {
       gRoute = pickBestTransitRoute(legResult.routes);
     }
 
-    const parsed = parseGoogleRoute(gRoute);
+    const parsed = await parseGoogleRoute(gRoute);
     parsedLegs.push({ ...parsed, mode: legResult.mode });
 
     // Accumulate totals
@@ -169,8 +179,11 @@ export async function getMultiModalRoute(waypoints, legModes) {
 /**
  * Parse a Google Directions route object into our normalized format.
  * Now also decodes per-step polylines for accurate segment rendering.
+ *
+ * Async because @mapbox/polyline is loaded on demand (see loadPolyline above).
  */
-function parseGoogleRoute(route) {
+async function parseGoogleRoute(route) {
+  const polyline = await loadPolyline();
   const decodedPoints = polyline.decode(route.overview_polyline.points);
   const coordinates = decodedPoints.map(([lat, lng]) => [lng, lat]);
   const geometry = { type: 'LineString', coordinates };

@@ -597,17 +597,17 @@ function Navigation() {
   useEffect(() => {
     const dest = searchParams.get('destination');
     if (dest) {
-      import('../../services/geocodingService').then(({ searchPlaces }) => {
-        searchPlaces(dest).then(results => {
-          if (results?.length > 0) {
-            const place = results[0];
-            setMarkers(prev => [...prev, {
-              coordinates: place.coordinates || [place.lng, place.lat],
-              title: place.name || dest,
-              description: place.address || dest,
-            }]);
-          }
-        });
+      // searchPlaces is already statically imported at the top of this file;
+      // a dynamic import here would be a no-op duplicate that defeats Rollup splitting.
+      searchPlaces(dest).then(results => {
+        if (results?.length > 0) {
+          const place = results[0];
+          setMarkers(prev => [...prev, {
+            coordinates: place.coordinates || [place.lng, place.lat],
+            title: place.name || dest,
+            description: place.address || dest,
+          }]);
+        }
       });
     }
   }, [searchParams]);
