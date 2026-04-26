@@ -2,11 +2,15 @@ import asyncio
 import os
 from datetime import datetime
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 from supabase_client import supabase
 from utils.oauth2 import get_current_user
 from utils.logger import get_logger
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 logger = get_logger(__name__)
 
@@ -40,7 +44,8 @@ def create_notification(user_id: str, type: str, title: str, body: str, trip_id:
 
 
 @router.get("", response_model=List[NotificationOut])
-async def get_notifications(current_user=Depends(get_current_user)):
+@limiter.limit("60/minute")
+async def get_notifications(request: Request, current_user=Depends(get_current_user)):
     user_id = current_user["id"]
     res = await asyncio.to_thread(
         lambda: supabase.table("notifications")
@@ -54,7 +59,8 @@ async def get_notifications(current_user=Depends(get_current_user)):
 
 
 @router.get("/unread-count")
-async def get_unread_count(current_user=Depends(get_current_user)):
+@limiter.limit("60/minute")
+async def get_unread_count(request: Request, current_user=Depends(get_current_user)):
     user_id = current_user["id"]
     res = await asyncio.to_thread(
         lambda: supabase.table("notifications")
@@ -67,7 +73,8 @@ async def get_unread_count(current_user=Depends(get_current_user)):
 
 
 @router.post("/{notification_id}/read")
-async def mark_read(notification_id: str, current_user=Depends(get_current_user)):
+@limiter.limit("60/minute")
+async def mark_read(request: Request, notification_id: str, current_user=Depends(get_current_user)):
     await asyncio.to_thread(
         lambda: supabase.table("notifications").update({"read": True}).eq("id", notification_id).execute()
     )
