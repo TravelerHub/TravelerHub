@@ -9,10 +9,17 @@ Endpoints:
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from supabase_client import supabase
+from supabase_client import supabase, safe_single
 from utils import oauth2
+from utils.logger import get_logger
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/finance", tags=["Finance — Splitting"])
 
@@ -32,8 +39,8 @@ def _get_trip_member_ids(trip_id: str) -> List[str]:
             .execute()
         )
         ids.update(r["user_id"] for r in (res.data or []))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_get_trip_member_ids] trip_members query failed for trip=%s: %s", trip_id, e, exc_info=True)
 
     try:
         res = (
@@ -44,22 +51,20 @@ def _get_trip_member_ids(trip_id: str) -> List[str]:
             .execute()
         )
         ids.update(r["user_id"] for r in (res.data or []))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_get_trip_member_ids] group_member query failed for trip=%s: %s", trip_id, e, exc_info=True)
 
     # Include the trip owner
     try:
-        owner = (
+        owner = safe_single(
             supabase.table("trips")
             .select("owner_id")
             .eq("id", trip_id)
-            .maybe_single()
-            .execute()
         )
         if owner.data:
             ids.add(owner.data["owner_id"])
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_get_trip_member_ids] trips owner query failed for trip=%s: %s", trip_id, e, exc_info=True)
 
     return list(ids)
 
@@ -93,7 +98,9 @@ class SettleRequest(BaseModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/split/{expense_id}")
+@limiter.limit("30/minute")
 def split_expense(
+    request: Request,
     expense_id: str,
     payload: SplitRequest,
     current_user=Depends(oauth2.get_current_user),
@@ -106,12 +113,10 @@ def split_expense(
     user_id = current_user["id"]
 
     # Fetch the expense
-    exp = (
+    exp = safe_single(
         supabase.table("expenses")
         .select("id, total, trip_id, user_id")
         .eq("id", expense_id)
-        .maybe_single()
-        .execute()
     )
     if not exp.data:
         raise HTTPException(status_code=404, detail="Expense not found")
@@ -177,7 +182,9 @@ def split_expense(
 
 
 @router.get("/balances/{trip_id}")
+@limiter.limit("60/minute")
 def get_balances(
+    request: Request,
     trip_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -323,7 +330,9 @@ def get_balances(
 
 
 @router.post("/settle")
+@limiter.limit("30/minute")
 def record_settlement(
+    request: Request,
     payload: SettleRequest,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -354,7 +363,9 @@ def record_settlement(
 
 
 @router.get("/trips/{trip_id}/settlement-summary")
+@limiter.limit("60/minute")
 def get_settlement_summary(
+    request: Request,
     trip_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -499,7 +510,9 @@ def get_settlement_summary(
 
 
 @router.get("/settlements/{trip_id}")
+@limiter.limit("60/minute")
 def list_settlements(
+    request: Request,
     trip_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):

@@ -1,8 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel
 from typing import List, Optional
 from utils import oauth2
 from supabase_client import supabase
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(
     prefix="/checklists",
@@ -29,7 +33,8 @@ class ChecklistItemToggle(BaseModel):
 # ---- Endpoints ----
 
 @router.post("/")
-def create_checklist(body: ChecklistCreate, current_user=Depends(oauth2.get_current_user)):
+@limiter.limit("30/minute")
+def create_checklist(request: Request, body: ChecklistCreate, current_user=Depends(oauth2.get_current_user)):
     """Save a checklist extracted from document analysis."""
     user_id = current_user["id"]
 
@@ -62,7 +67,8 @@ def create_checklist(body: ChecklistCreate, current_user=Depends(oauth2.get_curr
 
 
 @router.get("/")
-def get_checklists(current_user=Depends(oauth2.get_current_user)):
+@limiter.limit("60/minute")
+def get_checklists(request: Request, current_user=Depends(oauth2.get_current_user)):
     """List all checklists for the current user."""
     user_id = current_user["id"]
 
@@ -90,7 +96,8 @@ def get_checklists(current_user=Depends(oauth2.get_current_user)):
 
 
 @router.patch("/items/{item_id}")
-def toggle_checklist_item(item_id: str, body: ChecklistItemToggle, current_user=Depends(oauth2.get_current_user)):
+@limiter.limit("30/minute")
+def toggle_checklist_item(request: Request, item_id: str, body: ChecklistItemToggle, current_user=Depends(oauth2.get_current_user)):
     """Toggle a checklist item's completion status."""
     user_id = current_user["id"]
 
@@ -111,7 +118,8 @@ def toggle_checklist_item(item_id: str, body: ChecklistItemToggle, current_user=
 
 
 @router.delete("/{checklist_id}")
-def delete_checklist(checklist_id: str, current_user=Depends(oauth2.get_current_user)):
+@limiter.limit("30/minute")
+def delete_checklist(request: Request, checklist_id: str, current_user=Depends(oauth2.get_current_user)):
     """Delete a checklist and its items."""
     user_id = current_user["id"]
 

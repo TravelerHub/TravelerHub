@@ -6,6 +6,7 @@ import { apiFetch, getToken, authHeaders } from "../../services/api.js";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import { logActivity } from "../../components/ActivityFeed.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
+import { useFocusTrap } from "../../hooks/useFocusTrap.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -60,6 +61,10 @@ export default function Gallery() {
 
   // View mode: 'grid' | 'grouped'
   const [viewMode, setViewMode] = useState('grid');
+
+  // Focus traps for modals
+  const lightboxRef = useFocusTrap(lightboxIdx >= 0);
+  const uploadModalRef = useFocusTrap(showUpload);
 
   // Grouped view data
   const [groupedData, setGroupedData] = useState([]);
@@ -195,6 +200,20 @@ export default function Gallery() {
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Client-side validation to give instant feedback before hitting the server
+    const MAX_BYTES = 20 * 1024 * 1024; // 20 MB — matches server limit
+    const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"];
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setUploadError("Only image files are allowed (JPG, PNG, WEBP, GIF, HEIC).");
+      return;
+    }
+    if (file.size > MAX_BYTES) {
+      setUploadError("File is too large. Maximum size is 20 MB.");
+      return;
+    }
+
     setUploadFile(file);
     setUploadError("");
     const reader = new FileReader();
@@ -639,31 +658,33 @@ export default function Gallery() {
                         <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
                           <button
                             onClick={(e) => handleLike(photo.id, e)}
+                            aria-label={photo.liked_by_me ? "Unlike photo" : "Like photo"}
+                            aria-pressed={!!photo.liked_by_me}
                             className="w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-sm transition hover:scale-110"
                             style={{ background: "rgba(0,0,0,0.4)" }}
-                            title={photo.liked_by_me ? "Unlike" : "Like"}
                           >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill={photo.liked_by_me ? "#ef4444" : "none"} stroke={photo.liked_by_me ? "#ef4444" : "white"} strokeWidth={2}>
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill={photo.liked_by_me ? "#ef4444" : "none"} stroke={photo.liked_by_me ? "#ef4444" : "white"} strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
                             </svg>
                           </button>
                           <button
                             onClick={(e) => handleSave(photo.id, e)}
+                            aria-label={photo.saved_by_me ? "Unsave photo" : "Save photo"}
+                            aria-pressed={!!photo.saved_by_me}
                             className="w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-sm transition hover:scale-110"
                             style={{ background: "rgba(0,0,0,0.4)" }}
-                            title={photo.saved_by_me ? "Unsave" : "Save"}
                           >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill={photo.saved_by_me ? "white" : "none"} stroke="white" strokeWidth={2}>
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill={photo.saved_by_me ? "white" : "none"} stroke="white" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
                             </svg>
                           </button>
                           <button
                             onClick={(e) => handleShare(photo, e)}
+                            aria-label="Share photo"
                             className="w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-sm transition hover:scale-110"
                             style={{ background: "rgba(0,0,0,0.4)" }}
-                            title="Share"
                           >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2}>
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
                             </svg>
                           </button>
@@ -728,16 +749,21 @@ export default function Gallery() {
       {/* ═══ LIGHTBOX ════════════════════════════════════════════════════════ */}
       {lightboxPhoto && (
         <div
+          ref={lightboxRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={lightboxPhoto.caption ? `Photo: ${lightboxPhoto.caption}` : "Photo lightbox"}
           className="fixed inset-0 z-50 flex items-center justify-center"
           style={{ background: "rgba(0,0,0,0.92)", backdropFilter: "blur(20px)" }}
           onClick={() => setLightboxIdx(-1)}
         >
           {/* Close */}
           <button
+            aria-label="Close photo viewer"
             className="absolute top-5 right-5 w-10 h-10 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition z-10"
             onClick={() => setLightboxIdx(-1)}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -745,10 +771,11 @@ export default function Gallery() {
           {/* Prev */}
           {photos.length > 1 && (
             <button
+              aria-label="Previous photo"
               className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition z-10"
               onClick={(e) => { e.stopPropagation(); lightboxPrev(); }}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
               </svg>
             </button>
@@ -789,10 +816,12 @@ export default function Gallery() {
                   <button
                     onClick={() => handleLike(lightboxPhoto.id)}
                     disabled={likingId === lightboxPhoto.id}
+                    aria-label={lightboxPhoto.liked_by_me ? "Unlike photo" : "Like photo"}
+                    aria-pressed={!!lightboxPhoto.liked_by_me}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition hover:bg-white/10"
                     style={{ color: lightboxPhoto.liked_by_me ? "#ef4444" : "rgba(255,255,255,0.6)" }}
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill={lightboxPhoto.liked_by_me ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
+                    <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill={lightboxPhoto.liked_by_me ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
                     </svg>
                     {(lightboxPhoto.like_count || 0) > 0 ? lightboxPhoto.like_count : "Like"}
@@ -802,10 +831,12 @@ export default function Gallery() {
                   <button
                     onClick={() => handleSave(lightboxPhoto.id)}
                     disabled={savingId === lightboxPhoto.id}
+                    aria-label={lightboxPhoto.saved_by_me ? "Unsave photo" : "Save photo"}
+                    aria-pressed={!!lightboxPhoto.saved_by_me}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition hover:bg-white/10"
                     style={{ color: lightboxPhoto.saved_by_me ? "#fbbf24" : "rgba(255,255,255,0.6)" }}
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill={lightboxPhoto.saved_by_me ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
+                    <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill={lightboxPhoto.saved_by_me ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
                     </svg>
                     {lightboxPhoto.saved_by_me ? "Saved" : "Save"}
@@ -814,9 +845,10 @@ export default function Gallery() {
                   {/* Share */}
                   <button
                     onClick={(e) => handleShare(lightboxPhoto, e)}
+                    aria-label="Share photo"
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white/60 hover:text-white hover:bg-white/10 transition"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
                     </svg>
                     Share
@@ -843,7 +875,9 @@ export default function Gallery() {
               {/* Caption display / edit */}
               {editingId === lightboxPhoto.id ? (
                 <div className="mt-3 flex gap-2">
+                  <label htmlFor="edit-caption" className="sr-only">Edit caption</label>
                   <input
+                    id="edit-caption"
                     type="text"
                     value={editCaption}
                     onChange={(e) => setEditCaption(e.target.value)}
@@ -891,9 +925,10 @@ export default function Gallery() {
                         </div>
                         <button
                           onClick={() => deleteComment(c.id)}
+                          aria-label="Delete comment"
                           className="text-white/0 group-hover:text-white/30 hover:!text-red-400 transition text-xs shrink-0"
                         >
-                          ×
+                          <span aria-hidden="true">×</span>
                         </button>
                       </div>
                     );
@@ -901,7 +936,9 @@ export default function Gallery() {
                 </div>
 
                 <form onSubmit={postComment} className="flex gap-2">
+                  <label htmlFor="new-comment" className="sr-only">Add a comment</label>
                   <input
+                    id="new-comment"
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
                     placeholder="Add a comment…"
@@ -927,10 +964,11 @@ export default function Gallery() {
           {/* Next */}
           {photos.length > 1 && (
             <button
+              aria-label="Next photo"
               className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition z-10"
               onClick={(e) => { e.stopPropagation(); lightboxNext(); }}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
               </svg>
             </button>
@@ -941,20 +979,24 @@ export default function Gallery() {
       {/* ═══ UPLOAD MODAL ════════════════════════════════════════════════════ */}
       {showUpload && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="upload-modal-title"
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)" }}
           onClick={closeUpload}
         >
           <div
+            ref={uploadModalRef}
             className="w-full rounded-3xl overflow-hidden"
             style={{ maxWidth: 480, background: "#fff", boxShadow: "0 32px 80px rgba(0,0,0,0.3)" }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
             <div className="px-6 pt-6 pb-0 flex items-center justify-between">
-              <h2 className="text-lg font-bold" style={{ color: "#160f29" }}>Share a Photo</h2>
-              <button onClick={closeUpload} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition" style={{ color: "#9ca3af" }}>
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <h2 id="upload-modal-title" className="text-lg font-bold" style={{ color: "#160f29" }}>Share a Photo</h2>
+              <button onClick={closeUpload} aria-label="Close upload dialog" className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition" style={{ color: "#9ca3af" }}>
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -983,13 +1025,15 @@ export default function Gallery() {
                       </svg>
                     </div>
                     <p className="text-sm font-medium" style={{ color: "#374151" }}>Click to select a photo</p>
-                    <p className="text-xs mt-1" style={{ color: "#9ca3af" }}>JPG, PNG, WEBP up to 10MB</p>
+                    <p className="text-xs mt-1" style={{ color: "#9ca3af" }}>JPG, PNG, WEBP up to 20MB</p>
                   </div>
                 )}
               </div>
 
               {/* Caption input */}
+              <label htmlFor="upload-caption" className="sr-only">Caption (optional)</label>
               <input
+                id="upload-caption"
                 type="text"
                 value={uploadCaption}
                 onChange={(e) => setUploadCaption(e.target.value)}

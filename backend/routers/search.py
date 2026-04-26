@@ -10,6 +10,9 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from supabase_client import supabase
 from utils import oauth2
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(
     prefix="/search",
@@ -30,8 +33,8 @@ def _get_user_trip_ids(user_id: str) -> list[str]:
             .execute()
         )
         trip_ids.update(r["trip_id"] for r in (res.data or []) if r.get("trip_id"))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_get_user_trip_ids] trip_members query failed for user=%s: %s", user_id, e, exc_info=True)
 
     try:
         res = (
@@ -42,8 +45,8 @@ def _get_user_trip_ids(user_id: str) -> list[str]:
             .execute()
         )
         trip_ids.update(r["group_id"] for r in (res.data or []) if r.get("group_id"))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_get_user_trip_ids] group_member query failed for user=%s: %s", user_id, e, exc_info=True)
 
     try:
         res = (
@@ -53,8 +56,8 @@ def _get_user_trip_ids(user_id: str) -> list[str]:
             .execute()
         )
         trip_ids.update(r["id"] for r in (res.data or []) if r.get("id"))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_get_user_trip_ids] owned trips query failed for user=%s: %s", user_id, e, exc_info=True)
 
     return list(trip_ids)
 
@@ -108,7 +111,7 @@ def global_search(
                         "url": f"/navigation?trip={row.get('id')}",
                     })
         except Exception as e:
-            print(f"[search] trips query error: {e}")
+            logger.warning("[search] trips query error: %s", e, exc_info=True)
 
         # ── 2. Expenses ───────────────────────────────────────────────────────
         try:
@@ -150,7 +153,7 @@ def global_search(
                         "url": "/expenses",
                     })
         except Exception as e:
-            print(f"[search] expenses query error: {e}")
+            logger.warning("[search] expenses query error: %s", e, exc_info=True)
 
         # ── 3. Photos ─────────────────────────────────────────────────────────
         try:
@@ -175,12 +178,12 @@ def global_search(
                         "url": "/gallery",
                     })
         except Exception as e:
-            print(f"[search] photos query error: {e}")
+            logger.warning("[search] photos query error: %s", e, exc_info=True)
 
         return {"results": results}
 
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[search] unexpected error: {e}")
+        logger.error("[search] unexpected error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Search failed")

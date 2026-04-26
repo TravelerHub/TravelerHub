@@ -23,6 +23,11 @@ from pydantic import BaseModel
 from typing import Optional
 from utils import oauth2
 from supabase_client import supabase
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from starlette.requests import Request
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/cards", tags=["Credit Card Optimizer"])
 budget_router = APIRouter(prefix="/finance/budget", tags=["Trip Budget"])
@@ -85,7 +90,8 @@ class CardUpdate(BaseModel):
 
 
 @router.get("/")
-def list_cards(current_user=Depends(oauth2.get_current_user)):
+@limiter.limit("60/minute")
+def list_cards(request: Request, current_user=Depends(oauth2.get_current_user)):
     user_id = current_user["id"]
     result = (
         supabase.table("card_profiles")
@@ -99,7 +105,8 @@ def list_cards(current_user=Depends(oauth2.get_current_user)):
 
 
 @router.get("/presets")
-def list_presets():
+@limiter.limit("60/minute")
+def list_presets(request: Request):
     result = (
         supabase.table("card_presets")
         .select("*")
@@ -110,7 +117,8 @@ def list_presets():
 
 
 @router.post("/", status_code=201)
-def add_card(body: CardCreate, current_user=Depends(oauth2.get_current_user)):
+@limiter.limit("30/minute")
+def add_card(request: Request, body: CardCreate, current_user=Depends(oauth2.get_current_user)):
     user_id = current_user["id"]
 
     # If this is being set as default, clear existing default first
@@ -133,7 +141,8 @@ def add_card(body: CardCreate, current_user=Depends(oauth2.get_current_user)):
 
 
 @router.patch("/{card_id}")
-def update_card(card_id: str, body: CardUpdate, current_user=Depends(oauth2.get_current_user)):
+@limiter.limit("30/minute")
+def update_card(request: Request, card_id: str, body: CardUpdate, current_user=Depends(oauth2.get_current_user)):
     user_id = current_user["id"]
 
     existing = supabase.table("card_profiles").select("user_id").eq("id", card_id).execute()
@@ -152,7 +161,8 @@ def update_card(card_id: str, body: CardUpdate, current_user=Depends(oauth2.get_
 
 
 @router.delete("/{card_id}", status_code=204)
-def delete_card(card_id: str, current_user=Depends(oauth2.get_current_user)):
+@limiter.limit("30/minute")
+def delete_card(request: Request, card_id: str, current_user=Depends(oauth2.get_current_user)):
     user_id = current_user["id"]
     existing = supabase.table("card_profiles").select("user_id").eq("id", card_id).execute()
     if not existing.data or existing.data[0]["user_id"] != user_id:
@@ -169,7 +179,8 @@ class RecommendRequest(BaseModel):
 
 
 @router.post("/recommend")
-def recommend_card(body: RecommendRequest, current_user=Depends(oauth2.get_current_user)):
+@limiter.limit("30/minute")
+def recommend_card(request: Request, body: RecommendRequest, current_user=Depends(oauth2.get_current_user)):
     """Return the best card + estimated cashback for a given purchase."""
     user_id = current_user["id"]
     cards_res = supabase.table("card_profiles").select("*").eq("user_id", user_id).execute()
@@ -216,7 +227,8 @@ def recommend_card(body: RecommendRequest, current_user=Depends(oauth2.get_curre
 
 
 @router.get("/savings/{trip_id}")
-def trip_savings(trip_id: str, current_user=Depends(oauth2.get_current_user)):
+@limiter.limit("60/minute")
+def trip_savings(request: Request, trip_id: str, current_user=Depends(oauth2.get_current_user)):
     """
     For each expense in this trip: compare the card used (if recorded) against
     the user's best available card. Returns total cashback earned and total missed.
@@ -297,7 +309,8 @@ class BudgetUpsert(BaseModel):
 
 
 @budget_router.get("/{trip_id}")
-def get_budgets(trip_id: str, current_user=Depends(oauth2.get_current_user)):
+@limiter.limit("60/minute")
+def get_budgets(request: Request, trip_id: str, current_user=Depends(oauth2.get_current_user)):
     result = (
         supabase.table("trip_budgets")
         .select("*")
@@ -308,7 +321,8 @@ def get_budgets(trip_id: str, current_user=Depends(oauth2.get_current_user)):
 
 
 @budget_router.post("/", status_code=201)
-def upsert_budget(body: BudgetUpsert, current_user=Depends(oauth2.get_current_user)):
+@limiter.limit("30/minute")
+def upsert_budget(request: Request, body: BudgetUpsert, current_user=Depends(oauth2.get_current_user)):
     user_id = current_user["id"]
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).isoformat()
@@ -344,7 +358,8 @@ def upsert_budget(body: BudgetUpsert, current_user=Depends(oauth2.get_current_us
 
 
 @budget_router.delete("/{budget_id}", status_code=204)
-def delete_budget(budget_id: str, current_user=Depends(oauth2.get_current_user)):
+@limiter.limit("30/minute")
+def delete_budget(request: Request, budget_id: str, current_user=Depends(oauth2.get_current_user)):
     user_id = current_user["id"]
     existing = supabase.table("trip_budgets").select("created_by").eq("id", budget_id).execute()
     if not existing.data or existing.data[0]["created_by"] != user_id:
@@ -353,7 +368,8 @@ def delete_budget(budget_id: str, current_user=Depends(oauth2.get_current_user))
 
 
 @budget_router.get("/{trip_id}/status")
-def budget_status(trip_id: str, current_user=Depends(oauth2.get_current_user)):
+@limiter.limit("60/minute")
+def budget_status(request: Request, trip_id: str, current_user=Depends(oauth2.get_current_user)):
     """
     Returns per-category: budgeted amount, actual spent, remaining, % used.
     Used to power the Finance page budget bars and the map budget overlay.

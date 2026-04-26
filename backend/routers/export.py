@@ -12,12 +12,16 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 
 from icalendar import Calendar, Event as ICalEvent
-from supabase_client import supabase
+from supabase_client import supabase, safe_single
 from utils import oauth2
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/export", tags=["Export"])
 
@@ -35,12 +39,10 @@ def _user_id(current_user: dict) -> str:
 
 def _ensure_trip_access(trip_id: str, user_id: str) -> Dict[str, Any]:
     """Return the trip row or raise 403/404."""
-    trip_res = (
+    trip_res = safe_single(
         supabase.table("trips")
         .select("*")
         .eq("id", trip_id)
-        .maybe_single()
-        .execute()
     )
     if not trip_res.data:
         raise HTTPException(status_code=404, detail="Trip not found")
@@ -53,14 +55,12 @@ def _ensure_trip_access(trip_id: str, user_id: str) -> Dict[str, Any]:
 
     # check trip_members
     try:
-        m = (
+        m = safe_single(
             supabase.table("trip_members")
             .select("id")
             .eq("trip_id", trip_id)
             .eq("user_id", user_id)
             .is_("left_at", None)
-            .maybe_single()
-            .execute()
         )
         if m.data:
             return trip
@@ -71,14 +71,12 @@ def _ensure_trip_access(trip_id: str, user_id: str) -> Dict[str, Any]:
     try:
         group_id = trip.get("group_id")
         if group_id:
-            m = (
+            m = safe_single(
                 supabase.table("group_member")
                 .select("id")
                 .eq("group_id", group_id)
                 .eq("user_id", user_id)
                 .is_("left_datetime", None)
-                .maybe_single()
-                .execute()
             )
             if m.data:
                 return trip
@@ -109,7 +107,9 @@ def _parse_dt(value: Any) -> datetime | None:
 # ---------------------------------------------------------------------------
 
 @router.get("/trips/{trip_id}/calendar.ics")
+@limiter.limit("30/minute")
 def export_calendar_ics(
+    request: Request,
     trip_id: str,
     current_user: dict = Depends(oauth2.get_current_user),
 ):
@@ -211,7 +211,9 @@ def export_calendar_ics(
 # ---------------------------------------------------------------------------
 
 @router.get("/trips/{trip_id}/expenses.csv")
+@limiter.limit("30/minute")
 def export_expenses_csv(
+    request: Request,
     trip_id: str,
     current_user: dict = Depends(oauth2.get_current_user),
 ):
@@ -305,7 +307,9 @@ def export_expenses_csv(
 # ---------------------------------------------------------------------------
 
 @router.get("/trips/{trip_id}/summary.json")
+@limiter.limit("30/minute")
 def export_trip_summary(
+    request: Request,
     trip_id: str,
     current_user: dict = Depends(oauth2.get_current_user),
 ):

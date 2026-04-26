@@ -9,12 +9,16 @@ Endpoints:
   GET  /nominations/{group_id}/conflicts    — detect scheduling conflicts between approved spots
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel
 from typing import Optional, List
 from utils import oauth2
-from supabase_client import supabase
+from supabase_client import supabase, safe_single
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 import math
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(
     prefix="/nominations",
@@ -52,14 +56,12 @@ def _haversine_km(lat1, lng1, lat2, lng2) -> float:
 
 def _verify_membership(group_id: str, user_id: str) -> None:
     """Raise 403 if user is not in the group."""
-    res = (
+    res = safe_single(
         supabase.table("group_member")
         .select("id")
         .eq("group_id", group_id)
         .eq("user_id", user_id)
         .is_("left_datetime", None)
-        .maybe_single()
-        .execute()
     )
     if not res.data:
         raise HTTPException(status_code=403, detail="Not a member of this group")
@@ -80,7 +82,9 @@ def _get_member_count(group_id: str) -> int:
 # ---- Endpoints ----
 
 @router.post("/{group_id}/nominate", status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 def nominate_place(
+    request: Request,
     group_id: str,
     body: NominationCreate,
     current_user=Depends(oauth2.get_current_user),
@@ -124,7 +128,9 @@ def nominate_place(
 
 
 @router.post("/{group_id}/vote")
+@limiter.limit("30/minute")
 def vote_on_nomination(
+    request: Request,
     group_id: str,
     body: VoteCreate,
     current_user=Depends(oauth2.get_current_user),
@@ -138,13 +144,11 @@ def vote_on_nomination(
 
     try:
         # Upsert — update if already voted, insert if not
-        existing = (
+        existing = safe_single(
             supabase.table("place_votes")
             .select("id")
             .eq("nomination_id", body.nomination_id)
             .eq("user_id", user_id)
-            .maybe_single()
-            .execute()
         )
 
         if existing.data:
@@ -179,7 +183,9 @@ def vote_on_nomination(
 
 
 @router.get("/{group_id}/shortlist")
+@limiter.limit("60/minute")
 def get_shortlist(
+    request: Request,
     group_id: str,
     trip_id: Optional[str] = None,
     current_user=Depends(oauth2.get_current_user),
@@ -276,7 +282,9 @@ def get_shortlist(
 
 
 @router.delete("/{nomination_id}")
+@limiter.limit("30/minute")
 def delete_nomination(
+    request: Request,
     nomination_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -285,12 +293,10 @@ def delete_nomination(
 
     try:
         # Get the nomination
-        nom_res = (
+        nom_res = safe_single(
             supabase.table("place_nominations")
             .select("id, nominated_by, group_id")
             .eq("id", nomination_id)
-            .maybe_single()
-            .execute()
         )
 
         if not nom_res.data:
@@ -300,14 +306,12 @@ def delete_nomination(
 
         # Check permission: must be nominator or group leader
         if nom["nominated_by"] != user_id:
-            leader_check = (
+            leader_check = safe_single(
                 supabase.table("group_member")
                 .select("role")
                 .eq("group_id", nom["group_id"])
                 .eq("user_id", user_id)
                 .is_("left_datetime", None)
-                .maybe_single()
-                .execute()
             )
             if not leader_check.data or leader_check.data.get("role") != "leader":
                 raise HTTPException(status_code=403, detail="Only the nominator or group leader can delete")
@@ -325,7 +329,9 @@ def delete_nomination(
 
 
 @router.get("/{group_id}/conflicts")
+@limiter.limit("60/minute")
 def detect_conflicts(
+    request: Request,
     group_id: str,
     trip_id: Optional[str] = None,
     max_distance_km: float = 50,

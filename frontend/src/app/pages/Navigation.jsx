@@ -73,6 +73,7 @@ import {
 import { StarIcon as StarIconSolid, UserGroupIcon, PlayIcon } from '@heroicons/react/24/solid';
 
 import { searchByCategory } from '../../services/placesService';
+import { buildGoogleMapsUrl, buildWazeUrl, buildAppleMapsUrl } from '../../utils/navigationExport';
 
 // ── Map error boundary — isolates Mapbox GL crashes from the rest of the page ─
 import { Component } from 'react';
@@ -318,6 +319,17 @@ function Navigation() {
   const [mapSearchResults, setMapSearchResults] = useState([]);
   const [mapSearchLoading, setMapSearchLoading] = useState(false);
   const mapSearchRef = useRef(null);
+
+  // Derive export-ready waypoints from the markers array.
+  // markers store coordinates as [lng, lat] (Mapbox convention), so we swap here.
+  const exportWaypoints = useMemo(
+    () => markers.map(m => ({
+      lat: m.coordinates[1],
+      lng: m.coordinates[0],
+      name: m.title || '',
+    })),
+    [markers]
+  );
 
   useEffect(() => {
     const boot = async () => {
@@ -2049,6 +2061,43 @@ function Navigation() {
                   ))}
                 </div>
 
+                {/* Open in external navigation apps */}
+                {exportWaypoints.length >= 2 && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    <span className="text-xs self-center" style={{ color: '#5c6b73' }}>Open in:</span>
+                    <a
+                      href={buildGoogleMapsUrl(exportWaypoints)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs transition hover:opacity-80"
+                      style={{ background: '#183a37', color: '#fbfbf2' }}
+                      aria-label="Open route in Google Maps"
+                    >
+                      🗺️ Google Maps
+                    </a>
+                    <a
+                      href={buildWazeUrl(exportWaypoints)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs transition hover:opacity-80"
+                      style={{ background: '#183a37', color: '#fbfbf2' }}
+                      aria-label="Open route in Waze"
+                    >
+                      🚗 Waze
+                    </a>
+                    <a
+                      href={buildAppleMapsUrl(exportWaypoints)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs transition hover:opacity-80"
+                      style={{ background: '#183a37', color: '#fbfbf2' }}
+                      aria-label="Open route in Apple Maps"
+                    >
+                      🍎 Apple Maps
+                    </a>
+                  </div>
+                )}
+
                 {/* Journey Breakdown */}
                 {(() => {
                   const segments = [];
@@ -2324,25 +2373,62 @@ function Navigation() {
             {/* Mobile route summary pill */}
             {!isNavigating && currentRoute && (
               <div className="absolute bottom-4 left-3 right-3 z-10 lg:hidden">
-                <div className="rounded-xl shadow-lg p-3 flex items-center gap-3" style={{ background: '#160f29' }}>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-semibold">{currentRoute.summary.totalDistance} · {currentRoute.summary.totalDuration}</p>
-                    <p className="text-xs mt-0.5" style={{ color: 'rgba(251,251,242,0.6)' }}>{markers.length} stops · ETA {currentRoute.summary.estimatedArrival}</p>
+                <div className="rounded-xl shadow-lg p-3" style={{ background: '#160f29' }}>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-semibold">{currentRoute.summary.totalDistance} · {currentRoute.summary.totalDuration}</p>
+                      <p className="text-xs mt-0.5" style={{ color: 'rgba(251,251,242,0.6)' }}>{markers.length} stops · ETA {currentRoute.summary.estimatedArrival}</p>
+                    </div>
+                    <button
+                      onClick={handleStartNavigation}
+                      disabled={!currentRoute?.steps?.length}
+                      className="px-4 py-2 rounded-lg text-xs font-bold text-white shrink-0 transition hover:opacity-80 disabled:opacity-40"
+                      style={{ background: '#183a37' }}
+                    >
+                      Start
+                    </button>
+                    <button
+                      onClick={() => setShowMobileTools(true)}
+                      className="p-2 rounded-lg shrink-0 transition hover:bg-white/10"
+                    >
+                      <ChevronUpIcon className="w-4 h-4 text-white" />
+                    </button>
                   </div>
-                  <button
-                    onClick={handleStartNavigation}
-                    disabled={!currentRoute?.steps?.length}
-                    className="px-4 py-2 rounded-lg text-xs font-bold text-white shrink-0 transition hover:opacity-80 disabled:opacity-40"
-                    style={{ background: '#183a37' }}
-                  >
-                    Start
-                  </button>
-                  <button
-                    onClick={() => setShowMobileTools(true)}
-                    className="p-2 rounded-lg shrink-0 transition hover:bg-white/10"
-                  >
-                    <ChevronUpIcon className="w-4 h-4 text-white" />
-                  </button>
+                  {exportWaypoints.length >= 2 && (
+                    <div className="flex gap-2 mt-2 flex-wrap">
+                      <span className="text-xs self-center" style={{ color: 'rgba(255,255,255,0.4)' }}>Open in:</span>
+                      <a
+                        href={buildGoogleMapsUrl(exportWaypoints)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs transition"
+                        style={{ background: 'rgba(255,255,255,0.1)', color: '#fbfbf2' }}
+                        aria-label="Open route in Google Maps"
+                      >
+                        🗺️ Google Maps
+                      </a>
+                      <a
+                        href={buildWazeUrl(exportWaypoints)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs transition"
+                        style={{ background: 'rgba(255,255,255,0.1)', color: '#fbfbf2' }}
+                        aria-label="Open route in Waze"
+                      >
+                        🚗 Waze
+                      </a>
+                      <a
+                        href={buildAppleMapsUrl(exportWaypoints)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs transition"
+                        style={{ background: 'rgba(255,255,255,0.1)', color: '#fbfbf2' }}
+                        aria-label="Open route in Apple Maps"
+                      >
+                        🍎 Apple Maps
+                      </a>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

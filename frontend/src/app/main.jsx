@@ -33,6 +33,14 @@ if ('serviceWorker' in navigator) {
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
+      {/* Global live region for screen reader announcements */}
+      <div
+        id="live-announcer"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      />
       <RouterProvider router={router}/>
     </QueryClientProvider>
   </StrictMode>,

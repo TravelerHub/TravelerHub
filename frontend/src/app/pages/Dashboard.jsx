@@ -20,6 +20,7 @@ import GalleryWidget       from "../../components/dashboard/GalleryWidget.jsx";
 import ActivityFeed        from "../../components/ActivityFeed.jsx";
 import EmptyState          from "../../components/EmptyState.jsx";
 import OnboardingModal     from "../../components/OnboardingModal.jsx";
+import TripWrapUpModal     from "../../components/TripWrapUpModal.jsx";
 
 // ── Color palette ─────────────────────────────────────────────────────────────
 // #160f29  deep dark   (sidebar, widget backgrounds)
@@ -55,8 +56,15 @@ export default function Dashboard() {
   const [newTripDescription, setNewTripDescription] = useState("");
   const [creating,           setCreating]           = useState(false);
   const [createError,        setCreateError]        = useState("");
-  const [availableUsers,     setAvailableUsers]     = useState([]);
   const [selectedInvitees,   setSelectedInvitees]   = useState([]);
+
+  // ── Invite-by-search state (used in Create Trip modal) ─────────────────────
+  const [inviteTab,        setInviteTab]        = useState("search"); // "search" | "connections"
+  const [searchQuery,      setSearchQuery]      = useState("");
+  const [searchResult,     setSearchResult]     = useState(null);   // null = no search yet, [] = no match
+  const [searchLoading,    setSearchLoading]    = useState(false);
+  const [connections,      setConnections]      = useState(null);   // null = not loaded yet
+  const [connectionsLoading, setConnectionsLoading] = useState(false);
 
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [selectedGroup,    setSelectedGroup]    = useState(null);
@@ -74,25 +82,9 @@ export default function Dashboard() {
   );
 
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [wrapUpTrip,     setWrapUpTrip]     = useState(null);
 
   const queryClient = useQueryClient();
-
-  // ── React Query: available users for invite modal ─────────────────────────
-  const { data: usersData } = useQuery({
-    queryKey: ["users-list"],
-    queryFn: () => apiFetch("/users/"),
-    enabled: !!user,
-  });
-  const availableUsersFromQuery = Array.isArray(usersData)
-    ? usersData.filter((u) => u.id !== user?.id)
-    : [];
-  // Merge with manually-set availableUsers so the modal checkbox list works
-  useEffect(() => {
-    if (availableUsersFromQuery.length > 0) {
-      setAvailableUsers(availableUsersFromQuery);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [usersData]);
 
   // ── React Query: latest conversations ─────────────────────────────────────
   const { data: conversationsData } = useQuery({
@@ -152,6 +144,62 @@ export default function Dashboard() {
   });
   const upcomingBookings = bookingsData ?? [];
 
+  // ── Exact-match user search (fires on button click only) ──────────────────
+  const handleSearchUser = async () => {
+    const q = searchQuery.trim();
+    if (!q) return;
+    setSearchLoading(true);
+    setSearchResult(null);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/users/search?q=${encodeURIComponent(q)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSearchResult(data.users || []);
+      } else {
+        setSearchResult([]);
+      }
+    } catch {
+      setSearchResult([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  // ── Load connections lazily when the tab is first opened ──────────────────
+  const handleOpenConnectionsTab = async () => {
+    setInviteTab("connections");
+    if (connections !== null) return; // already loaded
+    setConnectionsLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/users/connections`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setConnections(data.users || []);
+      } else {
+        setConnections([]);
+      }
+    } catch {
+      setConnections([]);
+    } finally {
+      setConnectionsLoading(false);
+    }
+  };
+
+  // Toggle a user in/out of the pending invitee list
+  const toggleInvitee = (u) => {
+    setSelectedInvitees((prev) =>
+      prev.find((x) => x.id === u.id)
+        ? prev.filter((x) => x.id !== u.id)
+        : [...prev, u]
+    );
+  };
+
   // ── Create trip ────────────────────────────────────────────────────────────
   const handleCreateTrip = async (e) => {
     e.preventDefault();
@@ -171,11 +219,11 @@ export default function Dashboard() {
 
         if (createdGroupId && selectedInvitees.length > 0) {
           await Promise.all(
-            selectedInvitees.map((userId) =>
+            selectedInvitees.map((u) =>
               fetch(`${API_BASE}/groups/${createdGroupId}/members`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ user_id: userId }),
+                body: JSON.stringify({ user_id: u.id }),
               })
             )
           );
@@ -192,6 +240,9 @@ export default function Dashboard() {
         setNewTripName("");
         setNewTripDescription("");
         setSelectedInvitees([]);
+        setSearchQuery("");
+        setSearchResult(null);
+        setInviteTab("search");
       } else {
         const err = await res.json();
         setCreateError(err.detail || "Failed to create trip.");
@@ -242,6 +293,9 @@ export default function Dashboard() {
     setInviteUrl("");
     setInviteExpiresAt("");
     setInviteCopied(false);
+    setInviteTab("link");
+    setSearchQuery("");
+    setSearchResult(null);
     setShowInviteModal(true);
     try {
       const token = localStorage.getItem("token");
@@ -370,6 +424,83 @@ export default function Dashboard() {
                 subtitle="Create your first trip and invite your crew."
                 action={{ label: "Plan a trip", onClick: () => { setShowCreateModal(true); setCreateError(""); } }}
               />
+            </div>
+          )}
+
+          {/* ── Wrap-Up Banner ──────────────────────────────────────────────── */}
+          {(() => {
+            const groups = Array.isArray(myGroupsData) ? myGroupsData : [];
+            const tripsToWrapUp = groups.filter(
+              (g) => g.end_date && new Date(g.end_date) < new Date() && g.status !== "completed"
+            );
+            if (tripsToWrapUp.length === 0) return null;
+            const first = tripsToWrapUp[0];
+            return (
+              <div
+                className="rounded-xl p-4 mb-4 flex items-center justify-between gap-3"
+                style={{ background: "linear-gradient(135deg, rgba(93,26,138,0.25), rgba(24,58,55,0.35))", border: "1px solid rgba(255,255,255,0.08)" }}
+              >
+                <p className="text-sm font-medium" style={{ color: "#f9fafb" }}>
+                  🎒 <span className="font-bold">{first.name}</span> is over — ready to wrap up?
+                </p>
+                <button
+                  onClick={() => setWrapUpTrip(first)}
+                  className="shrink-0 px-4 py-2 rounded-xl text-xs font-semibold transition hover:opacity-90 active:scale-95"
+                  style={{ background: "linear-gradient(135deg, #2dd4bf, #183a37)", color: "#fff" }}
+                >
+                  Wrap up →
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* ── Trip Cards (with per-card Wrap Up button) ───────────────────── */}
+          {Array.isArray(myGroupsData) && myGroupsData.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {myGroupsData.map((g) => {
+                const gid = g.group_id || g.id;
+                const isPast = g.end_date && new Date(g.end_date) < new Date();
+                const isCompleted = g.status === "completed";
+                return (
+                  <div
+                    key={gid}
+                    className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm transition hover:bg-black/5"
+                    style={{
+                      background: activeTripId === gid ? "#000" : "#f3f4f6",
+                      color:      activeTripId === gid ? "#fff"  : "#111827",
+                      border:     "1px solid rgba(0,0,0,0.08)",
+                      cursor:     "pointer",
+                    }}
+                    onClick={() => {
+                      setActiveGroupId(gid);
+                      setActiveTripId(gid);
+                    }}
+                  >
+                    <span className="font-medium truncate max-w-[160px]">{g.name}</span>
+                    {isCompleted && (
+                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(45,212,191,0.15)", color: "#0d9488" }}>
+                        Wrapped
+                      </span>
+                    )}
+                    {isPast && !isCompleted && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setWrapUpTrip(g); }}
+                        className="text-xs px-2.5 py-1 rounded-lg font-semibold transition hover:opacity-80 shrink-0"
+                        style={{ background: "linear-gradient(135deg, #2dd4bf, #183a37)", color: "#fff" }}
+                      >
+                        Wrap up
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleViewMembers(g); }}
+                      className="text-xs opacity-50 hover:opacity-80 transition ml-1 shrink-0"
+                      style={{ color: activeTripId === gid ? "#fff" : "#6b7280" }}
+                    >
+                      👥
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -619,42 +750,119 @@ export default function Dashboard() {
                 />
               </div>
 
+              {/* ── Invite Members (privacy-safe) ────────────────────── */}
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: "#000000" }}>
                   Invite Members <span className="font-normal" style={{ color: "#6b7280" }}>(optional)</span>
                 </label>
-                <div
-                  className="rounded-xl overflow-y-auto"
-                  style={{ border: "1px solid #374151", background: "#f3f4f6", maxHeight: 140 }}
-                >
-                  {availableUsers.length === 0 ? (
-                    <p className="px-3 py-2 text-xs" style={{ color: "#6b7280" }}>No users available</p>
-                  ) : (
-                    availableUsers.map((u) => {
-                      const selected = selectedInvitees.includes(u.id);
-                      return (
-                        <label
-                          key={u.id}
-                          className="flex items-center gap-2 px-3 py-2 text-sm"
-                          style={{ borderBottom: "1px solid #e5e7eb" }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedInvitees((prev) => [...prev, u.id]);
-                              } else {
-                                setSelectedInvitees((prev) => prev.filter((id) => id !== u.id));
-                              }
-                            }}
-                          />
-                          <span style={{ color: "#111827" }}>{u.username || u.email}</span>
-                        </label>
-                      );
-                    })
-                  )}
+
+                {/* Tab bar */}
+                <div className="flex rounded-lg overflow-hidden mb-2" style={{ border: "1px solid #374151" }}>
+                  <button
+                    type="button"
+                    onClick={() => setInviteTab("search")}
+                    className="flex-1 py-1.5 text-xs font-semibold transition"
+                    style={{
+                      background: inviteTab === "search" ? "#374151" : "#f3f4f6",
+                      color:      inviteTab === "search" ? "#f9fafb"  : "#374151",
+                    }}
+                  >
+                    Find by username / email
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenConnectionsTab}
+                    className="flex-1 py-1.5 text-xs font-semibold transition"
+                    style={{
+                      background: inviteTab === "connections" ? "#374151" : "#f3f4f6",
+                      color:      inviteTab === "connections" ? "#f9fafb"  : "#374151",
+                    }}
+                  >
+                    Past travel buddies
+                  </button>
                 </div>
+
+                {/* Tab content */}
+                {inviteTab === "search" ? (
+                  <div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleSearchUser())}
+                        placeholder="Exact username or email"
+                        className="flex-1 px-3 py-2 rounded-lg outline-none text-sm"
+                        style={{ background: "#f3f4f6", color: "#111827", border: "1px solid #374151" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSearchUser}
+                        disabled={searchLoading || !searchQuery.trim()}
+                        className="px-3 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-50"
+                        style={{ background: "#000000", color: "#f9fafb" }}
+                      >
+                        {searchLoading ? "…" : "Search"}
+                      </button>
+                    </div>
+                    {searchResult !== null && (
+                      <div className="mt-2">
+                        {searchResult.length === 0 ? (
+                          <p className="text-xs px-1" style={{ color: "#6b7280" }}>No user found. Only exact matches are returned.</p>
+                        ) : (
+                          searchResult.map((u) => {
+                            const added = selectedInvitees.find((x) => x.id === u.id);
+                            return (
+                              <div key={u.id} className="flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: "#f3f4f6", border: "1px solid #d1d5db" }}>
+                                <span className="text-sm" style={{ color: "#111827" }}>{u.username}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleInvitee(u)}
+                                  className="text-xs font-semibold px-2 py-1 rounded transition"
+                                  style={{ background: added ? "#d1fae5" : "#374151", color: added ? "#065f46" : "#f9fafb" }}
+                                >
+                                  {added ? "Added ✓" : "Add"}
+                                </button>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-xl overflow-y-auto" style={{ border: "1px solid #d1d5db", background: "#f3f4f6", maxHeight: 130 }}>
+                    {connectionsLoading ? (
+                      <p className="px-3 py-2 text-xs" style={{ color: "#6b7280" }}>Loading…</p>
+                    ) : connections === null || connections.length === 0 ? (
+                      <p className="px-3 py-2 text-xs" style={{ color: "#6b7280" }}>No past travel buddies found.</p>
+                    ) : (
+                      connections.map((u) => {
+                        const added = selectedInvitees.find((x) => x.id === u.id);
+                        return (
+                          <div key={u.id} className="flex items-center justify-between px-3 py-2" style={{ borderBottom: "1px solid #e5e7eb" }}>
+                            <span className="text-sm" style={{ color: "#111827" }}>{u.username}</span>
+                            <button
+                              type="button"
+                              onClick={() => toggleInvitee(u)}
+                              className="text-xs font-semibold px-2 py-1 rounded transition"
+                              style={{ background: added ? "#d1fae5" : "#374151", color: added ? "#065f46" : "#f9fafb" }}
+                            >
+                              {added ? "Added ✓" : "Add"}
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+
+                {/* Selected invitees summary */}
+                {selectedInvitees.length > 0 && (
+                  <p className="mt-1.5 text-xs" style={{ color: "#374151" }}>
+                    Adding: {selectedInvitees.map((u) => u.username).join(", ")}
+                  </p>
+                )}
               </div>
 
               {createError && <p className="text-sm text-red-500">{createError}</p>}
@@ -673,6 +881,9 @@ export default function Dashboard() {
                   onClick={() => {
                     setShowCreateModal(false);
                     setSelectedInvitees([]);
+                    setSearchQuery("");
+                    setSearchResult(null);
+                    setInviteTab("search");
                   }}
                   disabled={creating}
                   className="flex-1 py-2.5 rounded-xl font-semibold text-sm transition hover:bg-gray-200"
@@ -686,66 +897,154 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ══ INVITE LINK MODAL ════════════════════════════════════════════════ */}
+      {/* ══ INVITE MODAL (two-tab: link + search) ════════════════════════════ */}
       {showInviteModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="rounded-2xl shadow-2xl max-w-md w-full p-6" style={{ background: "#fbfbf2" }}>
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <h3 className="text-xl font-bold" style={{ color: "#160f29" }}>Invite Link</h3>
-                <p className="text-sm mt-0.5" style={{ color: "#5c6b73" }}>Share this link to invite people to the trip</p>
-              </div>
+          <div className="rounded-2xl shadow-2xl max-w-md w-full p-6" style={{ background: "#160f29" }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold" style={{ color: "#fbfbf2" }}>Add People to Trip</h3>
               <button
-                onClick={() => setShowInviteModal(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/5 text-xl transition"
-                style={{ color: "#5c6b73" }}
+                onClick={() => { setShowInviteModal(false); setSearchQuery(""); setSearchResult(null); setInviteTab("search"); }}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-xl transition"
+                style={{ color: "#9ca3af" }}
               >
                 ×
               </button>
             </div>
 
-            {inviteLoading ? (
-              <div className="flex flex-col items-center py-8 gap-3">
-                <div
-                  className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
-                  style={{ borderColor: "#183a37", borderTopColor: "transparent" }}
-                />
-                <p className="text-sm" style={{ color: "#5c6b73" }}>Generating invite link…</p>
-              </div>
-            ) : inviteUrl ? (
+            {/* Tab bar */}
+            <div className="flex rounded-xl overflow-hidden mb-5" style={{ border: "1px solid rgba(255,255,255,0.12)" }}>
+              <button
+                onClick={() => setInviteTab("link")}
+                className="flex-1 py-2 text-xs font-semibold transition"
+                style={{
+                  background: inviteTab === "link" ? "#183a37" : "transparent",
+                  color: inviteTab === "link" ? "#fbfbf2" : "#9ca3af",
+                }}
+              >
+                Invite by link
+              </button>
+              <button
+                onClick={() => setInviteTab("search")}
+                className="flex-1 py-2 text-xs font-semibold transition"
+                style={{
+                  background: inviteTab === "search" ? "#183a37" : "transparent",
+                  color: inviteTab === "search" ? "#fbfbf2" : "#9ca3af",
+                }}
+              >
+                Find by username / email
+              </button>
+            </div>
+
+            {/* ── Tab: Invite by link ─────────────────────────────────────── */}
+            {inviteTab === "link" && (
               <>
-                <div
-                  className="rounded-xl px-4 py-3 mb-3 text-sm break-all font-mono select-all"
-                  style={{ background: "#f3f4f6", color: "#160f29", border: "1px solid #d1d5db" }}
-                >
-                  {inviteUrl}
+                <p className="text-xs mb-3" style={{ color: "#9ca3af" }}>
+                  Share this link — anyone with it can join the trip. This is the recommended method.
+                </p>
+                {inviteLoading ? (
+                  <div className="flex flex-col items-center py-6 gap-3">
+                    <div className="w-7 h-7 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: "#a3e635", borderTopColor: "transparent" }} />
+                    <p className="text-sm" style={{ color: "#9ca3af" }}>Generating link…</p>
+                  </div>
+                ) : inviteUrl ? (
+                  <>
+                    <div className="rounded-xl px-4 py-3 mb-3 text-xs break-all font-mono select-all" style={{ background: "rgba(255,255,255,0.07)", color: "#fbfbf2", border: "1px solid rgba(255,255,255,0.12)" }}>
+                      {inviteUrl}
+                    </div>
+                    <button
+                      onClick={handleCopyInviteLink}
+                      className="w-full py-2.5 rounded-xl font-semibold text-sm transition hover:opacity-90 mb-3"
+                      style={{ background: "#183a37", color: "#fbfbf2" }}
+                    >
+                      {inviteCopied ? "Copied!" : "Copy Link"}
+                    </button>
+                    <p className="text-xs text-center" style={{ color: "#5c6b73" }}>
+                      Expires in 7 days · Max 50 uses
+                      {inviteExpiresAt && <> · {new Date(inviteExpiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</>}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-center py-4" style={{ color: "#f87171" }}>
+                    Failed to generate link. You may not have permission.
+                  </p>
+                )}
+              </>
+            )}
+
+            {/* ── Tab: Find by username / email ───────────────────────────── */}
+            {inviteTab === "search" && (
+              <>
+                <p className="text-xs mb-3" style={{ color: "#9ca3af" }}>
+                  Only exact matches are returned — usernames and emails are never browseable.
+                </p>
+                <div className="flex gap-2 mb-3">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSearchUser()}
+                    placeholder="Exact username or email"
+                    className="flex-1 px-3 py-2 rounded-lg outline-none text-sm"
+                    style={{ background: "rgba(255,255,255,0.08)", color: "#fbfbf2", border: "1px solid rgba(255,255,255,0.12)" }}
+                  />
+                  <button
+                    onClick={handleSearchUser}
+                    disabled={searchLoading || !searchQuery.trim()}
+                    className="px-3 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-50"
+                    style={{ background: "#183a37", color: "#fbfbf2" }}
+                  >
+                    {searchLoading ? "…" : "Search"}
+                  </button>
                 </div>
 
-                <button
-                  onClick={handleCopyInviteLink}
-                  className="w-full py-2.5 rounded-xl font-semibold text-sm transition hover:opacity-90 mb-4"
-                  style={{ background: "#183a37", color: "#fbfbf2" }}
-                >
-                  {inviteCopied ? "Copied!" : "Copy Link"}
-                </button>
+                {searchResult !== null && (
+                  <div className="mb-4">
+                    {searchResult.length === 0 ? (
+                      <p className="text-xs px-1" style={{ color: "#9ca3af" }}>No user found. Try the exact username or email address.</p>
+                    ) : (
+                      searchResult.map((u) => (
+                        <div key={u.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl" style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                          <span className="text-sm font-medium" style={{ color: "#fbfbf2" }}>{u.username}</span>
+                          <span className="text-xs px-2 py-1 rounded-full" style={{ background: "#183a37", color: "#a3e635" }}>Found</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
 
-                <p className="text-xs text-center" style={{ color: "#5c6b73" }}>
-                  Link expires in 7 days&nbsp;&middot;&nbsp;Max 50 uses
-                  {inviteExpiresAt && (
-                    <> &middot; Expires {new Date(inviteExpiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</>
+                {/* People you've traveled with */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "#5c6b73" }}>People you've traveled with</p>
+                  {connectionsLoading ? (
+                    <p className="text-xs" style={{ color: "#5c6b73" }}>Loading…</p>
+                  ) : connections === null ? (
+                    <button
+                      onClick={handleOpenConnectionsTab}
+                      className="text-xs underline"
+                      style={{ color: "#9ca3af" }}
+                    >
+                      Load past travel buddies
+                    </button>
+                  ) : connections.length === 0 ? (
+                    <p className="text-xs" style={{ color: "#5c6b73" }}>None yet — travel more!</p>
+                  ) : (
+                    <div className="space-y-1 max-h-28 overflow-y-auto">
+                      {connections.map((u) => (
+                        <div key={u.id} className="flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.05)" }}>
+                          <span className="text-sm" style={{ color: "#d1d5db" }}>{u.username}</span>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                </p>
+                </div>
               </>
-            ) : (
-              <p className="text-sm text-center py-4" style={{ color: "#dc2626" }}>
-                Failed to generate invite link. You may not have permission.
-              </p>
             )}
 
             <button
-              onClick={() => setShowInviteModal(false)}
-              className="mt-4 w-full py-2.5 rounded-xl font-medium text-sm transition hover:bg-black/5"
-              style={{ background: "#e8e8e0", color: "#160f29" }}
+              onClick={() => { setShowInviteModal(false); setSearchQuery(""); setSearchResult(null); setInviteTab("search"); }}
+              className="mt-5 w-full py-2.5 rounded-xl font-medium text-sm transition hover:bg-white/10"
+              style={{ background: "rgba(255,255,255,0.07)", color: "#9ca3af" }}
             >
               Close
             </button>
@@ -759,6 +1058,18 @@ export default function Dashboard() {
           onClose={() => {
             localStorage.setItem("onboarding_done", "1");
             setShowOnboarding(false);
+          }}
+        />
+      )}
+
+      {/* ══ TRIP WRAP-UP MODAL ═══════════════════════════════════════════════ */}
+      {wrapUpTrip && (
+        <TripWrapUpModal
+          trip={wrapUpTrip}
+          onClose={() => setWrapUpTrip(null)}
+          onComplete={() => {
+            setWrapUpTrip(null);
+            queryClient.invalidateQueries({ queryKey: ["my-groups"] });
           }}
         />
       )}

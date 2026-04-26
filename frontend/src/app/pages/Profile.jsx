@@ -12,6 +12,7 @@ import {
   getSavedCards,
   removeSavedCard,
 } from "../../services/billingService";
+import { deleteMyAccount } from "../../services/userService";
 
 function Profile() {
   const navigate = useNavigate();
@@ -54,7 +55,10 @@ function Profile() {
   const [passwordSaving,  setPasswordSaving]  = useState(false);
   const [passwordError,   setPasswordError]   = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDeleteModal,  setShowDeleteModal]  = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleting,          setDeleting]          = useState(false);
+  const [deleteError,       setDeleteError]       = useState("");
   const [billingMessage,  setBillingMessage]  = useState("");
   const [savedCards, setSavedCards] = useState([]);
   const [cardsLoading, setCardsLoading] = useState(false);
@@ -150,7 +154,26 @@ function Profile() {
     }
   };
 
-  const handleDeleteAccount = () => navigate("/");
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== "DELETE") return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await deleteMyAccount();
+      localStorage.clear();
+      window.location.href = '/';
+    } catch (err) {
+      console.error("Delete account error:", err);
+      setDeleteError(err.message || "Failed to delete account. Please try again.");
+      setDeleting(false);
+    }
+  };
+
+  const handleCloseDeleteModal = () => {
+    setShowDeleteModal(false);
+    setDeleteConfirmText("");
+    setDeleteError("");
+  };
 
   const loadSavedCards = async () => {
     setCardsLoading(true);
@@ -834,17 +857,14 @@ function Profile() {
                       <span style={{ color: "#9ca3af" }}>→</span>
                     </button>
 
-                    <div className="rounded-xl p-4" style={{ background: "#fef2f2", border: "1px solid #fecaca" }}>
-                      <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#dc2626" }}>Danger Zone</p>
-                      <p className="text-xs mb-3" style={{ color: "#9ca3af" }}>
-                        Permanently delete your account and all associated data. This cannot be undone.
+                    <div className="mt-8 border border-red-500/30 rounded-xl p-6">
+                      <h3 className="text-red-400 font-semibold mb-2">Danger Zone</h3>
+                      <p className="text-white/50 text-sm mb-4">
+                        Once you delete your account, there is no going back.
                       </p>
                       <button
                         onClick={() => setShowDeleteModal(true)}
-                        className="w-full py-2.5 rounded-xl text-sm font-semibold transition"
-                        style={{ background: "#dc2626", color: "#fff" }}
-                        onMouseEnter={e => e.currentTarget.style.background = "#b91c1c"}
-                        onMouseLeave={e => e.currentTarget.style.background = "#dc2626"}
+                        className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-sm transition"
                       >
                         Delete Account
                       </button>
@@ -858,22 +878,51 @@ function Profile() {
         </main>
       </div>
 
-      {/* ── Delete Account Modal ──────────────────────────────────────────────── */}
+      {/* ── Delete Account Modal (two-step confirmation) ─────────────────────── */}
       {showDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)" }}>
-          <div className="w-full rounded-2xl overflow-hidden" style={{ maxWidth: 420, background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
+          <div className="w-full rounded-2xl overflow-hidden" style={{ maxWidth: 440, background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.25)" }}>
             <div className="px-6 pt-6 pb-4">
               <div className="w-10 h-10 rounded-full flex items-center justify-center mb-4" style={{ background: "#fef2f2" }}>
-                <span style={{ color: "#dc2626", fontSize: 18 }}>⚠</span>
+                <span style={{ color: "#dc2626", fontSize: 18 }}>&#9888;</span>
               </div>
               <h3 className="text-base font-bold mb-2" style={{ color: "#160f29" }}>Delete Account?</h3>
-              <p className="text-sm" style={{ color: "#5c6b73" }}>
-                This action cannot be undone. All your data, trips, and settings will be permanently deleted.
+              <p className="text-sm mb-4" style={{ color: "#5c6b73" }}>
+                This will permanently delete your account. Your trip history and photos will remain
+                visible to other group members but your name will show as <strong>[deleted]</strong>.
               </p>
+
+              <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: "#9ca3af" }}>
+                Type <span style={{ color: "#dc2626", fontFamily: "monospace" }}>DELETE</span> to confirm
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="DELETE"
+                className="w-full px-4 py-2.5 rounded-xl text-sm outline-none transition"
+                style={{
+                  border: "1px solid #fecaca",
+                  background: "#fef2f2",
+                  color: "#160f29",
+                }}
+                onFocus={e => e.target.style.borderColor = "#dc2626"}
+                onBlur={e => e.target.style.borderColor = "#fecaca"}
+                autoComplete="off"
+                spellCheck={false}
+              />
+
+              {deleteError && (
+                <p className="text-xs mt-2 px-3 py-2 rounded-lg" style={{ background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }}>
+                  {deleteError}
+                </p>
+              )}
             </div>
+
             <div className="flex gap-3 px-6 pb-6 pt-2">
               <button
-                onClick={() => setShowDeleteModal(false)}
+                onClick={handleCloseDeleteModal}
+                disabled={deleting}
                 className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
                 style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb" }}
               >
@@ -881,10 +930,15 @@ function Profile() {
               </button>
               <button
                 onClick={handleDeleteAccount}
+                disabled={deleteConfirmText !== "DELETE" || deleting}
                 className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
-                style={{ background: "#dc2626", color: "#fff" }}
+                style={
+                  deleteConfirmText === "DELETE" && !deleting
+                    ? { background: "#dc2626", color: "#fff", cursor: "pointer" }
+                    : { background: "#fca5a5", color: "#fff", cursor: "not-allowed", opacity: 0.6 }
+                }
               >
-                Delete
+                {deleting ? "Deleting…" : "Yes, delete my account"}
               </button>
             </div>
           </div>
