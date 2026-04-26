@@ -1,6 +1,6 @@
 import asyncio
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from typing import List
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
+from typing import List, Optional
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -26,19 +26,127 @@ def read_me(request: Request, current_user=Depends(oauth2.get_current_user)):
     return current_user
 
 
-# get all user lists
-@router.get("/", response_model=List[schemas.UserOut])
-@limiter.limit("60/minute")
-async def get_users(request: Request, current_user=Depends(oauth2.get_current_user)):
+# ── Privacy-safe user search ────────────────────────────────────────────────
+# Returns at most ONE user when the query is an EXACT match on username or
+# email (case-insensitive).  Partial / fuzzy queries always return empty so
+# that the full user-base is never browseable.
+# Never returns password hashes; only exposes id, username, and avatar_url.
+@router.get("/search")
+@limiter.limit("20/minute")
+async def search_users(
+    request: Request,
+    q: str = Query(..., min_length=1, description="Exact username or email to look up"),
+    current_user=Depends(oauth2.get_current_user),
+):
+    """
+    Exact-match user lookup.  Only returns a result when the query string
+    matches a username or email exactly (case-insensitive).  Partial matches
+    intentionally return an empty list so the full user base cannot be browsed.
+    Soft-deleted accounts (username == '[deleted]') are always excluded.
+    """
+    query = q.strip()
+    if not query:
+        return {"users": []}
+
     try:
-        response = await asyncio.to_thread(lambda: supabase.table("users").select("*").execute())
-        users = response.data  # list[dict]
-        return users
+        # Try exact email match first
+        email_res = await asyncio.to_thread(
+            lambda: supabase
+            .table("users")
+            .select("id, username, avatar_url")
+            .ilike("email", query)
+            .neq("username", "[deleted]")
+            .limit(1)
+            .execute()
+        )
+        if email_res.data:
+            return {"users": email_res.data}
+
+        # Try exact username match
+        username_res = await asyncio.to_thread(
+            lambda: supabase
+            .table("users")
+            .select("id, username, avatar_url")
+            .ilike("username", query)
+            .neq("username", "[deleted]")
+            .limit(1)
+            .execute()
+        )
+        if username_res.data:
+            return {"users": username_res.data}
+
+        # No exact match — return empty (never leak partial results)
+        return {"users": []}
+
     except Exception as e:
-        print("Error fetching users from Supabase:", e)
+        print("Error searching users:", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error fetching users"
+            detail="Error searching users"
+        )
+
+
+# ── Connections (people in shared groups) ───────────────────────────────────
+@router.get("/connections")
+@limiter.limit("30/minute")
+async def get_my_connections(
+    request: Request,
+    current_user=Depends(oauth2.get_current_user),
+):
+    """
+    Returns users who share at least one group with the current user.
+    These are safe to surface because both parties already know each other
+    through a shared trip — no privacy concern.
+    Only returns: id, username, avatar_url.
+    """
+    user_id = current_user.get("id") or current_user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+
+    try:
+        # 1. Find all groups the current user belongs to
+        membership_res = await asyncio.to_thread(
+            lambda: supabase
+            .table("group_member")
+            .select("group_id")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        group_ids = [r["group_id"] for r in (membership_res.data or []) if r.get("group_id")]
+
+        if not group_ids:
+            return {"users": []}
+
+        # 2. Find all members of those groups (excluding the current user)
+        peer_res = await asyncio.to_thread(
+            lambda: supabase
+            .table("group_member")
+            .select("user_id")
+            .in_("group_id", group_ids)
+            .neq("user_id", user_id)
+            .execute()
+        )
+        peer_ids = list({r["user_id"] for r in (peer_res.data or []) if r.get("user_id")})
+
+        if not peer_ids:
+            return {"users": []}
+
+        # 3. Fetch their public profile info (no email, no password)
+        profiles_res = await asyncio.to_thread(
+            lambda: supabase
+            .table("users")
+            .select("id, username, avatar_url")
+            .in_("id", peer_ids)
+            .neq("username", "[deleted]")
+            .execute()
+        )
+        return {"users": profiles_res.data or []}
+
+    except Exception as e:
+        print("Error fetching connections:", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error fetching connections"
         )
 
 
