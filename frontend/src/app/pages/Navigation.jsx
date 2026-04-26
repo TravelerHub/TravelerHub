@@ -74,6 +74,24 @@ import { StarIcon as StarIconSolid, UserGroupIcon, PlayIcon } from '@heroicons/r
 
 import { searchByCategory } from '../../services/placesService';
 
+// ── Map error boundary — isolates Mapbox GL crashes from the rest of the page ─
+import { Component } from 'react';
+class MapErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { crashed: false }; }
+  static getDerivedStateFromError() { return { crashed: true }; }
+  componentDidCatch(err) { console.error('Map crashed:', err.message); }
+  render() {
+    if (this.state.crashed) {
+      return (
+        <div className="flex-1 flex items-center justify-center bg-gray-100 text-gray-500 text-sm">
+          Map unavailable — WebGL may not be supported in this browser.
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDistance(meters) {
@@ -2217,6 +2235,7 @@ function Navigation() {
 
           {/* ── Map Area ── */}
           <div className="flex-1 relative overflow-hidden">
+            <MapErrorBoundary>
             <Map
               ref={mapRef}
               markers={markers}
@@ -2235,6 +2254,7 @@ function Navigation() {
               groupMemberMarkers={groupMemberMarkers}
               sharedPins={sharedPins}
             />
+            </MapErrorBoundary>
 
             {/* Group arrival geofence toasts — appears when a member reaches a waypoint */}
             <GroupGeofenceAlert
