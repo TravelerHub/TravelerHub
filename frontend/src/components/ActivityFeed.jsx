@@ -124,7 +124,7 @@ export default function ActivityFeed({ tripId, limit = 20, compact = false }) {
                 style={{ background: avatarBg(name) }}
               >
                 {user?.profile_picture_url
-                  ? <img src={user.profile_picture_url} className="w-6 h-6 rounded-full object-cover" alt={initials} />
+                  ? <img src={user.profile_picture_url} loading="lazy" decoding="async" className="w-6 h-6 rounded-full object-cover" alt={initials} />
                   : initials}
               </div>
               <div className="flex-1 min-w-0">
@@ -187,7 +187,7 @@ export default function ActivityFeed({ tripId, limit = 20, compact = false }) {
                   style={{ background: avatarBg(name) }}
                 >
                   {user?.profile_picture_url
-                    ? <img src={user.profile_picture_url} className="w-8 h-8 object-cover" alt={initials} />
+                    ? <img src={user.profile_picture_url} loading="lazy" decoding="async" className="w-8 h-8 object-cover" alt={initials} />
                     : initials}
                 </div>
                 <div className="flex-1 min-w-0">

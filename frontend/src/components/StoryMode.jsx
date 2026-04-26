@@ -127,6 +127,7 @@ function DayCard({ day, index }) {
                 src={photo.public_url}
                 alt={photo.caption || 'Trip photo'}
                 loading="lazy"
+                decoding="async"
                 style={{
                   width: '100%',
                   height: '100%',

@@ -28,6 +28,7 @@ function Navbar_Landing() {
           <img
             src={LogoImg}
             alt="TravelHub Logo"
+            decoding="async"
             className="h-10 w-auto object-contain"
           />
         </button>

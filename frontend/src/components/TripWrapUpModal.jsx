@@ -276,6 +276,7 @@ export default function TripWrapUpModal({ trip, onClose, onComplete }) {
                     alt={photo.caption || "trip photo"}
                     className="w-full h-full object-cover"
                     loading="lazy"
+                    decoding="async"
                   />
                   {highlightPhoto === photo.public_url && (
                     <div
@@ -331,7 +332,7 @@ export default function TripWrapUpModal({ trip, onClose, onComplete }) {
         >
           <div className="flex items-center gap-3">
             {highlightPhoto ? (
-              <img src={highlightPhoto} alt="highlight" className="w-12 h-12 rounded-xl object-cover shrink-0" />
+              <img src={highlightPhoto} alt="highlight" loading="lazy" decoding="async" className="w-12 h-12 rounded-xl object-cover shrink-0" />
             ) : (
               <div
                 className="w-12 h-12 rounded-xl flex items-center justify-center text-xl shrink-0"

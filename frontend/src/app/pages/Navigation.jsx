@@ -1692,7 +1692,7 @@ function Navigation() {
                       >
                         <div className="flex gap-2 flex-1 min-w-0">
                           {place.photos?.length > 0 ? (
-                            <img src={getPhotoUrl(place.photos[0].name, 60)} alt={place.name} className="w-9 h-9 object-cover rounded-lg shrink-0" />
+                            <img src={getPhotoUrl(place.photos[0].name, 60)} alt={place.name} loading="lazy" decoding="async" className="w-9 h-9 object-cover rounded-lg shrink-0" />
                           ) : (
                             <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: '#e8e8e0' }}>
                               <StarIconSolid className="w-4 h-4 text-yellow-400" />
@@ -1822,7 +1822,7 @@ function Navigation() {
                           onClick={() => handleViewPlaceDetails(place)}
                         >
                           {place.photos?.length > 0 ? (
-                            <img src={getPhotoUrl(place.photos[0].name, 100)} alt={place.name} className="w-10 h-10 object-cover rounded-lg shrink-0" />
+                            <img src={getPhotoUrl(place.photos[0].name, 100)} alt={place.name} loading="lazy" decoding="async" className="w-10 h-10 object-cover rounded-lg shrink-0" />
                           ) : (
                             <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: '#e8e8e0' }}>
                               <PhotoIcon className="w-5 h-5" style={{ color: '#5c6b73' }} />
@@ -2617,7 +2617,7 @@ function Navigation() {
                   {selectedPlace.photos?.length > 0 && (
                     <div className="mb-6 grid grid-cols-3 gap-2">
                       {selectedPlace.photos.map((photo, index) => (
-                        <img key={index} src={getPhotoUrl(photo.name, 400)} alt={`${selectedPlace.name} photo ${index + 1}`} className="w-full h-32 object-cover rounded-lg" />
+                        <img key={index} src={getPhotoUrl(photo.name, 400)} alt={`${selectedPlace.name} photo ${index + 1}`} loading="lazy" decoding="async" className="w-full h-32 object-cover rounded-lg" />
                       ))}
                     </div>
                   )}

@@ -1016,7 +1016,7 @@ export default function Gallery() {
                 <input ref={fileRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
 
                 {uploadPreview ? (
-                  <img src={uploadPreview} alt="Preview" className="w-full max-h-72 object-contain" />
+                  <img src={uploadPreview} alt="Preview" loading="lazy" decoding="async" className="w-full max-h-72 object-contain" />
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12">
                     <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3" style={{ background: "#f3f4f6" }}>
