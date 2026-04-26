@@ -27,7 +27,7 @@ router = APIRouter(
     tags=["Gallery"],
 )
 
-BUCKET_NAME = "Media"
+BUCKET_NAME = "trip-media"
 
 
 def _add_image_variants(photo: dict) -> dict:
