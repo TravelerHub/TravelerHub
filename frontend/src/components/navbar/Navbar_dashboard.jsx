@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { apiFetch } from "../../services/api";
+import { getMyGroups, getActiveGroupId, setActiveGroupId } from "../../services/groupService";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 
@@ -207,6 +208,184 @@ function SearchDropdown({ results, loading, query, onSelect }) {
               ))}
             </div>
           ))
+      )}
+    </div>
+  );
+}
+
+function IconChevronDown({ size = 12, color = "#5c6b73" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+// ── Trip switcher dropdown ───────────────────────────────────────────────────
+
+function TripSwitcher() {
+  const [open, setOpen] = useState(false);
+  const [groups, setGroups] = useState([]);
+  const [activeId, setActiveId] = useState(() => getActiveGroupId());
+  const [loading, setLoading] = useState(false);
+  const wrapRef = useRef(null);
+
+  // Active trip name derived from groups list
+  const activeName = groups.find(
+    (g) => String(g.group_id || g.id) === String(activeId)
+  )?.name || (activeId ? "Trip" : "Select trip");
+
+  const truncated = activeName.length > 30 ? activeName.slice(0, 29) + "…" : activeName;
+
+  // Load groups when dropdown opens for the first time
+  const loadGroups = useCallback(async () => {
+    setLoading(true);
+    try {
+      const list = await getMyGroups();
+      setGroups(list);
+    } catch {
+      // silently fail — user can retry by closing and reopening
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const toggleOpen = () => {
+    if (!open && groups.length === 0) loadGroups();
+    setOpen((v) => !v);
+  };
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const handleSelect = (groupId) => {
+    setActiveGroupId(groupId);
+    setActiveId(groupId);
+    setOpen(false);
+    // Reload page so all components pick up new active group
+    window.location.reload();
+  };
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative", flexShrink: 0 }}>
+      <button
+        onClick={toggleOpen}
+        title="Switch trip"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "5px 10px",
+          borderRadius: 10,
+          background: open ? "#dcdcd4" : "#e8e8e0",
+          border: "none",
+          cursor: "pointer",
+          color: "#160f29",
+          fontSize: 13,
+          fontWeight: 600,
+          transition: "background 0.15s",
+          maxWidth: 200,
+        }}
+        onMouseEnter={(e) => { if (!open) e.currentTarget.style.background = "#dcdcd4"; }}
+        onMouseLeave={(e) => { if (!open) e.currentTarget.style.background = "#e8e8e0"; }}
+      >
+        <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#183a37" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+          <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0118 0z" />
+          <circle cx="12" cy="10" r="3" />
+        </svg>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {truncated}
+        </span>
+        <IconChevronDown color="#5c6b73" />
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 8px)",
+            left: 0,
+            minWidth: 200,
+            maxWidth: 280,
+            background: "#fbfbf2",
+            border: "1px solid #d1d1c7",
+            borderRadius: 12,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.10)",
+            zIndex: 200,
+            overflow: "hidden",
+          }}
+        >
+          {/* Header */}
+          <div
+            style={{
+              padding: "8px 14px 6px",
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.08em",
+              color: "#9ca3af",
+              borderBottom: "1px solid #e8e8e0",
+            }}
+          >
+            YOUR TRIPS
+          </div>
+
+          {loading ? (
+            <div style={{ padding: "12px 14px", fontSize: 13, color: "#5c6b73" }}>
+              Loading…
+            </div>
+          ) : groups.length === 0 ? (
+            <div style={{ padding: "12px 14px", fontSize: 13, color: "#5c6b73" }}>
+              No trips found
+            </div>
+          ) : (
+            groups.map((g) => {
+              const gid = String(g.group_id || g.id);
+              const isActive = gid === String(activeId);
+              const name = g.name || "Untitled Trip";
+              const display = name.length > 30 ? name.slice(0, 29) + "…" : name;
+              return (
+                <button
+                  key={gid}
+                  onClick={() => handleSelect(gid)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    width: "100%",
+                    padding: "9px 14px",
+                    background: isActive ? "#e8f4ee" : "none",
+                    border: "none",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    fontSize: 13,
+                    fontWeight: isActive ? 600 : 500,
+                    color: isActive ? "#183a37" : "#160f29",
+                    transition: "background 0.12s",
+                  }}
+                  onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "#f0f0e8"; }}
+                  onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "none"; }}
+                >
+                  {isActive && (
+                    <svg width={10} height={10} viewBox="0 0 10 10" fill="#183a37" style={{ flexShrink: 0 }}>
+                      <circle cx="5" cy="5" r="4" />
+                    </svg>
+                  )}
+                  {!isActive && <span style={{ width: 10, flexShrink: 0 }} />}
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {display}
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
       )}
     </div>
   );
@@ -429,6 +608,9 @@ function Navbar_Dashboard() {
           </>
         )}
       </div>
+
+      {/* ── Trip switcher ── */}
+      <TripSwitcher />
 
       {/* ── Right actions ── */}
       <div className="flex items-center gap-3 ml-auto">

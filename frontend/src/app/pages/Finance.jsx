@@ -61,6 +61,197 @@ function normalizeTransaction(raw) {
   };
 }
 
+// ── Payment handle helpers ───────────────────────────────────────────────────
+
+function getPaymentHandles(userId) {
+  if (!userId) return {};
+  try {
+    return JSON.parse(localStorage.getItem(`payment_handles_${userId}`) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function savePaymentHandles(userId, handles) {
+  if (!userId) return;
+  localStorage.setItem(`payment_handles_${userId}`, JSON.stringify(handles));
+}
+
+// Build deep-link URLs for the three apps
+function buildVenmoUrl(handle, amount, note = "TravelerHub") {
+  if (handle) {
+    return `venmo://paycharge?txn=pay&recipients=${encodeURIComponent(handle)}&amount=${amount}&note=${encodeURIComponent(note)}`;
+  }
+  return `venmo://paycharge?txn=pay&amount=${amount}&note=${encodeURIComponent(note)}`;
+}
+
+function buildPaypalUrl(handle, amount) {
+  if (handle) return `https://paypal.me/${encodeURIComponent(handle)}/${amount}`;
+  return "https://www.paypal.com/myaccount/transfer/homepage/pay";
+}
+
+function buildCashAppUrl(handle, amount) {
+  if (handle) return `https://cash.app/$${encodeURIComponent(handle)}/${amount}`;
+  return "https://cash.app/";
+}
+
+// Small icon buttons row shown beneath each settlement step
+function PaymentButtons({ toUserId, amount }) {
+  const handles = getPaymentHandles(toUserId);
+  const amtStr = Number(amount).toFixed(2);
+
+  const buttons = [
+    {
+      label: "Venmo",
+      color: "#3D95CE",
+      bg: "#e8f4fb",
+      href: buildVenmoUrl(handles.venmo, amtStr),
+      // Venmo SVG mark (simplified)
+      icon: (
+        <svg width={13} height={13} viewBox="0 0 24 24" fill="none">
+          <path d="M20.8 1.8c.7 1.1 1 2.3 1 3.9 0 4.8-4.1 11.1-7.5 15.5H6.4L3 2.3l6.4-.6 1.8 13.5c1.7-2.8 3.8-7.2 3.8-10.2 0-1.6-.3-2.8-.8-3.8l6.6-.4z" fill="#3D95CE"/>
+        </svg>
+      ),
+    },
+    {
+      label: "PayPal",
+      color: "#003087",
+      bg: "#e8eef6",
+      href: buildPaypalUrl(handles.paypal, amtStr),
+      icon: (
+        <svg width={13} height={13} viewBox="0 0 24 24" fill="none">
+          <path d="M19.5 7.5C19.5 11.09 16.59 14 13 14H9.5l-1.5 8H4L7 2h8c2.49 0 4.5 2.01 4.5 5.5z" fill="#009cde"/>
+          <path d="M21.5 9C21.5 12.59 18.59 15.5 15 15.5h-3.5l-1 6H7l2.5-13H17c2.49 0 4.5 2.01 4.5 5z" fill="#003087" opacity=".6"/>
+        </svg>
+      ),
+    },
+    {
+      label: "Cash App",
+      color: "#00C244",
+      bg: "#e6faea",
+      href: buildCashAppUrl(handles.cashapp, amtStr),
+      icon: (
+        <svg width={13} height={13} viewBox="0 0 24 24" fill="none">
+          <rect width="24" height="24" rx="5" fill="#00C244"/>
+          <path d="M13.4 8.2c1.1.2 2.1.7 2.8 1.5l-1.5 1.5c-.4-.5-1-.8-1.7-.9-.5-.1-1 0-1.4.3-.3.2-.4.5-.3.8.1.3.4.5 1 .7l1 .3c.9.3 1.6.7 2 1.3.4.6.5 1.3.3 2-.2.8-.8 1.4-1.6 1.8-.5.2-1.1.4-1.7.4v1.4h-1.4v-1.4c-1.2-.2-2.3-.8-3-1.8l1.6-1.4c.5.7 1.2 1.1 2 1.2.5.1 1 0 1.4-.2.3-.2.5-.5.4-.9-.1-.3-.4-.5-1.1-.8l-1-.3c-.9-.3-1.5-.7-1.9-1.2-.4-.6-.5-1.3-.3-2 .2-.7.7-1.3 1.5-1.7.5-.2 1-.4 1.6-.4V6.9h1.4l-.1 1.3z" fill="#fff"/>
+        </svg>
+      ),
+    },
+  ];
+
+  return (
+    <div className="flex items-center gap-1.5 mt-1.5">
+      {buttons.map((btn) => (
+        <a
+          key={btn.label}
+          href={btn.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`Pay with ${btn.label}`}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "3px 8px",
+            borderRadius: 6,
+            background: btn.bg,
+            color: btn.color,
+            fontSize: 11,
+            fontWeight: 600,
+            textDecoration: "none",
+            border: `1px solid ${btn.color}30`,
+            transition: "opacity 0.15s",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.8")}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+        >
+          {btn.icon}
+          {btn.label}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+// Modal to set payment handles for the current user
+function PaymentHandlesModal({ userId, onClose }) {
+  const [handles, setHandles] = useState(() => getPaymentHandles(userId));
+
+  const handleSave = () => {
+    savePaymentHandles(userId, handles);
+    onClose();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.4)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full rounded-2xl overflow-hidden"
+        style={{ maxWidth: 420, background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #f3f4f6" }}>
+          <div>
+            <h2 className="text-base font-bold" style={{ color: "#160f29" }}>Payment Handles</h2>
+            <p className="text-xs mt-0.5" style={{ color: "#9ca3af" }}>
+              Used for Venmo, PayPal & Cash App deep-links
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-sm"
+            style={{ color: "#5c6b73" }}
+          >
+            ✕
+          </button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          {[
+            { key: "venmo", label: "Venmo username", placeholder: "@username" },
+            { key: "paypal", label: "PayPal.me handle", placeholder: "yourname" },
+            { key: "cashapp", label: "Cash App $cashtag", placeholder: "$cashtag" },
+          ].map(({ key, label, placeholder }) => (
+            <div key={key}>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: "#5c6b73" }}>
+                {label}
+              </label>
+              <input
+                type="text"
+                value={handles[key] || ""}
+                onChange={(e) => setHandles((prev) => ({ ...prev, [key]: e.target.value }))}
+                placeholder={placeholder}
+                className="w-full px-3 py-2.5 rounded-xl text-sm"
+                style={{ border: "1px solid #d1d5db" }}
+              />
+            </div>
+          ))}
+          <div className="flex gap-3 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
+              style={{ background: "#f3f4f6", color: "#5c6b73" }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
+              style={{ background: "#160f29", color: "#fbfbf2" }}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Finance() {
   const navigate = useNavigate();
 
@@ -90,6 +281,18 @@ function Finance() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [settledSteps, setSettledSteps] = useState(new Set());
   const [stepSettling, setStepSettling] = useState(null);
+  const [showHandlesModal, setShowHandlesModal] = useState(false);
+
+  // Current logged-in user id (for localStorage keying)
+  const currentUserId = useMemo(() => {
+    try {
+      const stored = localStorage.getItem("user");
+      const u = stored ? JSON.parse(stored) : null;
+      return u?.id || u?.user_id || "";
+    } catch {
+      return "";
+    }
+  }, []);
 
   const loadGroups = useCallback(async () => {
     try {
@@ -834,16 +1037,19 @@ function Finance() {
                         const isSettling = settleLoading === t.from_user_id + t.to_user_id;
                         return (
                           <div key={i} className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid #f9fafb" }}>
-                            <div className="flex items-center gap-2 text-sm">
-                              <span className="font-semibold" style={{ color: "#dc2626" }}>{t.from_username}</span>
-                              <span style={{ color: "#9ca3af" }}>pays</span>
-                              <span className="font-semibold" style={{ color: "#16a34a" }}>{t.to_username}</span>
-                              <span className="font-bold" style={{ color: "#160f29" }}>${t.amount.toFixed(2)}</span>
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="font-semibold" style={{ color: "#dc2626" }}>{t.from_username}</span>
+                                <span style={{ color: "#9ca3af" }}>pays</span>
+                                <span className="font-semibold" style={{ color: "#16a34a" }}>{t.to_username}</span>
+                                <span className="font-bold" style={{ color: "#160f29" }}>${t.amount.toFixed(2)}</span>
+                              </div>
+                              <PaymentButtons toUserId={t.to_user_id} amount={t.amount} />
                             </div>
                             <button
                               onClick={() => handleSettle(t)}
                               disabled={isSettling}
-                              className="px-4 py-2 rounded-xl text-xs font-semibold transition"
+                              className="px-4 py-2 rounded-xl text-xs font-semibold transition shrink-0 ml-3"
                               style={{ background: isSettling ? "#d1d5db" : "#183a37", color: "#fbfbf2" }}
                             >
                               {isSettling ? "Settling..." : "Mark Settled"}
@@ -952,11 +1158,23 @@ function Finance() {
 
                   {/* How to settle up */}
                   <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid #e5e7eb" }}>
-                    <div className="px-5 py-4" style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <p className="text-sm font-bold" style={{ color: "#160f29" }}>How to settle up</p>
-                      <p className="text-xs mt-0.5" style={{ color: "#9ca3af" }}>
-                        Minimum transfers to balance everyone out
-                      </p>
+                    <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: "1px solid #f3f4f6" }}>
+                      <div>
+                        <p className="text-sm font-bold" style={{ color: "#160f29" }}>How to settle up</p>
+                        <p className="text-xs mt-0.5" style={{ color: "#9ca3af" }}>
+                          Minimum transfers to balance everyone out
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setShowHandlesModal(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition"
+                        style={{ background: "#f3f4f6", color: "#5c6b73", border: "1px solid #e5e7eb" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "#e8e8e0")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "#f3f4f6")}
+                        title="Set your Venmo / PayPal / Cash App handles"
+                      >
+                        💳 My handles
+                      </button>
                     </div>
 
                     {(summary.settlements || []).length === 0 ? (
@@ -978,7 +1196,8 @@ function Finance() {
                               opacity: isDone ? 0.55 : 1,
                             }}
                           >
-                            <div className="flex items-center gap-2 text-sm min-w-0 flex-1 mr-3">
+                            <div className="flex flex-col min-w-0 flex-1 mr-3">
+                            <div className="flex items-center gap-2 text-sm">
                               <span
                                 className="font-semibold shrink-0"
                                 style={{
@@ -1007,6 +1226,13 @@ function Finance() {
                               >
                                 ${step.amount.toFixed(2)}
                               </span>
+                            </div>
+                            {!isDone && (
+                              <PaymentButtons
+                                toUserId={step.to_user_id}
+                                amount={step.amount}
+                              />
+                            )}
                             </div>
                             {isDone ? (
                               <div
@@ -1289,6 +1515,14 @@ function Finance() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* ── Payment Handles Modal ────────────────────────────────────────────── */}
+      {showHandlesModal && (
+        <PaymentHandlesModal
+          userId={currentUserId}
+          onClose={() => setShowHandlesModal(false)}
+        />
       )}
 
       {/* ── Charge Card Modal ─────────────────────────────────────────────── */}

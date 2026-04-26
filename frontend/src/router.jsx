@@ -32,6 +32,7 @@ import OfflineBanner from "./components/OfflineBanner.jsx";
 import InstallPrompt from "./components/InstallPrompt.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import StoryMode from "./components/StoryMode.jsx";
+import PublicStory from "./app/pages/PublicStory.jsx";
 import JoinTrip from "./app/pages/JoinTrip.jsx";
 import MobileNav from "./components/MobileNav.jsx";
 import Notifications from "./app/pages/Notifications";
@@ -74,6 +75,7 @@ const router = createBrowserRouter([
         { path: "/otp", element: <OTP /> },
         { path: "/newpassword", element: <NewPassword /> },
         { path: "/join/:token", element: <JoinTrip /> },
+        { path: "/story/public/:token", element: <PublicStory /> },
 
         // Authenticated routes (chat widget available)
         {
