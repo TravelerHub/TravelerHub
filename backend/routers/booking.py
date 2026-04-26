@@ -1,7 +1,7 @@
 from typing import Optional, Any, Dict, List
 from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel, Field
-from supabase_client import supabase
+from supabase_client import supabase, safe_single
 from utils import oauth2
 
 router = APIRouter(prefix="/api/bookings", tags=["bookings"])
@@ -46,13 +46,12 @@ def ensure_trip_member(trip_id: str, user_id: str) -> None:
     Option B: trip -> group_id, and group_member table (group_id, user_id)
     """
     # Example assumes: trips table has id, group_id
-    trip = supabase.table("trips").select("id,group_id").eq("id", trip_id).maybe_single().execute()
+    trip = safe_single(supabase.table("trips").select("id,group_id").eq("id", trip_id))
     if not trip.data:
         raise HTTPException(status_code=404, detail="Trip not found")
 
     group_id = trip.data["group_id"]
 
-    # Example assumes: group_member has group_id, user_id
     membership = (
         supabase.table("group_member")
         .select("id")
@@ -89,7 +88,7 @@ def get_booking(
     booking_id: str,
     current_user: dict = Depends(oauth2.get_current_user)
 ) -> Dict[str, Any]:
-    b = supabase.table("booking").select("*").eq("id", booking_id).maybe_single().execute()
+    b = safe_single(supabase.table("booking").select("*").eq("id", booking_id))
     if not b.data:
         raise HTTPException(status_code=404, detail="Booking not found")
 
@@ -121,13 +120,7 @@ def update_booking(
     body: BookingPatch,
     current_user: dict = Depends(oauth2.get_current_user)
 ) -> Dict[str, Any]:
-    current = (
-        supabase.table("booking")
-        .select("*")
-        .eq("id", booking_id)
-        .maybe_single()
-        .execute()
-    )
+    current = safe_single(supabase.table("booking").select("*").eq("id", booking_id))
     if not current.data:
         raise HTTPException(status_code=404, detail="Booking not found")
 

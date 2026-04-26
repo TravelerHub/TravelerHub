@@ -33,3 +33,20 @@ supabase_admin: Client = (
     if SUPABASE_SERVICE_ROLE_KEY
     else supabase
 )
+
+
+def safe_single(query_builder):
+    """
+    Execute a maybe_single() query and return the result.
+    Works around a postgrest-py 2.x bug where a 204 (no rows) response
+    raises APIError instead of returning data=None.
+    """
+    try:
+        return query_builder.maybe_single().execute()
+    except Exception as e:
+        msg = str(e)
+        if "'204'" in msg or '"204"' in msg or "Missing response" in msg:
+            class _Empty:
+                data = None
+            return _Empty()
+        raise

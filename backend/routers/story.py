@@ -27,7 +27,7 @@ Returns a single unified payload:
 
 from collections import Counter, defaultdict
 from fastapi import APIRouter, Depends, HTTPException
-from supabase_client import supabase
+from supabase_client import supabase, safe_single
 from utils import oauth2
 
 router = APIRouter(
@@ -64,12 +64,8 @@ async def get_trip_story(
 
     # ── Trip metadata ─────────────────────────────────────────────────────────
     try:
-        trip_res = (
-            supabase.table("trips")
-            .select("id, name, description")
-            .eq("id", trip_id)
-            .maybe_single()
-            .execute()
+        trip_res = safe_single(
+            supabase.table("trips").select("id, name, description").eq("id", trip_id)
         )
     except Exception as e:
         print(f"[story] Error fetching trip {trip_id}: {e}")
