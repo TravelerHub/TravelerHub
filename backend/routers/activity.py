@@ -42,7 +42,7 @@ def get_activity(
     """Get the activity feed for a trip, newest first, with author display name."""
     result = (
         supabase.table("trip_activity")
-        .select("*, users!trip_activity_user_id_fkey(id, username, full_name, profile_picture_url)")
+        .select("*, users!trip_activity_user_id_fkey(id, username)")
         .eq("trip_id", trip_id)
         .order("created_at", desc=True)
         .range(offset, offset + limit - 1)

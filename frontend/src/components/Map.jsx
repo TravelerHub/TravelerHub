@@ -35,9 +35,9 @@ const Map = forwardRef(function Map({
   const discoveryMarkersRef = useRef([]);
   const expenseMarkersRef = useRef([]);
   // group member markers: Map<user_id, mapboxgl.Marker> for smooth live updates
-  const groupMemberMarkersRef = useRef(new Map());
+  const groupMemberMarkersRef = useRef(new globalThis.Map());
   // shared pins: Map<pin_id, mapboxgl.Marker>
-  const sharedPinsMarkersRef = useRef(new Map());
+  const sharedPinsMarkersRef = useRef(new globalThis.Map());
 
   // Keep callback refs fresh on every render
   useEffect(() => {

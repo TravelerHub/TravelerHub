@@ -2,56 +2,31 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
-from utils import oauth2  
-from supabase_client import supabase 
+from utils import oauth2
+from supabase_client import supabase, safe_single
 
 router = APIRouter(prefix="/routes", tags=["Routes"])
 
 
 def _ensure_trip_member(trip_id: str, user_id: str) -> None:
-    try:
-        member = (
-            supabase.table("group_member")
-            .select("id")
-            .eq("group_id", trip_id)
-            .eq("user_id", user_id)
-            .is_("left_datetime", None)
-            .maybe_single()
-            .execute()
-        )
-        if member and member.data:
-            return
-    except Exception:
-        pass
+    member = safe_single(
+        supabase.table("trip_members")
+        .select("id")
+        .eq("trip_id", trip_id)
+        .eq("user_id", user_id)
+        .is_("left_at", None)
+    )
+    if member and member.data:
+        return
 
-    try:
-        tm = (
-            supabase.table("trip_members")
-            .select("id")
-            .eq("trip_id", trip_id)
-            .eq("user_id", user_id)
-            .is_("left_at", None)
-            .maybe_single()
-            .execute()
-        )
-        if tm and tm.data:
-            return
-    except Exception:
-        pass
-
-    try:
-        owner = (
-            supabase.table("trips")
-            .select("id")
-            .eq("id", trip_id)
-            .eq("owner_id", user_id)
-            .maybe_single()
-            .execute()
-        )
-        if owner and owner.data:
-            return
-    except Exception:
-        pass
+    owner = safe_single(
+        supabase.table("trips")
+        .select("id")
+        .eq("id", trip_id)
+        .eq("owner_id", user_id)
+    )
+    if owner and owner.data:
+        return
 
     raise HTTPException(status_code=403, detail="Not a member of this group")
 

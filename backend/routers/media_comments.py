@@ -16,7 +16,7 @@ class CommentCreate(BaseModel):
 def list_comments(media_id: str = Query(...), current_user=Depends(oauth2.get_current_user)):
     result = (
         supabase.table("media_comments")
-        .select("*, users!media_comments_user_id_fkey(id, username, full_name, profile_picture_url)")
+        .select("*, users!media_comments_user_id_fkey(id, username)")
         .eq("media_id", media_id)
         .order("created_at")
         .execute()

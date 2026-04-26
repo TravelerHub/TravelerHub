@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from utils import oauth2
-from supabase_client import supabase
+from supabase_client import supabase, safe_single
 
 router = APIRouter(
     prefix="/groups",
@@ -145,15 +145,13 @@ def require_group_member(group_id: str, user_id: str) -> None:
         return
 
     # Backward-compatible fallback for old owner-only trips.
-    owner = (
+    owner = safe_single(
         supabase.table("trips")
         .select("id")
         .eq("id", group_id)
         .eq("owner_id", user_id)
-        .maybe_single()
-        .execute()
     )
-    if not owner.data:
+    if not (owner and owner.data):
         raise HTTPException(status_code=403, detail="Not a member of this group")
 
 

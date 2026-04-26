@@ -40,23 +40,19 @@ class CancelBody(BaseModel):
 # --- Helpers (membership check) ---
 
 def ensure_trip_member(trip_id: str, user_id: str) -> None:
-    """
-    Rename tables/columns to match your schema.
-    Option A: you have trip_member table (trip_id, user_id)
-    Option B: trip -> group_id, and group_member table (group_id, user_id)
-    """
-    # Example assumes: trips table has id, group_id
-    trip = safe_single(supabase.table("trips").select("id,group_id").eq("id", trip_id))
+    trip = safe_single(supabase.table("trips").select("id,owner_id").eq("id", trip_id))
     if not trip.data:
         raise HTTPException(status_code=404, detail="Trip not found")
 
-    group_id = trip.data["group_id"]
+    if trip.data.get("owner_id") == user_id:
+        return
 
     membership = (
-        supabase.table("group_member")
+        supabase.table("trip_members")
         .select("id")
-        .eq("group_id", group_id)
+        .eq("trip_id", trip_id)
         .eq("user_id", user_id)
+        .is_("left_at", None)
         .limit(1)
         .execute()
     )

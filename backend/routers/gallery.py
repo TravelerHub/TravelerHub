@@ -247,7 +247,7 @@ async def upload_trip_media(
             "caption": caption,
         }
 
-        db_res = supabase.table("trip_media").insert(db_record).execute()
+        db_res = supabase_admin.table("trip_media").insert(db_record).execute()
         saved = (db_res.data or [None])[0]
         if not saved:
             raise Exception("Database insert returned empty.")
@@ -359,19 +359,7 @@ async def get_my_albums(
             .is_("left_at", None)
             .execute()
         )
-        trip_ids.update(r["trip_id"] for r in (tm.data or []))
-    except Exception:
-        pass
-
-    try:
-        gm = (
-            supabase.table("group_member")
-            .select("group_id")
-            .eq("user_id", user_id)
-            .is_("left_datetime", None)
-            .execute()
-        )
-        trip_ids.update(r["group_id"] for r in (gm.data or []))
+        trip_ids.update(r["trip_id"] for r in (tm.data or []) if r.get("trip_id"))
     except Exception:
         pass
 
@@ -382,7 +370,7 @@ async def get_my_albums(
             .eq("owner_id", user_id)
             .execute()
         )
-        trip_ids.update(r["id"] for r in (owned.data or []))
+        trip_ids.update(r["id"] for r in (owned.data or []) if r.get("id"))
     except Exception:
         pass
 
