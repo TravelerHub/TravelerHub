@@ -122,8 +122,8 @@ function Modal({ open, title, onClose, children }) {
       onClick={onClose}
     >
       <div
-        className="w-full max-h-[90vh] overflow-y-auto rounded-2xl"
-        style={{ maxWidth: 740, background: "#fff", padding: 24, boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
+        className="w-full max-h-[90vh] overflow-y-auto rounded-2xl p-4 sm:p-6"
+        style={{ maxWidth: 740, background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">
@@ -180,7 +180,7 @@ function HotelSearchModal({ open, onClose, onSave }) {
 
   return (
     <Modal open={open} title="🏨 Search Hotels" onClose={onClose}>
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
         <Field label="City"><input className={inputCls} style={inputStyle} value={city} onChange={(e) => setCity(e.target.value)} placeholder="Los Angeles" /></Field>
         <Field label="Check-in"><input type="date" className={inputCls} style={inputStyle} value={checkin} onChange={(e) => setCheckin(e.target.value)} /></Field>
         <Field label="Check-out"><input type="date" className={inputCls} style={inputStyle} value={checkout} onChange={(e) => setCheckout(e.target.value)} /></Field>
@@ -272,7 +272,7 @@ function ToursSearchModal({ open, onClose, onSave }) {
 
   return (
     <Modal open={open} title="🎡 Search Tours & Attractions" onClose={onClose}>
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
         <Field label="City"><input className={inputCls} style={inputStyle} value={city} onChange={(e) => setCity(e.target.value)} placeholder="Los Angeles" /></Field>
         <Field label="Visit date"><input type="date" className={inputCls} style={inputStyle} value={visitDate} onChange={(e) => setVisitDate(e.target.value)} /></Field>
         <Field label="Radius (km)"><input type="number" min={1} max={20} className={inputCls} style={inputStyle} value={radius} onChange={(e) => setRadius(Number(e.target.value))} /></Field>
@@ -563,7 +563,7 @@ export default function Booking({ tripId: tripIdProp }) {
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
-        <main className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-5 pb-24 md:pb-5 flex flex-col gap-4">
 
           {/* ── Header row ── */}
           <div className="flex items-center justify-between gap-4 flex-wrap">

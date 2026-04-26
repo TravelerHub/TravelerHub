@@ -86,7 +86,7 @@ export default function OnboardingModal({ onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="onboarding-modal-title">
-      <div ref={modalRef} className="relative bg-[#160f29] border border-[#183a37] rounded-2xl p-8 w-full max-w-md mx-4">
+      <div ref={modalRef} className="relative bg-[#160f29] border border-[#183a37] rounded-2xl p-6 sm:p-8 w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           aria-label="Close"

@@ -229,6 +229,17 @@ button:focus-visible {
   padding: 6px 10px;
 }
 
+/* ── Mobile: prevent iOS Safari auto-zoom on input focus ───────────────
+   Inputs with font-size < 16px trigger zoom on focus. Force min 16px on
+   touch viewports while preserving tighter typography on desktop. */
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 /* ── ChatWidget mobile positioning (lift above bottom nav) ───────────── */
 .chat-widget-fab {
   bottom: calc(72px + env(safe-area-inset-bottom, 0px));

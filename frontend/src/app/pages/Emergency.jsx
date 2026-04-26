@@ -195,7 +195,7 @@ export default function Emergency() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
-        <main className="flex-1 overflow-y-auto p-4" style={{ background: "#f3f4f6" }}>
+        <main className="flex-1 overflow-y-auto p-4 pb-24 md:pb-4" style={{ background: "#f3f4f6" }}>
 
           {/* ── Page header ─────────────────────────────────────────────── */}
           <div className="flex items-center justify-between mb-4 px-1">
@@ -210,10 +210,10 @@ export default function Emergency() {
           </div>
 
           {/* ── Three-column body ────────────────────────────────────────── */}
-          <div className="flex gap-4 items-start">
+          <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
 
             {/* ── COL 1: SOS + Location ─────────────────────────────────── */}
-            <div className="w-60 shrink-0 flex flex-col gap-4">
+            <div className="w-full lg:w-60 lg:shrink-0 flex flex-col gap-4">
 
               {/* SOS Button */}
               <div
@@ -348,7 +348,7 @@ export default function Emergency() {
             </div>
 
             {/* ── COL 2: Emergency numbers ──────────────────────────────── */}
-            <div className="flex-1 min-w-0 flex flex-col gap-4">
+            <div className="w-full lg:flex-1 lg:min-w-0 flex flex-col gap-4">
 
               {/* Pinned country */}
               {pinnedCountry && (
@@ -470,7 +470,7 @@ export default function Emergency() {
             </div>
 
             {/* ── COL 3: Contacts + Medical ─────────────────────────────── */}
-            <div className="w-72 shrink-0 flex flex-col gap-4">
+            <div className="w-full lg:w-72 lg:shrink-0 flex flex-col gap-4">
 
               {/* Emergency Contacts */}
               <div
@@ -506,6 +506,8 @@ export default function Emergency() {
                       placeholder="Phone number"
                       value={contactForm.phone}
                       onChange={(e) => setContactForm((p) => ({ ...p, phone: e.target.value }))}
+                      autoComplete="tel"
+                      inputMode="tel"
                       className="w-full px-3 py-2 rounded-xl text-sm outline-none"
                       style={{ background: "#ffffff", border: "1px solid #e5e7eb", color: "#111827" }}
                     />

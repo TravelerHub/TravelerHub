@@ -2516,7 +2516,7 @@ function Navigation() {
       {/* Pin Label Modal */}
       {showPinPrompt && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="rounded-xl shadow-lg max-w-sm w-full p-6" style={{ background: '#fbfbf2' }}>
+          <div className="rounded-xl shadow-lg max-w-sm w-full p-5 sm:p-6 max-h-[90vh] overflow-y-auto" style={{ background: '#fbfbf2' }}>
             <h3 className="text-lg font-bold mb-3 flex items-center gap-2" style={{ color: '#160f29' }}>
               <MapPinIcon className="w-5 h-5 text-amber-500" />
               Name Your Pin
@@ -2555,7 +2555,7 @@ function Navigation() {
       {/* Save Route Modal */}
       {showSaveModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="rounded-xl shadow-lg max-w-md w-full p-6" style={{ background: '#fbfbf2' }}>
+          <div className="rounded-xl shadow-lg max-w-md w-full p-5 sm:p-6 max-h-[90vh] overflow-y-auto" style={{ background: '#fbfbf2' }}>
             <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ color: '#160f29' }}>
               <BookmarkIcon className="w-6 h-6" style={{ color: '#183a37' }} />
               Save Route

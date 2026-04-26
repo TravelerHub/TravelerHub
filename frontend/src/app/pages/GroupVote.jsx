@@ -345,10 +345,10 @@ export default function GroupVote() {
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
-        <main className="flex-1 overflow-hidden flex gap-0">
+        <main className="flex-1 overflow-y-auto lg:overflow-hidden flex flex-col lg:flex-row gap-0 pb-24 md:pb-0">
 
           {/* ── LEFT PANEL: trip selector + poll list ─── */}
-          <div className="w-72 shrink-0 flex flex-col border-r overflow-hidden"
+          <div className="w-full lg:w-72 lg:shrink-0 flex flex-col border-b lg:border-b-0 lg:border-r lg:overflow-hidden"
             style={{ background: "#ffffff", borderColor: "#e5e7eb" }}>
 
             {/* Trip selector */}
@@ -634,7 +634,7 @@ export default function GroupVote() {
       {/* ══ CREATE POLL MODAL ═════════════════════════════════════════════════ */}
       {showCreate && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="rounded-2xl shadow-2xl max-w-md w-full p-6" style={{ background: "#fbfbf2" }}>
+          <div className="rounded-2xl shadow-2xl max-w-md w-full p-5 sm:p-6 max-h-[90vh] overflow-y-auto" style={{ background: "#fbfbf2" }}>
             <h3 className="text-xl font-bold mb-1" style={{ color: "#000000" }}>Create a Poll</h3>
             <p className="text-sm mb-5" style={{ color: "#6b7280" }}>
               Let the group decide together on {selectedTrip?.name}.
@@ -714,7 +714,7 @@ export default function GroupVote() {
       {/* ══ FINISH POLL CONFIRM MODAL ════════════════════════════════════════ */}
       {showConfirm && activePoll && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="rounded-2xl shadow-2xl max-w-sm w-full p-6" style={{ background: "#fbfbf2" }}>
+          <div className="rounded-2xl shadow-2xl max-w-sm w-full p-5 sm:p-6 max-h-[90vh] overflow-y-auto" style={{ background: "#fbfbf2" }}>
             <h3 className="text-xl font-bold mb-2" style={{ color: "#000000" }}>Finish this poll?</h3>
             <p className="text-sm mb-4" style={{ color: "#6b7280" }}>
               The poll will close and the option with the most votes will be declared the winner. This action can be retried.

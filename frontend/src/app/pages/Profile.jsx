@@ -378,8 +378,8 @@ function Profile() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
-        <main className="flex-1 overflow-y-auto" style={{ background: "#f3f4f6" }}>
-          <div className="max-w-2xl mx-auto px-6 py-8">
+        <main className="flex-1 overflow-y-auto pb-24 md:pb-0" style={{ background: "#f3f4f6" }}>
+          <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
 
             {/* ── Hero banner ─────────────────────────────────────────────── */}
             <div className="rounded-2xl overflow-hidden mb-4" style={{ background: "#160f29" }}>
@@ -864,7 +864,7 @@ function Profile() {
       {/* ── Delete Account Modal (two-step confirmation) ─────────────────────── */}
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
-          <div className="w-full rounded-2xl overflow-hidden" style={{ maxWidth: 440, background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.25)" }}>
+          <div className="w-full rounded-2xl overflow-y-auto" style={{ maxWidth: 440, maxHeight: "90vh", background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.25)" }}>
             <div className="px-6 pt-6 pb-4">
               <div className="w-10 h-10 rounded-full flex items-center justify-center mb-4" style={{ background: "#fef2f2" }}>
                 <span style={{ color: "#dc2626", fontSize: 18 }}>&#9888;</span>

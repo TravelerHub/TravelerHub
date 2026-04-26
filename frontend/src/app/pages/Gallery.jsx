@@ -424,7 +424,7 @@ export default function Gallery() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Navbar_Dashboard />
 
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto pb-24 md:pb-0">
 
           {/* ── Hero header ──────────────────────────────────────────────── */}
           <div className="relative px-8 pt-8 pb-6" style={{ background: "linear-gradient(135deg, #160f29 0%, #183a37 100%)" }}>
@@ -988,8 +988,8 @@ export default function Gallery() {
         >
           <div
             ref={uploadModalRef}
-            className="w-full rounded-3xl overflow-hidden"
-            style={{ maxWidth: 480, background: "#fff", boxShadow: "0 32px 80px rgba(0,0,0,0.3)" }}
+            className="w-full rounded-3xl overflow-y-auto"
+            style={{ maxWidth: 480, maxHeight: "90vh", background: "#fff", boxShadow: "0 32px 80px rgba(0,0,0,0.3)" }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
