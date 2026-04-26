@@ -6,6 +6,14 @@ import { API_BASE } from "../../config";
 import { apiFetch } from "../../services/api.js";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import AppSidebar from "../../components/navbar/AppSidebar.jsx";
+import {
+  ScannerIcon,
+  VoteIcon,
+  CompassIcon,
+  ChecklistIcon,
+  SosIcon,
+  SparkleIcon,
+} from "../../components/icons/NavIcons.jsx";
 import { setActiveGroupId } from "../../services/groupService";
 
 // ── Dashboard widgets ─────────────────────────────────────────────────────────
@@ -30,15 +38,12 @@ import TripWrapUpModal     from "../../components/TripWrapUpModal.jsx";
 
 // ── Quick Access feature tiles ────────────────────────────────────────────────
 const FEATURES = [
-  { icon: "🧾", label: "Scanner",      sub: "Scan receipts",    path: "/expenses",    accent: "#2d1b4e" },
-  { icon: "👥", label: "Group Vote",   sub: "Decide together",  path: "/vote",        accent: "#3b1f1f" },
-  { icon: "🌍", label: "Suggestions",  sub: "Travel ideas",     path: "/navigation", accent: "#183a37" },
-
-  // need to do
-  { icon: "📝", label: "To Do",  sub: "to do list",     path: "/todo", accent: "#183a37" },
-  { icon: "🟡", label: "Emergency",  sub: "Share emergency info",     path: "/emergency", accent: "#183a37" },
-
-  { icon: "🟡", label: "something",  sub: "coming soon",     path: "/dashboard", accent: "#183a37" },
+  { Icon: ScannerIcon,   label: "Scanner",     sub: "Scan receipts",         path: "/expenses",   accent: "#2d1b4e" },
+  { Icon: VoteIcon,      label: "Group Vote",  sub: "Decide together",       path: "/vote",       accent: "#3b1f1f" },
+  { Icon: CompassIcon,   label: "Suggestions", sub: "Travel ideas",          path: "/navigation", accent: "#183a37" },
+  { Icon: ChecklistIcon, label: "To Do",       sub: "Trip checklist",        path: "/todo",       accent: "#1e3a5f" },
+  { Icon: SosIcon,       label: "Emergency",   sub: "Share emergency info",  path: "/emergency",  accent: "#7f1d1d" },
+  { Icon: SparkleIcon,   label: "More soon",   sub: "Coming soon",           path: "/dashboard",  accent: "#374151" },
 ];
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -624,10 +629,10 @@ export default function Dashboard() {
                       style={{ background: "rgba(0,0,0,0.035)", border: "1px solid rgba(0,0,0,0.08)" }}
                     >
                       <span
-                        className="shrink-0 w-9 h-9 rounded-xl flex items-center justify-center text-lg"
-                        style={{ background: f.accent ?? "rgba(0,0,0,0.12)" }}
+                        className="shrink-0 w-9 h-9 rounded-xl flex items-center justify-center"
+                        style={{ background: f.accent ?? "rgba(0,0,0,0.12)", color: "#fbfbf2" }}
                       >
-                        {f.icon}
+                        <f.Icon size={18} />
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-semibold leading-tight truncate" style={{ color: "#111827" }}>
