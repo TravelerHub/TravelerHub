@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { API_BASE } from '../../config';
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
-import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
+import AppSidebar from "../../components/navbar/AppSidebar.jsx";
 import TravelPreferences from "../../components/TravelPreferences";
 import {
   addEncryptedCard,
@@ -35,6 +35,7 @@ function Profile() {
     return { username: "", email: "", street: "", city: "", state: "", zipcode: "" };
   };
 
+  const [menuOpen,  setMenuOpen]  = useState(false);
   const [user,      setUser]      = useState(getStoredUser);
   const [isEditing, setIsEditing] = useState(false);
   const [formData,  setFormData]  = useState(user);
@@ -343,44 +344,26 @@ function Profile() {
     <div className="flex h-screen overflow-hidden">
 
       {/* ══ Black sidebar ══════════════════════════════════════════════════════ */}
-      <aside className="w-52 shrink-0 flex flex-col" style={{ background: "#000000" }}>
-
-        {/* Avatar + name */}
-        <div className="px-5 pt-6 pb-5 shrink-0 border-b" style={{ borderColor: "#374151" }}>
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold mb-3"
-            style={{ background: "#183a37", color: "#fbfbf2" }}
-          >
-            {getInitials(user.username)}
-          </div>
-          <p className="font-bold text-sm leading-tight truncate" style={{ color: "#f9fafb" }}>
-            {user.username || "My Account"}
-          </p>
-          <p className="text-xs truncate mt-0.5" style={{ color: "#6b7280" }}>
-            {user.email}
-          </p>
-        </div>
-
-        {/* Page nav */}
-        <nav className="flex flex-col gap-1 px-3 py-4">
-          {SIDEBAR_ITEMS.map((item) => {
-            const isDisabled = !item.path;
-            return (
-              <button
-                key={item.label}
-                onClick={() => item.path && navigate(item.path)}
-                disabled={isDisabled}
-                className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition ${isDisabled ? "cursor-not-allowed" : "hover:bg-white/10"}`}
-                style={{ color: isDisabled ? "#4b5563" : "#9ca3af" }}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* Log out at bottom */}
-        <div className="mt-auto px-3 pb-5">
+      <AppSidebar
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        header={
+          <>
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold mb-3"
+              style={{ background: "#183a37", color: "#fbfbf2" }}
+            >
+              {getInitials(user.username)}
+            </div>
+            <p className="font-bold text-sm leading-tight truncate" style={{ color: "#f9fafb" }}>
+              {user.username || "My Account"}
+            </p>
+            <p className="text-xs truncate mt-0.5" style={{ color: "#6b7280" }}>
+              {user.email}
+            </p>
+          </>
+        }
+        footer={
           <button
             onClick={handleLogout}
             className="w-full py-2.5 rounded-lg text-sm font-semibold transition hover:bg-gray-800"
@@ -388,12 +371,12 @@ function Profile() {
           >
             Log Out
           </button>
-        </div>
-      </aside>
+        }
+      />
 
       {/* ══ Main column ════════════════════════════════════════════════════════ */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Navbar_Dashboard />
+        <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
         <main className="flex-1 overflow-y-auto" style={{ background: "#f3f4f6" }}>
           <div className="max-w-2xl mx-auto px-6 py-8">

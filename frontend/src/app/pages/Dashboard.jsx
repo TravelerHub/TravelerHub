@@ -5,7 +5,7 @@ import LoadingSpinner from "../../components/LoadingSpinner.jsx";
 import { API_BASE } from "../../config";
 import { apiFetch } from "../../services/api.js";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
-import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
+import AppSidebar from "../../components/navbar/AppSidebar.jsx";
 import { setActiveGroupId } from "../../services/groupService";
 
 // ── Dashboard widgets ─────────────────────────────────────────────────────────
@@ -51,6 +51,7 @@ export default function Dashboard() {
   })();
 
   // ── State ──────────────────────────────────────────────────────────────────
+  const [menuOpen,           setMenuOpen]           = useState(false);
   const [showCreateModal,    setShowCreateModal]    = useState(false);
   const [newTripName,        setNewTripName]        = useState("");
   const [newTripDescription, setNewTripDescription] = useState("");
@@ -354,49 +355,24 @@ export default function Dashboard() {
     <div className="flex h-screen overflow-hidden" style={{ background: "#f3f4f6" }}>
 
       {/* ══ SIDEBAR ══════════════════════════════════════════════════════════ */}
-      <aside className="w-52 shrink-0 flex flex-col" style={{ background: "#000000" }}>
-        <div className="px-5 pt-6 pb-5 border-b shrink-0" style={{ borderColor: "#374151" }}>
-          <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: "#6b7280" }}>Hi,</p>
-          <p className="font-bold text-lg leading-tight truncate" style={{ color: "#f9fafb" }}>{displayName}</p>
-        </div>
-
-        <nav className="flex flex-col gap-1 px-3 py-4 flex-1">
-          {SIDEBAR_ITEMS.map((item) => {
-            const isActive   = item.path === "/dashboard";
-            const isDisabled = !item.path;
-            return (
-              <button
-                key={item.label}
-                onClick={() => item.path && navigate(item.path)}
-                disabled={isDisabled}
-                className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition ${
-                  isActive ? "font-bold" : isDisabled ? "cursor-not-allowed" : "hover:bg-white/10"
-                }`}
-                style={{
-                  background: isActive ? "#ffffff" : "transparent",
-                  color:      isActive ? "#000000" : isDisabled ? "#4b5563" : "#9ca3af",
-                }}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="px-3 pb-5">
+      <AppSidebar
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        displayName={displayName}
+        footer={
           <button
-            onClick={() => { setShowCreateModal(true); setCreateError(""); }}
+            onClick={() => { setShowCreateModal(true); setCreateError(""); setMenuOpen(false); }}
             className="w-full py-2.5 rounded-lg text-sm font-semibold transition hover:bg-gray-700 active:scale-95"
             style={{ background: "#374151", color: "#f9fafb" }}
           >
             + New Trip
           </button>
-        </div>
-      </aside>
+        }
+      />
 
       {/* ══ MAIN ═════════════════════════════════════════════════════════════ */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Navbar_Dashboard />
+        <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
         <main className="flex-1 overflow-y-auto p-4" style={{ background: "#f3f4f6" }}>
           <div className="flex items-center justify-between mb-4 px-1">

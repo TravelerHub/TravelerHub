@@ -1,7 +1,6 @@
 import { useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
-import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
+import AppSidebar from "../../components/navbar/AppSidebar.jsx";
 import { searchPlaces as geocodeDestination } from "../../services/geocodingService.js";
 import {
   searchPlacesByText,
@@ -187,9 +186,9 @@ function SkeletonCard() {
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 export default function TravelSuggestion() {
-  const navigate = useNavigate();
 
   // ── Search form state ───────────────────────────────────────────────────────
+  const [menuOpen,           setMenuOpen]           = useState(false);
   const [destination,        setDestination]        = useState("");
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [selectedInterests,  setSelectedInterests]  = useState([]);
@@ -324,55 +323,15 @@ export default function TravelSuggestion() {
     <div className="flex h-screen overflow-hidden" style={{ background: "#f3f4f6" }}>
 
       {/* ── Sidebar ─────────────────────────────────────────────────────────── */}
-      <aside
-        className="shrink-0 flex flex-col h-full"
-        style={{ width: 220, background: "#000", color: "#fbfbf2" }}
-      >
-        {/* Logo */}
-        <div className="px-6 pt-8 pb-6">
+      <AppSidebar
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        header={
           <span className="text-xl font-bold tracking-tight" style={{ color: "#fbfbf2" }}>
             TravelHub
           </span>
-        </div>
-
-        <div className="px-4 pb-4">
-          <div style={{ height: 1, background: "rgba(255,255,255,0.08)" }} />
-        </div>
-
-        {/* Nav items */}
-        <nav className="flex-1 px-3 space-y-1">
-          {SIDEBAR_ITEMS.map((item) => {
-            const isActive = item.path === "/travelsuggestion";
-            return (
-              <button
-                key={item.label}
-                onClick={() => item.path && navigate(item.path)}
-                disabled={!item.path}
-                className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition"
-                style={{
-                  background: isActive ? "rgba(255,255,255,0.10)" : "transparent",
-                  color: !item.path
-                    ? "rgba(251,251,242,0.3)"
-                    : isActive
-                    ? "#fbfbf2"
-                    : "rgba(251,251,242,0.75)",
-                  cursor: item.path ? "pointer" : "default",
-                  fontWeight: isActive ? 700 : 500,
-                }}
-                onMouseEnter={(e) => {
-                  if (item.path && !isActive)
-                    e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) e.currentTarget.style.background = "transparent";
-                }}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-
-          {/* Suggestions — active highlight since not in SIDEBAR_ITEMS */}
+        }
+        topExtras={
           <button
             className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold transition"
             style={{
@@ -382,11 +341,8 @@ export default function TravelSuggestion() {
           >
             Suggestions
           </button>
-        </nav>
-
-        {/* Sidebar bottom promo */}
-        <div className="px-3 pb-6">
-          <div style={{ height: 1, background: "rgba(255,255,255,0.08)", marginBottom: 16 }} />
+        }
+        footer={
           <div
             className="rounded-xl p-4"
             style={{ background: "rgba(24,58,55,0.45)", border: "1px solid rgba(255,255,255,0.06)" }}
@@ -396,12 +352,12 @@ export default function TravelSuggestion() {
               Search any destination to discover local favorites off the beaten path.
             </p>
           </div>
-        </div>
-      </aside>
+        }
+      />
 
       {/* ── Main ────────────────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Navbar_Dashboard />
+        <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
         <main className="flex-1 overflow-y-auto p-6">
 
