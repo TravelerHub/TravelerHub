@@ -65,12 +65,17 @@ const Map = forwardRef(function Map({
       return;
     }
 
-    mapRef.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/outdoors-v12',
-      center: center,
-      zoom: zoom,
-    });
+    try {
+      mapRef.current = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: 'mapbox://styles/mapbox/outdoors-v12',
+        center: center,
+        zoom: zoom,
+      });
+    } catch (err) {
+      console.error('Map: failed to initialize Mapbox GL —', err.message);
+      return;
+    }
 
     // Navigation controls
     mapRef.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
