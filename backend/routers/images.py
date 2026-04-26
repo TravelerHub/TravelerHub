@@ -1,7 +1,11 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends, Request
 from supabase_client import supabase
 from utils import oauth2
-import uuid 
+import uuid
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(
     prefix="/images",
@@ -9,8 +13,10 @@ router = APIRouter(
 )
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def upload_image(
-    file: UploadFile = File(...), 
+    request: Request,
+    file: UploadFile = File(...),
     current_user: dict = Depends(oauth2.get_current_user)
 ):
     """

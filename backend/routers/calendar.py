@@ -2,6 +2,11 @@ from fastapi import APIRouter, Depends, Query
 from typing import Optional
 from utils import oauth2
 from supabase_client import supabase
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from starlette.requests import Request
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(
     prefix="/calendar",
@@ -10,7 +15,9 @@ router = APIRouter(
 
 
 @router.get("/events")
+@limiter.limit("60/minute")
 def get_calendar_events(
+    request: Request,
     trip_id: Optional[str] = Query(None),
     current_user=Depends(oauth2.get_current_user),
 ):

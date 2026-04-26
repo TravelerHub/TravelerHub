@@ -19,10 +19,14 @@ Frontend subscribes → stores in DB → backend sends pushes via notifications.
 import os
 import json
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from supabase_client import supabase
 from utils.oauth2 import get_current_user
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/push", tags=["Push"])
 
@@ -34,7 +38,8 @@ class PushSubscription(BaseModel):
 
 
 @router.post("/subscribe")
-def save_subscription(sub: PushSubscription, current_user=Depends(get_current_user)):
+@limiter.limit("30/minute")
+def save_subscription(request: Request, sub: PushSubscription, current_user=Depends(get_current_user)):
     """Store a browser push subscription for the current user."""
     user_id = current_user["id"]
     try:
@@ -52,7 +57,8 @@ def save_subscription(sub: PushSubscription, current_user=Depends(get_current_us
 
 
 @router.delete("/subscribe")
-def remove_subscription(endpoint: str, current_user=Depends(get_current_user)):
+@limiter.limit("30/minute")
+def remove_subscription(request: Request, endpoint: str, current_user=Depends(get_current_user)):
     """Unsubscribe (called when user revokes permission)."""
     supabase.table("push_subscriptions").delete().eq("endpoint", endpoint).execute()
     return {"ok": True}

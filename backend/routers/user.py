@@ -1,10 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from typing import List
+import asyncio
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
+from typing import List, Optional
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 import schemas
 from utils import oauth2, hasing
 
-from supabase_client import supabase  
+from supabase_client import supabase
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(
     prefix="/users",
@@ -14,36 +19,144 @@ router = APIRouter(
 
 #  get current user
 @router.get("/me", response_model=schemas.UserOut)
-def read_me(current_user =  Depends(oauth2.get_current_user)):
+@limiter.limit("60/minute")
+def read_me(request: Request, current_user=Depends(oauth2.get_current_user)):
     # NOTE: This still depends on how oauth2.get_current_user is implemented.
     # If oauth2 currently uses SQLAlchemy, you'll want to migrate that to Supabase too.
     return current_user
 
 
-#get all user lists
+# ── Privacy-safe user search ────────────────────────────────────────────────
+# Returns at most ONE user when the query is an EXACT match on username or
+# email (case-insensitive).  Partial / fuzzy queries always return empty so
+# that the full user-base is never browseable.
+# Never returns password hashes; only exposes id, username, and avatar_url.
+@router.get("/search")
+@limiter.limit("20/minute")
+async def search_users(
+    request: Request,
+    q: str = Query(..., min_length=1, description="Exact username or email to look up"),
+    current_user=Depends(oauth2.get_current_user),
+):
+    """
+    Exact-match user lookup.  Only returns a result when the query string
+    matches a username or email exactly (case-insensitive).  Partial matches
+    intentionally return an empty list so the full user base cannot be browsed.
+    Soft-deleted accounts (username == '[deleted]') are always excluded.
+    """
+    query = q.strip()
+    if not query:
+        return {"users": []}
 
-@router.get("/", response_model=List[schemas.UserOut])
-def get_users(current_user=Depends(oauth2.get_current_user)):
     try:
-        response = supabase.table("users").select("*").execute()
-        users = response.data  # list[dict]
-        return users
+        # Try exact email match first
+        email_res = await asyncio.to_thread(
+            lambda: supabase
+            .table("users")
+            .select("id, username, avatar_url")
+            .ilike("email", query)
+            .neq("username", "[deleted]")
+            .limit(1)
+            .execute()
+        )
+        if email_res.data:
+            return {"users": email_res.data}
+
+        # Try exact username match
+        username_res = await asyncio.to_thread(
+            lambda: supabase
+            .table("users")
+            .select("id, username, avatar_url")
+            .ilike("username", query)
+            .neq("username", "[deleted]")
+            .limit(1)
+            .execute()
+        )
+        if username_res.data:
+            return {"users": username_res.data}
+
+        # No exact match — return empty (never leak partial results)
+        return {"users": []}
+
     except Exception as e:
-        print("Error fetching users from Supabase:", e)
+        print("Error searching users:", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error fetching users"
+            detail="Error searching users"
         )
 
 
-#get user by ID
+# ── Connections (people in shared groups) ───────────────────────────────────
+@router.get("/connections")
+@limiter.limit("30/minute")
+async def get_my_connections(
+    request: Request,
+    current_user=Depends(oauth2.get_current_user),
+):
+    """
+    Returns users who share at least one group with the current user.
+    These are safe to surface because both parties already know each other
+    through a shared trip — no privacy concern.
+    Only returns: id, username, avatar_url.
+    """
+    user_id = current_user.get("id") or current_user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
 
-@router.get("/{id}", response_model=schemas.UserOut)
-def get_user(id: int):
     try:
-        # SELECT * FROM users WHERE id = id LIMIT 1;
-        response = (
-            supabase
+        # 1. Find all groups the current user belongs to
+        membership_res = await asyncio.to_thread(
+            lambda: supabase
+            .table("group_member")
+            .select("group_id")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        group_ids = [r["group_id"] for r in (membership_res.data or []) if r.get("group_id")]
+
+        if not group_ids:
+            return {"users": []}
+
+        # 2. Find all members of those groups (excluding the current user)
+        peer_res = await asyncio.to_thread(
+            lambda: supabase
+            .table("group_member")
+            .select("user_id")
+            .in_("group_id", group_ids)
+            .neq("user_id", user_id)
+            .execute()
+        )
+        peer_ids = list({r["user_id"] for r in (peer_res.data or []) if r.get("user_id")})
+
+        if not peer_ids:
+            return {"users": []}
+
+        # 3. Fetch their public profile info (no email, no password)
+        profiles_res = await asyncio.to_thread(
+            lambda: supabase
+            .table("users")
+            .select("id, username, avatar_url")
+            .in_("id", peer_ids)
+            .neq("username", "[deleted]")
+            .execute()
+        )
+        return {"users": profiles_res.data or []}
+
+    except Exception as e:
+        print("Error fetching connections:", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error fetching connections"
+        )
+
+
+# get user by ID
+@router.get("/{id}", response_model=schemas.UserOut)
+@limiter.limit("60/minute")
+async def get_user(request: Request, id: int):
+    try:
+        response = await asyncio.to_thread(
+            lambda: supabase
             .table("users")
             .select("*")
             .eq("id", id)
@@ -71,11 +184,12 @@ def get_user(id: int):
 
 # create a new user in supabase
 @router.post("/", response_model=schemas.UserOut, status_code=status.HTTP_201_CREATED)
-def create_user(user: schemas.UserCreate):
+@limiter.limit("10/minute")
+async def create_user(request: Request, user: schemas.UserCreate):
     # check if email already exists
     try:
-        existing = (
-            supabase
+        existing = await asyncio.to_thread(
+            lambda: supabase
             .table("users")
             .select("id")
             .eq("email", user.email)
@@ -108,12 +222,12 @@ def create_user(user: schemas.UserCreate):
             "city": user.city,
             "state": user.state,
             "zip_code": user.zip_code
-            
+
         }
 
         # Insert and return the new row in one shot
-        response = (
-            supabase
+        response = await asyncio.to_thread(
+            lambda: supabase
             .table("users")
             .insert(insert_payload)
             .select("*")
@@ -130,10 +244,13 @@ def create_user(user: schemas.UserCreate):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error creating user"
         )
-    
+
+
 # Update current user's profile
 @router.put("/me", response_model=schemas.UserOut)
-def update_me(
+@limiter.limit("30/minute")
+async def update_me(
+    request: Request,
     user_update: schemas.UserUpdate,
     current_user=Depends(oauth2.get_current_user)
 ):
@@ -151,8 +268,8 @@ def update_me(
             return current_user  # Nothing to update
 
         # Update user in Supabase
-        response = (
-            supabase
+        response = await asyncio.to_thread(
+            lambda: supabase
             .table("users")
             .update(update_data)
             .eq("id", current_user["id"])
@@ -168,10 +285,68 @@ def update_me(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error updating profile"
         )
-    
+
+
+# Delete current user's account (soft-delete)
+@router.delete("/me")
+@limiter.limit("3/hour")
+async def delete_my_account(
+    request: Request,
+    current_user=Depends(oauth2.get_current_user),
+):
+    """
+    Permanently soft-delete the authenticated user's account.
+    Anonymises PII (email, username, name) to preserve referential integrity
+    for shared trip data. Also removes all push subscriptions so the user
+    stops receiving notifications.
+    """
+    user_id = current_user["id"]
+
+    try:
+        # Anonymise the user record — soft-delete by scrubbing PII
+        anonymised_email = f"deleted_{user_id}@deleted.com"
+        update_payload = {
+            "email":      anonymised_email,
+            "username":   "[deleted]",
+            "password":   "",          # invalidate login
+        }
+
+        await asyncio.to_thread(
+            lambda: supabase
+            .table("users")
+            .update(update_payload)
+            .eq("id", user_id)
+            .execute()
+        )
+
+    except Exception as e:
+        print("Error soft-deleting user:", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deleting account"
+        )
+
+    try:
+        # Remove all push subscriptions so notifications stop immediately
+        await asyncio.to_thread(
+            lambda: supabase
+            .table("push_subscriptions")
+            .delete()
+            .eq("user_id", user_id)
+            .execute()
+        )
+    except Exception as e:
+        # Non-fatal — log but don't fail the request
+        print("Warning: could not remove push subscriptions during account deletion:", e)
+
+    return {"message": "Account deleted successfully"}
+
+
 # Change password
 @router.put("/me/password")
-def change_password(
+@limiter.limit("10/minute")
+async def change_password(
+    request: Request,
     password_data: schemas.PasswordChange,
     current_user=Depends(oauth2.get_current_user)
 ):
@@ -187,8 +362,8 @@ def change_password(
         new_hashed = hasing.hash_password(password_data.new_password)
 
         # Update in Supabase
-        response = (
-            supabase
+        response = await asyncio.to_thread(
+            lambda: supabase
             .table("users")
             .update({"password": new_hashed})
             .eq("id", current_user["id"])

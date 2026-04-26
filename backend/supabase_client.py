@@ -1,5 +1,6 @@
 # supabase_client.py
 from supabase import create_client, Client
+import asyncio
 import os
 import httpx
 from dotenv import load_dotenv
@@ -43,6 +44,22 @@ def safe_single(query_builder):
     """
     try:
         return query_builder.maybe_single().execute()
+    except Exception as e:
+        msg = str(e)
+        if "'204'" in msg or '"204"' in msg or "Missing response" in msg:
+            class _Empty:
+                data = None
+            return _Empty()
+        raise
+
+
+async def async_safe_single(query_builder):
+    """Async version of safe_single for use in async route handlers.
+    Runs the blocking maybe_single().execute() in a thread pool so the
+    event loop is not blocked.
+    """
+    try:
+        return await asyncio.to_thread(lambda: query_builder.maybe_single().execute())
     except Exception as e:
         msg = str(e)
         if "'204'" in msg or '"204"' in msg or "Missing response" in msg:

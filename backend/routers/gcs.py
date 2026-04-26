@@ -15,11 +15,15 @@ import uuid
 import httpx
 from datetime import datetime, timedelta
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from pydantic import BaseModel
 from utils import oauth2
-from supabase_client import supabase
+from supabase_client import supabase, safe_single
 from dotenv import load_dotenv
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 load_dotenv()
 
@@ -160,7 +164,9 @@ def _get_group_preference_intersection(member_ids: list) -> dict:
 
 
 @router.post("/fair-point")
+@limiter.limit("10/minute")
 async def find_fair_point(
+    request: Request,
     body: FairPointRequest,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -293,7 +299,9 @@ async def find_fair_point(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/group-arrival-sync")
+@limiter.limit("10/minute")
 async def group_arrival_sync(
+    request: Request,
     body: GroupArrivalRequest,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -453,7 +461,9 @@ def _sample_route_points(polyline_coords: List[tuple], num_samples: int = 6) -> 
 
 
 @router.post("/isochrone-search")
+@limiter.limit("10/minute")
 async def isochrone_along_route(
+    request: Request,
     body: IsochroneSearchRequest,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -582,7 +592,9 @@ async def isochrone_along_route(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/park-and-walk")
+@limiter.limit("10/minute")
 async def park_and_walk(
+    request: Request,
     body: ParkAndWalkRequest,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -730,7 +742,9 @@ async def park_and_walk(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/veto-check")
+@limiter.limit("30/minute")
 async def veto_check(
+    request: Request,
     body: VetoCheckRequest,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -742,12 +756,10 @@ async def veto_check(
     the group's Social Contract setting.
     """
     # 1. Load group settings (social contract)
-    settings_res = (
+    settings_res = safe_single(
         supabase.table("group_settings")
         .select("*")
         .eq("trip_id", body.trip_id)
-        .maybe_single()
-        .execute()
     )
     settings = settings_res.data if settings_res.data else {
         "vote_mode": "majority",
@@ -872,18 +884,18 @@ class GroupSettingsUpdate(BaseModel):
 
 
 @router.get("/group-settings/{trip_id}")
+@limiter.limit("60/minute")
 def get_group_settings(
+    request: Request,
     trip_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
     """Get the group's social contract settings."""
     try:
-        res = (
+        res = safe_single(
             supabase.table("group_settings")
             .select("*")
             .eq("trip_id", trip_id)
-            .maybe_single()
-            .execute()
         )
         if res and res.data:
             return res.data
@@ -900,7 +912,9 @@ def get_group_settings(
 
 
 @router.put("/group-settings/{trip_id}")
+@limiter.limit("30/minute")
 def update_group_settings(
+    request: Request,
     trip_id: str,
     body: GroupSettingsUpdate,
     current_user=Depends(oauth2.get_current_user),
@@ -937,12 +951,10 @@ def update_group_settings(
     update_data["updated_at"] = "now()"
 
     # Upsert
-    existing = (
+    existing = safe_single(
         supabase.table("group_settings")
         .select("id")
         .eq("trip_id", trip_id)
-        .maybe_single()
-        .execute()
     )
     if existing.data:
         res = (

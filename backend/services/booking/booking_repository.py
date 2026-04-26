@@ -9,7 +9,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from supabase_client import supabase
+from supabase_client import supabase, safe_single
 
 
 # ── bookings ──────────────────────────────────────────────────────────────────
@@ -73,12 +73,10 @@ async def get_bookings_by_trip(trip_id: str) -> dict:
 
 async def get_booking(booking_id: str) -> dict:
     try:
-        res = (
+        res = safe_single(
             supabase.table("bookings")
             .select("*")
             .eq("id", booking_id)
-            .maybe_single()
-            .execute()
         )
         return {"data": res.data, "error": None}
     except Exception as e:

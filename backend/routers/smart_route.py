@@ -11,13 +11,17 @@ import os
 import json
 import httpx
 from datetime import datetime, timedelta
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from pydantic import BaseModel
 from typing import Optional, List
 from utils import oauth2
-from supabase_client import supabase
+from supabase_client import supabase, safe_single
 from dotenv import load_dotenv
 from services.waypoint_predictor import WaypointPredictor
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 load_dotenv()
 
@@ -85,12 +89,10 @@ async def _get_base_route(waypoints: List[Waypoint], mode: str) -> dict:
 async def _fetch_user_preferences(user_id: str) -> dict:
     """Fetch a single user's preferences for individual route optimization."""
     try:
-        res = (
+        res = safe_single(
             supabase.table("user_preferences")
             .select("preferred_categories, dietary_restrictions, interests, avoid_types, price_preference, travel_pace, spontaneity_score")
             .eq("user_id", user_id)
-            .maybe_single()
-            .execute()
         )
         return res.data or {}
     except Exception as e:
@@ -348,7 +350,9 @@ def _build_chapters(legs: list, departure_time: Optional[str] = None) -> list:
 # ---- Endpoints ----
 
 @router.post("/plan")
+@limiter.limit("10/minute")
 async def plan_smart_route(
+    request: Request,
     body: SmartRouteRequest,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -556,7 +560,9 @@ async def plan_smart_route(
 
 
 @router.post("/group-sync/{group_id}")
+@limiter.limit("60/minute")
 async def update_group_position(
+    request: Request,
     group_id: str,
     body: dict,
     current_user=Depends(oauth2.get_current_user),
@@ -572,28 +578,24 @@ async def update_group_position(
     # Verify membership (try trip_members first, fallback to group_member)
     membership = None
     try:
-        membership = (
+        membership = safe_single(
             supabase.table("trip_members")
             .select("id")
             .eq("trip_id", group_id)
             .eq("user_id", user_id)
             .is_("left_at", None)
-            .maybe_single()
-            .execute()
         )
     except Exception as e:
         print(f"[smart_route] trip_members membership check error: {e}")
 
     if not membership or not membership.data:
         try:
-            membership = (
+            membership = safe_single(
                 supabase.table("group_member")
                 .select("id")
                 .eq("group_id", group_id)
                 .eq("user_id", user_id)
                 .is_("left_datetime", None)
-                .maybe_single()
-                .execute()
             )
         except Exception as e:
             print(f"[smart_route] group_member membership check error: {e}")
@@ -601,13 +603,11 @@ async def update_group_position(
     # Also check if user is the trip owner
     if not membership or not membership.data:
         try:
-            owner = (
+            owner = safe_single(
                 supabase.table("trips")
                 .select("id")
                 .eq("id", group_id)
                 .eq("owner_id", user_id)
-                .maybe_single()
-                .execute()
             )
             if owner and owner.data:
                 membership = owner
@@ -635,7 +635,9 @@ async def update_group_position(
 
 
 @router.get("/group-positions/{group_id}")
+@limiter.limit("60/minute")
 async def get_group_positions(
+    request: Request,
     group_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -726,7 +728,9 @@ class PredictNextWaypointRequest(BaseModel):
 
 
 @router.post("/trips/{trip_id}/predict-next-waypoint")
+@limiter.limit("10/minute")
 async def predict_next_waypoint(
+    request: Request,
     trip_id: str,
     body: PredictNextWaypointRequest,
     current_user=Depends(oauth2.get_current_user),

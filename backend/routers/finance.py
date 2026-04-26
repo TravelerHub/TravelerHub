@@ -1,11 +1,19 @@
+import asyncio
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from supabase_client import supabase
+from supabase_client import supabase, async_safe_single
 from utils import oauth2
+from utils.logger import get_logger
 from services.anomaly_detection import ExpenseAnomalyDetector
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
+
+logger = get_logger(__name__)
 
 router = APIRouter(
     prefix="/finance",
@@ -13,89 +21,77 @@ router = APIRouter(
 )
 
 
-def _ensure_trip_member(trip_id: str, user_id: str) -> None:
+async def _ensure_trip_member(trip_id: str, user_id: str) -> None:
     try:
-        member = (
+        member = await async_safe_single(
             supabase.table("trip_members")
             .select("id")
             .eq("trip_id", trip_id)
             .eq("user_id", user_id)
             .is_("left_at", None)
-            .maybe_single()
-            .execute()
         )
         if member.data:
             return
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_ensure_trip_member] trip_members query failed for trip=%s, user=%s: %s", trip_id, user_id, e, exc_info=True)
 
     try:
-        member = (
+        member = await async_safe_single(
             supabase.table("group_member")
             .select("id")
             .eq("group_id", trip_id)
             .eq("user_id", user_id)
             .is_("left_datetime", None)
-            .maybe_single()
-            .execute()
         )
         if member.data:
             return
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_ensure_trip_member] group_member fallback failed for trip=%s, user=%s: %s", trip_id, user_id, e, exc_info=True)
 
-    owner = (
+    owner = await async_safe_single(
         supabase.table("trips")
         .select("id")
         .eq("id", trip_id)
         .eq("owner_id", user_id)
-        .maybe_single()
-        .execute()
     )
     if not owner.data:
         raise HTTPException(status_code=403, detail="Not a member of this group")
 
 
-def _is_trip_leader(trip_id: str, user_id: str) -> bool:
+async def _is_trip_leader(trip_id: str, user_id: str) -> bool:
     try:
-        member = (
+        member = await async_safe_single(
             supabase.table("trip_members")
             .select("id")
             .eq("trip_id", trip_id)
             .eq("user_id", user_id)
             .eq("role", "leader")
             .is_("left_at", None)
-            .maybe_single()
-            .execute()
         )
         if member.data:
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_is_trip_leader] trip_members query failed for trip=%s, user=%s: %s", trip_id, user_id, e, exc_info=True)
 
     try:
-        member = (
+        member = await async_safe_single(
             supabase.table("group_member")
             .select("id")
             .eq("group_id", trip_id)
             .eq("user_id", user_id)
             .eq("role", "leader")
             .is_("left_datetime", None)
-            .maybe_single()
-            .execute()
         )
         if member.data:
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_is_trip_leader] group_member fallback failed for trip=%s, user=%s: %s", trip_id, user_id, e, exc_info=True)
 
-    owner = (
+    owner = await async_safe_single(
         supabase.table("trips")
         .select("id")
         .eq("id", trip_id)
         .eq("owner_id", user_id)
-        .maybe_single()
-        .execute()
     )
     return bool(owner.data)
 
@@ -137,7 +133,9 @@ def _normalize_expense_row(row: dict):
 
 
 @router.get("/transactions")
-def get_transactions(
+@limiter.limit("60/minute")
+async def get_transactions(
+    request: Request,
     trip_id: Optional[str] = None,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -147,18 +145,25 @@ def get_transactions(
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token payload")
 
-        query = (
-            supabase.table("expenses")
-            .select("id, user_id, trip_id, merchant_name, place_name, category, total, date, currency, created_at, items")
-        )
-
         if trip_id:
-            _ensure_trip_member(trip_id, user_id)
-            query = query.eq("trip_id", trip_id)
+            await _ensure_trip_member(trip_id, user_id)
+            result = await asyncio.to_thread(
+                lambda: supabase.table("expenses")
+                .select("id, user_id, trip_id, merchant_name, place_name, category, total, date, currency, created_at, items")
+                .eq("trip_id", trip_id)
+                .order("created_at", desc=True)
+                .limit(500)
+                .execute()
+            )
         else:
-            query = query.eq("user_id", user_id)
-
-        result = query.order("created_at", desc=True).limit(500).execute()
+            result = await asyncio.to_thread(
+                lambda: supabase.table("expenses")
+                .select("id, user_id, trip_id, merchant_name, place_name, category, total, date, currency, created_at, items")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .limit(500)
+                .execute()
+            )
 
         transactions = [_normalize_expense_row(row) for row in (result.data or [])]
 
@@ -167,12 +172,14 @@ def get_transactions(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error fetching finance transactions: {e}")
+        logger.error("[get_transactions] %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Error fetching finance transactions")
 
 
 @router.post("/transactions")
-def create_transaction(
+@limiter.limit("30/minute")
+async def create_transaction(
+    request: Request,
     payload: CreateTransactionPayload,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -183,7 +190,7 @@ def create_transaction(
             raise HTTPException(status_code=401, detail="Invalid token payload")
 
         if payload.trip_id:
-            _ensure_trip_member(payload.trip_id, user_id)
+            await _ensure_trip_member(payload.trip_id, user_id)
 
         tx_type = payload.type if payload.type in {"expense", "income"} else "expense"
         amount = abs(float(payload.amount))
@@ -205,10 +212,8 @@ def create_transaction(
             },
         }
 
-        result = (
-            supabase.table("expenses")
-            .insert(row)
-            .execute()
+        result = await asyncio.to_thread(
+            lambda: supabase.table("expenses").insert(row).execute()
         )
 
         if not result.data:
@@ -219,12 +224,14 @@ def create_transaction(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error creating transaction: {e}")
+        logger.error("[create_transaction] %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Error creating transaction")
 
 
 @router.get("/trips/{trip_id}/expenses/anomalies")
-def get_expense_anomalies(
+@limiter.limit("10/minute")
+async def get_expense_anomalies(
+    request: Request,
     trip_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -238,10 +245,10 @@ def get_expense_anomalies(
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token payload")
 
-        _ensure_trip_member(trip_id, user_id)
+        await _ensure_trip_member(trip_id, user_id)
 
-        result = (
-            supabase.table("expenses")
+        result = await asyncio.to_thread(
+            lambda: supabase.table("expenses")
             .select("id, merchant_name, place_name, category, total, date, currency, created_at")
             .eq("trip_id", trip_id)
             .execute()
@@ -282,12 +289,14 @@ def get_expense_anomalies(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error detecting expense anomalies: {e}")
+        logger.error("[get_expense_anomalies] %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Error detecting expense anomalies")
 
 
 @router.delete("/transactions/{transaction_id}")
-def delete_transaction(
+@limiter.limit("30/minute")
+async def delete_transaction(
+    request: Request,
     transaction_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -297,8 +306,8 @@ def delete_transaction(
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token payload")
 
-        existing = (
-            supabase.table("expenses")
+        existing = await asyncio.to_thread(
+            lambda: supabase.table("expenses")
             .select("id, user_id, trip_id")
             .eq("id", transaction_id)
             .limit(1)
@@ -314,17 +323,19 @@ def delete_transaction(
 
         allowed = owner_user_id == user_id
         if (not allowed) and row_trip_id:
-            _ensure_trip_member(row_trip_id, user_id)
-            allowed = _is_trip_leader(row_trip_id, user_id)
+            await _ensure_trip_member(row_trip_id, user_id)
+            allowed = await _is_trip_leader(row_trip_id, user_id)
 
         if not allowed:
             raise HTTPException(status_code=403, detail="You do not have permission to delete this transaction")
 
-        supabase.table("expenses").delete().eq("id", transaction_id).execute()
+        await asyncio.to_thread(
+            lambda: supabase.table("expenses").delete().eq("id", transaction_id).execute()
+        )
         return {"success": True}
 
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error deleting transaction: {e}")
+        logger.error("[delete_transaction] %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Error deleting transaction")

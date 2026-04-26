@@ -39,6 +39,9 @@ export default function OfflineBanner() {
   if (!isOnline) {
     return (
       <div
+        role="alert"
+        aria-live="assertive"
+        aria-atomic="true"
         className="fixed top-0 left-0 right-0 z-[9999] flex items-center justify-center gap-2 py-2 px-4 text-sm font-medium shadow-sm"
         style={{ background: '#92400e', color: '#fef3c7' }}
       >
@@ -61,6 +64,9 @@ export default function OfflineBanner() {
   if (showReconnected) {
     return (
       <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
         className="fixed top-0 left-0 right-0 z-[9999] flex items-center justify-center gap-2 py-2 px-4 text-sm font-medium shadow-sm"
         style={{ background: '#166534', color: '#dcfce7' }}
       >

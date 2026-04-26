@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { apiFetch } from '../services/api.js';
+import { apiFetch, API_BASE, getToken } from '../services/api.js';
+import ShareStoryModal from './ShareStoryModal.jsx';
 
 // ── Category emoji map ────────────────────────────────────────────────────────
 
@@ -218,11 +219,15 @@ function DayCard({ day, index }) {
  * StoryMode — full-page shareable post-trip timeline.
  *
  * Props:
- *   tripId  — trip UUID. Falls back to :tripId URL param, then localStorage.
+ *   tripId    — trip UUID. Falls back to :tripId URL param, then localStorage.
+ *   isPublic  — when true, fetches via the no-auth public endpoint using :token param.
+ *   token     — public share token (used when isPublic=true).
  *
- * Route: /trips/:tripId/story
+ * Routes:
+ *   /trips/:tripId/story          — authenticated view
+ *   /story/public/:token          — unauthenticated public view
  */
-export default function StoryMode({ tripId: tripIdProp }) {
+export default function StoryMode({ tripId: tripIdProp, isPublic = false, token: tokenProp }) {
   const params = useParams();
   const tripId =
     tripIdProp ||
@@ -230,32 +235,51 @@ export default function StoryMode({ tripId: tripIdProp }) {
     localStorage.getItem('active_group_id') ||
     localStorage.getItem('activeGroupId') ||
     '';
+  const publicToken = tokenProp || params.token || '';
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  // Share Story state
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+  const [showShareModal, setShowShareModal] = useState(false);
 
   useEffect(() => {
-    if (!tripId) {
-      setError('No trip selected.');
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     setError('');
 
-    apiFetch(`/trips/${tripId}/story`)
-      .then((res) => {
-        setData(res);
-      })
+    let fetchPromise;
+    if (isPublic) {
+      if (!publicToken) {
+        setError('Invalid share link.');
+        setLoading(false);
+        return;
+      }
+      // Public endpoint — no auth header needed
+      fetchPromise = fetch(`${API_BASE}/public/story/${publicToken}`)
+        .then((res) => {
+          if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+          return res.json();
+        });
+    } else {
+      if (!tripId) {
+        setError('No trip selected.');
+        setLoading(false);
+        return;
+      }
+      fetchPromise = apiFetch(`/trips/${tripId}/story`);
+    }
+
+    fetchPromise
+      .then((res) => setData(res))
       .catch((err) => {
         console.error('[StoryMode] fetch error', err);
         setError('Failed to load story. Please try again.');
       })
       .finally(() => setLoading(false));
-  }, [tripId]);
+  }, [tripId, isPublic, publicToken]);
 
   function handleShare() {
     window.print();
@@ -268,6 +292,30 @@ export default function StoryMode({ tripId: tripIdProp }) {
       setTimeout(() => setCopied(false), 2000);
     } catch {
       alert('Could not copy link. Please copy the URL manually.');
+    }
+  }
+
+  async function handleShareStory() {
+    if (shareUrl) {
+      // Already generated — open the modal straight away
+      setShowShareModal(true);
+      return;
+    }
+    setShareLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/trips/${tripId}/story/share`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error('Failed to generate share link');
+      const result = await res.json();
+      setShareUrl(result.public_url);
+      setShowShareModal(true);
+    } catch (err) {
+      console.error('[StoryMode] share error:', err);
+      alert('Could not generate a share link. Please try again.');
+    } finally {
+      setShareLoading(false);
     }
   }
 
@@ -493,8 +541,56 @@ export default function StoryMode({ tripId: tripIdProp }) {
             onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.88')}
             onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
           >
-            Share Story (PDF)
+            Save as PDF
           </button>
+
+          {/* Share Story button — public view uses the current page URL */}
+          {isPublic && (
+            <button
+              onClick={() => setShowShareModal(true)}
+              style={{
+                padding: '14px 32px',
+                background: 'rgba(200,169,110,0.15)',
+                color: '#c8a96e',
+                border: '1px solid #c8a96e',
+                borderRadius: 14,
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'opacity 0.15s',
+                letterSpacing: '0.01em',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+            >
+              Share Story 📤
+            </button>
+          )}
+
+          {/* Share Story button — only on authenticated view */}
+          {!isPublic && (
+            <button
+              onClick={handleShareStory}
+              disabled={shareLoading}
+              style={{
+                padding: '14px 32px',
+                background: 'rgba(200,169,110,0.15)',
+                color: '#c8a96e',
+                border: '1px solid #c8a96e',
+                borderRadius: 14,
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: shareLoading ? 'default' : 'pointer',
+                transition: 'color 0.2s, border-color 0.2s, background 0.2s',
+                letterSpacing: '0.01em',
+                opacity: shareLoading ? 0.7 : 1,
+              }}
+              onMouseEnter={(e) => { if (!shareLoading) e.currentTarget.style.opacity = '0.85'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = shareLoading ? '0.7' : '1'; }}
+            >
+              {shareLoading ? 'Generating…' : 'Share Story 📤'}
+            </button>
+          )}
 
           <button
             onClick={handleCopyLink}
@@ -515,6 +611,16 @@ export default function StoryMode({ tripId: tripIdProp }) {
           </button>
         </div>
       </div>
+
+      {/* Share Story modal */}
+      {showShareModal && (
+        <ShareStoryModal
+          storyUrl={shareUrl || window.location.href}
+          tripName={trip.name}
+          stats={summary}
+          onClose={() => setShowShareModal(false)}
+        />
+      )}
     </div>
   );
 }

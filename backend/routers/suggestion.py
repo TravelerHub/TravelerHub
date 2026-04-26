@@ -2,11 +2,15 @@ import os
 from typing import List, Optional, Literal, Dict, Any
 
 import requests
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, Field
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from supabase_client import supabase
 from services.poi_ranker import POIRanker
+
+limiter = Limiter(key_func=get_remote_address)
 
 
 router = APIRouter(prefix="/suggestions", tags=["Suggestions"])
@@ -121,7 +125,8 @@ class RankRequest(BaseModel):
 # -------------------------
 
 @router.post("/rank")
-def rank_suggestions(body: RankRequest):
+@limiter.limit("10/minute")
+def rank_suggestions(request: Request, body: RankRequest):
     """
     Rank candidate POIs by collaborative filtering on the group's nomination/upvote history.
 

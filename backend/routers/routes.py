@@ -1,23 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
-from utils import oauth2  
-from supabase_client import supabase 
+from utils import oauth2
+from supabase_client import supabase, safe_single
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/routes", tags=["Routes"])
 
 
 def _ensure_trip_member(trip_id: str, user_id: str) -> None:
     try:
-        member = (
+        member = safe_single(
             supabase.table("group_member")
             .select("id")
             .eq("group_id", trip_id)
             .eq("user_id", user_id)
             .is_("left_datetime", None)
-            .maybe_single()
-            .execute()
         )
         if member and member.data:
             return
@@ -25,14 +27,12 @@ def _ensure_trip_member(trip_id: str, user_id: str) -> None:
         pass
 
     try:
-        tm = (
+        tm = safe_single(
             supabase.table("trip_members")
             .select("id")
             .eq("trip_id", trip_id)
             .eq("user_id", user_id)
             .is_("left_at", None)
-            .maybe_single()
-            .execute()
         )
         if tm and tm.data:
             return
@@ -40,13 +40,11 @@ def _ensure_trip_member(trip_id: str, user_id: str) -> None:
         pass
 
     try:
-        owner = (
+        owner = safe_single(
             supabase.table("trips")
             .select("id")
             .eq("id", trip_id)
             .eq("owner_id", user_id)
-            .maybe_single()
-            .execute()
         )
         if owner and owner.data:
             return
@@ -57,26 +55,22 @@ def _ensure_trip_member(trip_id: str, user_id: str) -> None:
 
 
 def _is_trip_leader(trip_id: str, user_id: str) -> bool:
-    member = (
+    member = safe_single(
         supabase.table("group_member")
         .select("id")
         .eq("group_id", trip_id)
         .eq("user_id", user_id)
         .eq("role", "leader")
         .is_("left_datetime", None)
-        .maybe_single()
-        .execute()
     )
     if member.data:
         return True
 
-    owner = (
+    owner = safe_single(
         supabase.table("trips")
         .select("id")
         .eq("id", trip_id)
         .eq("owner_id", user_id)
-        .maybe_single()
-        .execute()
     )
     return bool(owner.data)
 
@@ -104,7 +98,9 @@ class RouteResponse(BaseModel):
     created_at: datetime
 
 @router.post("/", response_model=RouteResponse)
+@limiter.limit("30/minute")
 async def save_route(
+    request: Request,
     route: RouteCreate,
     current_user=Depends(oauth2.get_current_user)
 ):
@@ -130,7 +126,9 @@ async def save_route(
     return result.data[0]
 
 @router.get("/", response_model=List[RouteResponse])
+@limiter.limit("60/minute")
 async def get_my_routes(
+    request: Request,
     trip_id: Optional[str] = None,
     current_user=Depends(oauth2.get_current_user)
 ):
@@ -147,17 +145,17 @@ async def get_my_routes(
     return result.data
 
 @router.delete("/{route_id}")
+@limiter.limit("30/minute")
 async def delete_route(
+    request: Request,
     route_id: str,
     current_user=Depends(oauth2.get_current_user)
 ):
     """Delete a saved route"""
-    route_res = (
+    route_res = safe_single(
         supabase.table("saved_routes")
         .select("id, created_by, trip_id")
         .eq("id", route_id)
-        .maybe_single()
-        .execute()
     )
     if not route_res.data:
         raise HTTPException(status_code=404, detail="Route not found")

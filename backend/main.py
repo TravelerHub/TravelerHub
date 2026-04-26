@@ -1,10 +1,15 @@
 import os
 import time
+import logging
+import traceback
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+
+logger = logging.getLogger("travelhub")
 
 from routers import auth
 from routers import user
@@ -44,11 +49,31 @@ from routers import invites
 from routers import export as export_router
 from routers import notifications
 from routers import push
+from routers import currency
+from routers import trip_wrapup
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch-all handler: log every unhandled exception with structured context."""
+    logger.error(
+        "Unhandled exception",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "error": str(exc),
+            "traceback": traceback.format_exc(),
+        },
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
 
 _cors_env = os.getenv(
     "CORS_ORIGINS",
@@ -108,11 +133,14 @@ app.include_router(cards.router)           # /cards (credit card optimizer)
 app.include_router(cards.budget_router)    # /finance/budget (trip budgets)
 app.include_router(suggestion.router)     # /suggestions (POI ranking)
 app.include_router(story.router)          # /trips/{trip_id}/story (shareable timeline)
+app.include_router(story.public_router)   # /public/story/{token} (no-auth public story)
 app.include_router(search.router)         # /search (global search across trips, expenses, photos)
 app.include_router(invites.router)        # /groups/invite/* (invite links)
 app.include_router(export_router.router)  # /export (iCal, CSV, JSON summary)
 app.include_router(notifications.router)  # /notifications
 app.include_router(push.router)            # /push (web push subscriptions)
+app.include_router(currency.router)       # /api/currency (exchange rates)
+app.include_router(trip_wrapup.router)    # /trips/{trip_id}/wrapup-data|complete
 
 
 
@@ -124,4 +152,19 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    from supabase_client import supabase
+    db_ok = False
+    db_error = None
+    try:
+        supabase.table("users").select("id").limit(1).execute()
+        db_ok = True
+    except Exception as e:
+        db_error = str(e)
+        logger.warning("Health check DB ping failed: %s", e)
+
+    if not db_ok:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "degraded", "db": "unreachable", "detail": db_error},
+        )
+    return {"status": "ok", "db": "reachable"}
