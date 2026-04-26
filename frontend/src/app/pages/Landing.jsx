@@ -2,6 +2,17 @@ import { useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import Navbar_Landing from "../../components/navbar/Navbar_landing";
 import Footer from "../../components/Footer";
+import {
+  PlaneIcon,
+  GroupIcon,
+  ChatIcon,
+  CashIcon,
+  MapIcon,
+  CameraIcon,
+  CompassIcon,
+  ChecklistIcon,
+  ConfettiIcon,
+} from "../../components/icons/NavIcons.jsx";
 
 // import beachVideo from "../../assets/images/beachVideo.mp4";
 // import vietnameVideo from "../../assets/images/vietnameVideo.mp4";
@@ -65,18 +76,18 @@ return value;
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 const FEATURES = [
-{ icon: "✈️", title: "Book in one place", desc: "Flights, hotels, cars — all managed without switching apps." },
-{ icon: "👥", title: "Plan as a group", desc: "Vote on destinations, split decisions, move faster together." },
-{ icon: "💬", title: "Chat & decide", desc: "Encrypted group chat built right into your trip." },
-{ icon: "💸", title: "Split expenses", desc: "Track costs and settle up without the awkward math." },
-{ icon: "🗺️", title: "Navigate together", desc: "Real-time maps and saved routes for the whole group." },
-{ icon: "📸", title: "Capture memories", desc: "Shared photos and receipts — automatically organized." },
+{ Icon: PlaneIcon,    title: "Book in one place", desc: "Flights, hotels, cars — all managed without switching apps." },
+{ Icon: GroupIcon,    title: "Plan as a group",   desc: "Vote on destinations, split decisions, move faster together." },
+{ Icon: ChatIcon,     title: "Chat & decide",     desc: "Encrypted group chat built right into your trip." },
+{ Icon: CashIcon,     title: "Split expenses",    desc: "Track costs and settle up without the awkward math." },
+{ Icon: MapIcon,      title: "Navigate together", desc: "Real-time maps and saved routes for the whole group." },
+{ Icon: CameraIcon,   title: "Capture memories",  desc: "Shared photos and receipts — automatically organized." },
 ];
 
 const HOW_IT_WORKS = [
-{ num: "01", icon: "🗺️", title: "Create your trip", desc: "Add a destination, travel dates, and invite your group in under a minute." },
-{ num: "02", icon: "📋", title: "Plan together", desc: "Vote on places, book flights and hotels, and share ideas in real-time." },
-{ num: "03", icon: "🎉", title: "Travel & track", desc: "Live maps, expense splits, and shared memories — all in one place." },
+{ num: "01", Icon: CompassIcon,   title: "Create your trip", desc: "Add a destination, travel dates, and invite your group in under a minute." },
+{ num: "02", Icon: ChecklistIcon, title: "Plan together",    desc: "Vote on places, book flights and hotels, and share ideas in real-time." },
+{ num: "03", Icon: ConfettiIcon,  title: "Travel & track",   desc: "Live maps, expense splits, and shared memories — all in one place." },
 ];
 
 const MARQUEE_ITEMS = [
@@ -328,13 +339,14 @@ style={revealStyle(howVisible, i * 0.18)}
 >
 <div className="relative mb-6">
 <div
-className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl"
+className="w-20 h-20 rounded-2xl flex items-center justify-center"
 style={{
 background: "#160f29",
+color: "#c8a96e",
 animation: howVisible ? `tealPulse 3s ease ${i * 0.4 + 0.5}s infinite` : "none",
 }}
 >
-{step.icon}
+<step.Icon size={36} />
 </div>
 <span
 className="absolute -top-2.5 -right-2.5 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
@@ -387,7 +399,12 @@ e.currentTarget.style.background = "rgba(255,255,255,0.04)";
 e.currentTarget.style.borderColor = "rgba(255,255,255,0.09)";
 }}
 >
-<span className="text-2xl">{f.icon}</span>
+<span
+className="inline-flex w-11 h-11 rounded-xl items-center justify-center"
+style={{ background: "rgba(110,231,183,0.12)", color: "#6ee7b7" }}
+>
+<f.Icon size={22} />
+</span>
 <p className="mt-3 font-semibold text-white">{f.title}</p>
 <p className="mt-2 text-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>{f.desc}</p>
 </div>

@@ -1,11 +1,18 @@
 import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  MapIcon,
+  WalletIcon,
+  ChatIcon,
+  GalleryIcon,
+  ProfileIcon,
+} from './icons/NavIcons.jsx';
 
 const tabs = [
-  { icon: '🗺️', label: 'Map',      path: '/navigation' },
-  { icon: '💰', label: 'Expenses', path: '/expenses' },
-  { icon: '💬', label: 'Chat',     path: '/message' },
-  { icon: '🖼️', label: 'Gallery',  path: '/gallery' },
-  { icon: '👤', label: 'Profile',  path: '/profile' },
+  { Icon: MapIcon,     label: 'Map',      path: '/navigation' },
+  { Icon: WalletIcon,  label: 'Expenses', path: '/expenses' },
+  { Icon: ChatIcon,    label: 'Chat',     path: '/message' },
+  { Icon: GalleryIcon, label: 'Gallery',  path: '/gallery' },
+  { Icon: ProfileIcon, label: 'Profile',  path: '/profile' },
 ];
 
 export default function MobileNav() {
@@ -29,7 +36,7 @@ export default function MobileNav() {
             onClick={() => navigate(tab.path)}
             className="flex-1 flex flex-col items-center justify-center gap-0.5 relative"
             style={{
-              color: isActive ? '#ffffff' : 'rgba(255,255,255,0.5)',
+              color: isActive ? '#ffffff' : 'rgba(255,255,255,0.55)',
               background: 'none',
               border: 'none',
               cursor: 'pointer',
@@ -48,8 +55,8 @@ export default function MobileNav() {
                 }}
               />
             )}
-            <span className="text-xl leading-none">{tab.icon}</span>
-            <span className="text-xs font-medium leading-none">{tab.label}</span>
+            <tab.Icon size={22} />
+            <span className="text-[11px] font-medium leading-none">{tab.label}</span>
           </button>
         );
       })}
