@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { getExchangeRates, convertAmount, CURRENCY_SYMBOLS } from "../../services/currencyService";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard";
 import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
 import {
@@ -283,6 +284,10 @@ function Finance() {
   const [stepSettling, setStepSettling] = useState(null);
   const [showHandlesModal, setShowHandlesModal] = useState(false);
 
+  // Currency conversion state
+  const [displayCurrency, setDisplayCurrency] = useState('USD');
+  const [rates, setRates] = useState(null);
+
   // Current logged-in user id (for localStorage keying)
   const currentUserId = useMemo(() => {
     try {
@@ -367,6 +372,10 @@ function Finance() {
   useEffect(() => {
     if (activeTab === "settlement") loadSummary();
   }, [activeTab, loadSummary]);
+
+  useEffect(() => {
+    getExchangeRates('USD').then(setRates).catch(() => {});
+  }, []);
 
   const handleSplitExpense = async (expenseId) => {
     setSplitLoading(true);
@@ -520,6 +529,22 @@ function Finance() {
     return map;
   }, [transactions]);
 
+  // Currency formatting helper — converts and formats an amount
+  const fmt = useCallback((amount, originalCurrency = 'USD') => {
+    const sym = CURRENCY_SYMBOLS[originalCurrency] || '';
+    const dispSym = CURRENCY_SYMBOLS[displayCurrency] || '';
+    if (!rates || displayCurrency === originalCurrency) {
+      return `${sym}${Number(amount).toFixed(2)}`;
+    }
+    const converted = convertAmount(amount, originalCurrency, displayCurrency, rates);
+    return `${dispSym}${converted.toFixed(2)}`;
+  }, [rates, displayCurrency]);
+
+  // Returns true when the displayed amount differs from the stored currency
+  const isConverted = useCallback((originalCurrency = 'USD') => {
+    return rates && displayCurrency !== (originalCurrency || 'USD');
+  }, [rates, displayCurrency]);
+
   const sortedTransactions = useMemo(() => {
     const list = [...transactions];
 
@@ -622,7 +647,7 @@ function Finance() {
               <p className="text-sm mt-0.5" style={{ color: "#5c6b73" }}>
                 Track travel expenses, income, and your overall trip balance.
               </p>
-              <div className="mt-3 flex items-center gap-2">
+              <div className="mt-3 flex items-center gap-3 flex-wrap">
                 <span className="text-xs font-semibold" style={{ color: "#6b7280" }}>Group</span>
                 <select
                   value={activeGroupId}
@@ -647,6 +672,30 @@ function Finance() {
                     })
                   )}
                 </select>
+
+                {/* Currency selector */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold" style={{ color: "#6b7280" }}>Display in</span>
+                  <select
+                    value={displayCurrency}
+                    onChange={(e) => setDisplayCurrency(e.target.value)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                    style={{ border: "1px solid #d1d5db", background: "#fff", color: "#111827" }}
+                    title="Choose display currency"
+                  >
+                    {['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'SGD', 'THB', 'MXN'].map((c) => (
+                      <option key={c} value={c}>{CURRENCY_SYMBOLS[c] || ''} {c}</option>
+                    ))}
+                  </select>
+                  {displayCurrency !== 'USD' && rates && (
+                    <span
+                      className="text-xs px-2 py-0.5 rounded-full font-medium"
+                      style={{ background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe" }}
+                    >
+                      live rates
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -705,10 +754,11 @@ function Finance() {
                 <p className="text-xs font-medium" style={{ color: "#5c6b73" }}>Total Expenses</p>
               </div>
               <p className="text-2xl font-bold" style={{ color: "#dc2626" }}>
-                ${totalExpenses.toFixed(2)}
+                {fmt(totalExpenses, 'USD')}
               </p>
               <p className="text-xs mt-1" style={{ color: "#9ca3af" }}>
                 {transactions.filter((t) => t.type === "expense").length} transactions
+                {isConverted('USD') && <span style={{ color: "#2563eb" }}> ≈ converted</span>}
               </p>
             </div>
 
@@ -724,10 +774,11 @@ function Finance() {
                 <p className="text-xs font-medium" style={{ color: "#5c6b73" }}>Total Income</p>
               </div>
               <p className="text-2xl font-bold" style={{ color: "#16a34a" }}>
-                ${totalIncome.toFixed(2)}
+                {fmt(totalIncome, 'USD')}
               </p>
               <p className="text-xs mt-1" style={{ color: "#9ca3af" }}>
                 {transactions.filter((t) => t.type === "income").length} transactions
+                {isConverted('USD') && <span style={{ color: "#2563eb" }}> ≈ converted</span>}
               </p>
             </div>
 
@@ -757,13 +808,14 @@ function Finance() {
                 className="text-2xl font-bold"
                 style={{ color: balance >= 0 ? "#fbfbf2" : "#d97706" }}
               >
-                {balance >= 0 ? "+" : ""}${balance.toFixed(2)}
+                {balance >= 0 ? "+" : "-"}{fmt(Math.abs(balance), 'USD')}
               </p>
               <p
                 className="text-xs mt-1"
                 style={{ color: balance >= 0 ? "rgba(251,251,242,0.4)" : "#9ca3af" }}
               >
                 {balance >= 0 ? "On budget" : "Over budget"}
+                {isConverted('USD') && <span style={{ color: balance >= 0 ? "#93c5fd" : "#2563eb" }}> ≈ converted</span>}
               </p>
             </div>
           </div>
@@ -794,8 +846,8 @@ function Finance() {
                           style={{ width: `${pct}%`, background: meta.color }}
                         />
                       </div>
-                      <span className="text-xs w-16 text-right shrink-0" style={{ color: "#5c6b73" }}>
-                        ${categoryTotals[cat].toFixed(0)} · {pct}%
+                      <span className="text-xs w-20 text-right shrink-0" style={{ color: "#5c6b73" }}>
+                        {fmt(categoryTotals[cat], 'USD')} · {pct}%
                       </span>
                     </div>
                   );
@@ -911,18 +963,23 @@ function Finance() {
                         className="text-sm font-bold"
                         style={{ color: t.type === "expense" ? "#dc2626" : "#16a34a" }}
                       >
-                        {t.type === "expense" ? "−" : "+"}${t.amount.toFixed(2)}
+                        {t.type === "expense" ? "−" : "+"}{fmt(t.amount, t.currency || 'USD')}
                       </span>
-                      <span
-                        className="text-xs px-2 py-0.5 rounded-full font-medium capitalize w-fit"
-                        style={
-                          t.type === "expense"
-                            ? { background: "#fef2f2", color: "#dc2626" }
-                            : { background: "#f0fdf4", color: "#16a34a" }
-                        }
-                      >
-                        {t.type}
-                      </span>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full font-medium capitalize w-fit"
+                          style={
+                            t.type === "expense"
+                              ? { background: "#fef2f2", color: "#dc2626" }
+                              : { background: "#f0fdf4", color: "#16a34a" }
+                          }
+                        >
+                          {t.type}
+                        </span>
+                        {isConverted(t.currency || 'USD') && (
+                          <span className="text-xs" style={{ color: "#2563eb" }}>≈</span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Actions */}
