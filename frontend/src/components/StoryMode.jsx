@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { apiFetch, API_BASE, getToken } from '../services/api.js';
+import ShareStoryModal from './ShareStoryModal.jsx';
 
 // ── Category emoji map ────────────────────────────────────────────────────────
 
@@ -243,7 +244,7 @@ export default function StoryMode({ tripId: tripIdProp, isPublic = false, token:
   // Share Story state
   const [shareLoading, setShareLoading] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
-  const [shareCopied, setShareCopied] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -296,12 +297,8 @@ export default function StoryMode({ tripId: tripIdProp, isPublic = false, token:
 
   async function handleShareStory() {
     if (shareUrl) {
-      // Already generated — just copy again
-      try {
-        await navigator.clipboard.writeText(shareUrl);
-        setShareCopied(true);
-        setTimeout(() => setShareCopied(false), 2000);
-      } catch { /* ignore */ }
+      // Already generated — open the modal straight away
+      setShowShareModal(true);
       return;
     }
     setShareLoading(true);
@@ -312,11 +309,8 @@ export default function StoryMode({ tripId: tripIdProp, isPublic = false, token:
       });
       if (!res.ok) throw new Error('Failed to generate share link');
       const result = await res.json();
-      const url = result.public_url;
-      setShareUrl(url);
-      await navigator.clipboard.writeText(url);
-      setShareCopied(true);
-      setTimeout(() => setShareCopied(false), 3000);
+      setShareUrl(result.public_url);
+      setShowShareModal(true);
     } catch (err) {
       console.error('[StoryMode] share error:', err);
       alert('Could not generate a share link. Please try again.');
@@ -550,6 +544,29 @@ export default function StoryMode({ tripId: tripIdProp, isPublic = false, token:
             Save as PDF
           </button>
 
+          {/* Share Story button — public view uses the current page URL */}
+          {isPublic && (
+            <button
+              onClick={() => setShowShareModal(true)}
+              style={{
+                padding: '14px 32px',
+                background: 'rgba(200,169,110,0.15)',
+                color: '#c8a96e',
+                border: '1px solid #c8a96e',
+                borderRadius: 14,
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'opacity 0.15s',
+                letterSpacing: '0.01em',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+            >
+              Share Story 📤
+            </button>
+          )}
+
           {/* Share Story button — only on authenticated view */}
           {!isPublic && (
             <button
@@ -557,9 +574,9 @@ export default function StoryMode({ tripId: tripIdProp, isPublic = false, token:
               disabled={shareLoading}
               style={{
                 padding: '14px 32px',
-                background: shareCopied ? 'rgba(74,222,128,0.15)' : 'rgba(200,169,110,0.15)',
-                color: shareCopied ? '#4ade80' : '#c8a96e',
-                border: `1px solid ${shareCopied ? '#4ade80' : '#c8a96e'}`,
+                background: 'rgba(200,169,110,0.15)',
+                color: '#c8a96e',
+                border: '1px solid #c8a96e',
                 borderRadius: 14,
                 fontSize: 14,
                 fontWeight: 700,
@@ -568,8 +585,10 @@ export default function StoryMode({ tripId: tripIdProp, isPublic = false, token:
                 letterSpacing: '0.01em',
                 opacity: shareLoading ? 0.7 : 1,
               }}
+              onMouseEnter={(e) => { if (!shareLoading) e.currentTarget.style.opacity = '0.85'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = shareLoading ? '0.7' : '1'; }}
             >
-              {shareLoading ? 'Generating…' : shareCopied ? 'Link Copied!' : shareUrl ? 'Copy Public Link' : 'Share Story'}
+              {shareLoading ? 'Generating…' : 'Share Story 📤'}
             </button>
           )}
 
@@ -592,6 +611,16 @@ export default function StoryMode({ tripId: tripIdProp, isPublic = false, token:
           </button>
         </div>
       </div>
+
+      {/* Share Story modal */}
+      {showShareModal && (
+        <ShareStoryModal
+          storyUrl={shareUrl || window.location.href}
+          tripName={trip.name}
+          stats={summary}
+          onClose={() => setShowShareModal(false)}
+        />
+      )}
     </div>
   );
 }
