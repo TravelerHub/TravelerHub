@@ -258,7 +258,7 @@ function ChatWidget() {
       {/* ── Floating Toggle Button ─────────────────────────────────────────── */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 z-[9999] hover:scale-105 active:scale-95"
+        className="fixed right-4 md:right-6 md:bottom-6 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 z-[9999] hover:scale-105 active:scale-95 chat-widget-fab"
         style={{
           background: "#160f29",
           boxShadow: "0 4px 24px rgba(22, 15, 41, 0.45)",
@@ -286,7 +286,7 @@ function ChatWidget() {
       {/* ── Chat Panel ────────────────────────────────────────────────────── */}
       {isOpen && (
         <div
-          className="fixed bottom-24 right-6 w-96 h-[560px] rounded-2xl flex flex-col z-[9998] overflow-hidden"
+          className="fixed right-4 left-4 md:left-auto md:right-6 md:bottom-24 md:w-96 w-auto rounded-2xl flex flex-col z-[9998] overflow-hidden chat-widget-panel"
           style={{
             background: "#fbfbf2",
             border: "1px solid #d1d5db",

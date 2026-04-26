@@ -84,8 +84,11 @@ class MapErrorBoundary extends Component {
   render() {
     if (this.state.crashed) {
       return (
-        <div className="flex-1 flex items-center justify-center bg-gray-100 text-gray-500 text-sm">
-          Map unavailable — WebGL may not be supported in this browser.
+        <div className="flex-1 flex items-center justify-center bg-gray-100 px-6 text-center">
+          <div className="max-w-xs">
+            <p className="text-sm font-semibold text-gray-700 mb-1">Map unavailable</p>
+            <p className="text-xs text-gray-500">WebGL may not be supported in this browser.</p>
+          </div>
         </div>
       );
     }
@@ -2372,7 +2375,10 @@ function Navigation() {
 
             {/* Mobile route summary pill */}
             {!isNavigating && currentRoute && (
-              <div className="absolute bottom-4 left-3 right-3 z-10 lg:hidden">
+              <div
+                className="absolute left-3 right-3 z-10 lg:hidden"
+                style={{ bottom: "calc(72px + env(safe-area-inset-bottom, 0px))" }}
+              >
                 <div className="rounded-xl shadow-lg p-3" style={{ background: '#160f29' }}>
                   <div className="flex items-center gap-3">
                     <div className="flex-1 min-w-0">
@@ -2457,7 +2463,7 @@ function Navigation() {
             {!isNavigating && !addPinMode && (
               <div
                 ref={mapSearchRef}
-                className="absolute top-4 left-1/2 -translate-x-1/2 z-20 w-full max-w-sm px-3"
+                className="absolute top-16 lg:top-4 left-1/2 -translate-x-1/2 z-20 w-full max-w-sm px-3"
               >
                 {/* Pill input */}
                 <div className="flex items-center bg-white rounded-full shadow-lg px-4 py-2.5 gap-2">

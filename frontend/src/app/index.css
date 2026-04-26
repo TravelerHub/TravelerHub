@@ -228,3 +228,26 @@ button:focus-visible {
 .fc .fc-next-button {
   padding: 6px 10px;
 }
+
+/* ── ChatWidget mobile positioning (lift above bottom nav) ───────────── */
+.chat-widget-fab {
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+}
+
+.chat-widget-panel {
+  bottom: calc(140px + env(safe-area-inset-bottom, 0px));
+  top: calc(80px + env(safe-area-inset-top, 0px));
+  max-height: calc(100vh - 220px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 768px) {
+  .chat-widget-fab {
+    bottom: 1.5rem;
+  }
+  .chat-widget-panel {
+    bottom: 6rem;
+    top: auto;
+    max-height: none;
+    height: 560px;
+  }
+}
