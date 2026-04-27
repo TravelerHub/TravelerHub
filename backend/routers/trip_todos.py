@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import date
 from utils import oauth2
+from utils.trip_access import require_trip_member_sync
 from supabase_client import supabase
 
 router = APIRouter(prefix="/todos", tags=["Trip Todos"])
@@ -26,9 +27,10 @@ class TodoUpdate(BaseModel):
 
 @router.get("/")
 def list_todos(trip_id: str = Query(...), current_user=Depends(oauth2.get_current_user)):
+    require_trip_member_sync(trip_id, current_user["id"])
     result = (
         supabase.table("trip_todos")
-        .select("*, users!trip_todos_created_by_fkey(username, full_name)")
+        .select("*, users!trip_todos_created_by_fkey(username)")
         .eq("trip_id", trip_id)
         .order("created_at", desc=True)
         .execute()
@@ -39,6 +41,7 @@ def list_todos(trip_id: str = Query(...), current_user=Depends(oauth2.get_curren
 @router.post("/", status_code=201)
 def create_todo(body: TodoCreate, current_user=Depends(oauth2.get_current_user)):
     user_id = current_user["id"]
+    require_trip_member_sync(body.trip_id, user_id)
     payload = {
         "trip_id": body.trip_id,
         "created_by": user_id,
@@ -57,9 +60,13 @@ def create_todo(body: TodoCreate, current_user=Depends(oauth2.get_current_user))
 def update_todo(todo_id: str, body: TodoUpdate, current_user=Depends(oauth2.get_current_user)):
     user_id = current_user["id"]
 
-    existing = supabase.table("trip_todos").select("created_by, done").eq("id", todo_id).execute()
+    existing = supabase.table("trip_todos").select("created_by, done, trip_id").eq("id", todo_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Todo not found")
+
+    # Anyone in the trip can mark a todo done; only the creator can change
+    # text/category/priority. Block non-members entirely.
+    require_trip_member_sync(existing.data[0]["trip_id"], user_id)
 
     payload = {}
     if body.text is not None:
@@ -95,9 +102,10 @@ def update_todo(todo_id: str, body: TodoUpdate, current_user=Depends(oauth2.get_
 def delete_todo(todo_id: str, current_user=Depends(oauth2.get_current_user)):
     user_id = current_user["id"]
 
-    existing = supabase.table("trip_todos").select("created_by").eq("id", todo_id).execute()
+    existing = supabase.table("trip_todos").select("created_by, trip_id").eq("id", todo_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Todo not found")
+    require_trip_member_sync(existing.data[0]["trip_id"], user_id)
     if existing.data[0]["created_by"] != user_id:
         raise HTTPException(status_code=403, detail="Only the creator can delete this todo")
 

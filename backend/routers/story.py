@@ -30,6 +30,7 @@ from collections import Counter, defaultdict
 from fastapi import APIRouter, Depends, HTTPException, Request
 from supabase_client import supabase, safe_single
 from utils import oauth2
+from utils.trip_access import require_trip_member
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -183,7 +184,8 @@ async def get_trip_story(
     Fetches trip metadata, photos, and expenses, then groups them by date
     and computes summary statistics.
     """
-    _uid(current_user)  # auth check — user must be authenticated
+    user_id = _uid(current_user)
+    await require_trip_member(trip_id, user_id)
     return _build_story_payload(trip_id)
 
 
@@ -215,6 +217,7 @@ async def generate_story_share_token(
       );
     """
     user_id = _uid(current_user)
+    await require_trip_member(trip_id, user_id)
 
     # Verify the trip exists
     try:

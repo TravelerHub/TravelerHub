@@ -481,7 +481,33 @@ def get_messages(
 # ── WebSocket ──────────────────────────────────────────────────────────────────
 
 @router.websocket("/ws/conversations/{conversation_id}")
-async def ws_conversation(websocket: WebSocket, conversation_id: str):
+async def ws_conversation(websocket: WebSocket, conversation_id: str, token: str = Query(default=None)):
+    # WS auth: browsers can't send custom Authorization headers on a
+    # WebSocket handshake, so the client passes its JWT as ?token=...
+    # We verify the JWT BEFORE accept() so unauthenticated peers get a 1008
+    # close code without ever joining the room (and without ever receiving
+    # any messages from other members).
+    if not token:
+        await websocket.close(code=1008, reason="Missing auth token")
+        return
+    try:
+        token_data = oauth2.verify_access_token(
+            token,
+            HTTPException(status_code=401, detail="Invalid token"),
+        )
+        user_id = token_data.id
+    except Exception:
+        await websocket.close(code=1008, reason="Invalid auth token")
+        return
+
+    # Verify conversation membership before accepting — same guard the REST
+    # endpoints use (line 42 ensure_conversation_member).
+    try:
+        ensure_conversation_member(conversation_id, user_id)
+    except HTTPException:
+        await websocket.close(code=1008, reason="Not a member of this conversation")
+        return
+
     await websocket.accept()
 
     async with rooms_lock:

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from utils import oauth2
+from utils.trip_access import require_trip_member_sync
 from supabase_client import supabase
 
 router = APIRouter(prefix="/polls", tags=["Polls"])
@@ -197,6 +198,7 @@ def create_poll(body: PollCreate, current_user=Depends(oauth2.get_current_user))
 @router.get("/trip/{trip_id}")
 def list_polls(trip_id: str, current_user=Depends(oauth2.get_current_user)):
     """List all polls for a trip."""
+    require_trip_member_sync(trip_id, current_user["id"])
     _get_trip(trip_id)   # validates trip exists
 
     res = (
@@ -226,6 +228,8 @@ def list_polls(trip_id: str, current_user=Depends(oauth2.get_current_user)):
 @router.get("/{poll_id}")
 def get_poll(poll_id: str, current_user=Depends(oauth2.get_current_user)):
     """Get a single poll with all options and the caller's current vote."""
+    poll = _get_poll(poll_id)
+    require_trip_member_sync(poll["trip_id"], current_user["id"])
     return _poll_with_options(poll_id, current_user["id"])
 
 
@@ -237,6 +241,7 @@ def add_option(
 ):
     """Add an option to an open poll. Any trip member can add options."""
     poll = _get_poll(poll_id)
+    require_trip_member_sync(poll["trip_id"], current_user["id"])
     if poll["status"] != "open":
         raise HTTPException(status_code=400, detail="Cannot add options to a closed poll")
 
@@ -298,6 +303,7 @@ def cast_vote(
 ):
     """Cast or change a vote. One vote per user per poll."""
     poll = _get_poll(poll_id)
+    require_trip_member_sync(poll["trip_id"], current_user["id"])
     if poll["status"] != "open":
         raise HTTPException(status_code=400, detail="Poll is closed")
 
@@ -365,6 +371,7 @@ def cast_vote(
 def remove_vote(poll_id: str, current_user=Depends(oauth2.get_current_user)):
     """Retract the current user's vote."""
     poll = _get_poll(poll_id)
+    require_trip_member_sync(poll["trip_id"], current_user["id"])
     if poll["status"] != "open":
         raise HTTPException(status_code=400, detail="Poll is closed")
 
