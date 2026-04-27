@@ -41,57 +41,6 @@ function TypingIndicator({ typingUsers }) {
   );
 }
 
-// ── Read receipt avatar dots ─────────────────────────────────────────────────
-function ReadReceipts({ readers, members }) {
-  if (!readers || readers.length === 0) return null;
-
-  const MAX_SHOWN = 3;
-  const shown = readers.slice(0, MAX_SHOWN);
-  const extra = readers.length - MAX_SHOWN;
-
-  const getInitials = (userId) => {
-    const member = members?.find((m) => m.id === userId);
-    const name = member?.username || member?.email || userId || "?";
-    return name.slice(0, 2).toUpperCase();
-  };
-
-  return (
-    <div className="flex items-center gap-0.5 justify-end mt-0.5 pr-1">
-      {shown.map((uid) => (
-        <span
-          key={uid}
-          title={members?.find((m) => m.id === uid)?.username || uid}
-          className="flex items-center justify-center rounded-full text-[7px] font-bold shrink-0"
-          style={{
-            width: "16px",
-            height: "16px",
-            background: "#183a37",
-            color: "#ffffff",
-            fontSize: "7px",
-          }}
-        >
-          {getInitials(uid)}
-        </span>
-      ))}
-      {extra > 0 && (
-        <span
-          className="flex items-center justify-center rounded-full shrink-0"
-          style={{
-            width: "16px",
-            height: "16px",
-            background: "#e5e7eb",
-            color: "#6b7280",
-            fontSize: "7px",
-            fontWeight: 700,
-          }}
-        >
-          +{extra}
-        </span>
-      )}
-    </div>
-  );
-}
-
 export default function ChatWindow({
   loading,
   title,
@@ -401,34 +350,40 @@ export default function ChatWindow({
 
       <div className="flex flex-col h-full">
 
-        {/* ── Chat header ─────────────────────────────────────────────── */}
+        {/* ── Chat header (sticky, Telegram-style) ─────────────────────── */}
         <div
-          className="shrink-0 flex items-center gap-3 px-4 py-3"
-          style={{ borderBottom: "1px solid #ebebeb" }}
+          className="sticky top-0 z-10 shrink-0 flex items-center gap-3 px-4 py-2.5"
+          style={{
+            background: "#ffffff",
+            borderBottom: "1px solid #ebebeb",
+            backdropFilter: "saturate(180%) blur(8px)",
+          }}
         >
           <Avatar name={title} size="md" />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-bold truncate leading-tight" style={{ color: "#160f29" }}>
               {title || "Conversation"}
             </p>
-            <p className="text-[11px] mt-0.5" style={{ color: "#9ca3af" }}>
+            <p className="text-[11px] mt-0.5 truncate" style={{ color: "#5c6b73" }}>
               {subtitle}
             </p>
           </div>
 
-          {/* Encryption status dot */}
+          {/* Encryption status — single small lock icon, color tells the state */}
           <span
-            className="shrink-0 flex items-center gap-1.5 text-[10px] font-medium px-2.5 py-1 rounded-full"
+            className="shrink-0 inline-flex items-center justify-center rounded-full"
+            title={encryptionError ? `Encryption issue: ${encryptionError}` : "End-to-end encrypted"}
             style={{
-              background: encryptionError ? "#fef2f2" : "rgba(24,58,55,0.08)",
-              color: encryptionError ? "#dc2626" : "#183a37",
+              width: 26,
+              height: 26,
+              background: encryptionError ? "rgba(220,38,38,0.10)" : "rgba(22,163,74,0.10)",
+              color: encryptionError ? "#dc2626" : "#16a34a",
             }}
           >
-            <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ background: encryptionError ? "#dc2626" : "#16a34a" }}
-            />
-            {encryptionError ? "Encryption issue" : "Encrypted"}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="5" y="11" width="14" height="9" rx="2" />
+              <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+            </svg>
           </span>
         </div>
 
