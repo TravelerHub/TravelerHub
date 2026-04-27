@@ -180,7 +180,22 @@ export const chatApi = {
    * member redistributes the key.
    */
   rotateKeypair: async (conversationId) => {
-    const keypair = encryptionUtils.generateKeypair();
+    // Prefer the deterministic derivation from the user's symmetric_key so
+    // that "rotation" produces the same keypair every device for this user
+    // arrives at — otherwise rotating on the laptop just generates yet
+    // another random key the phone can't match. Falls back to the legacy
+    // random rotation if the symmetric_key isn't available locally for any
+    // reason (e.g. an older session that predates this change).
+    const symmetricKey = localStorage.getItem("card_symmetric_key");
+    let keypair;
+    if (symmetricKey) {
+      try {
+        keypair = encryptionUtils.generateKeypairFromSeed(symmetricKey);
+      } catch (err) {
+        console.warn("[rotateKeypair] deterministic derivation failed, falling back to random:", err);
+      }
+    }
+    if (!keypair) keypair = encryptionUtils.generateKeypair();
     encryptionUtils.storeKeypair(keypair);
     await chatApi.uploadPublicKey(keypair.public_key);
 

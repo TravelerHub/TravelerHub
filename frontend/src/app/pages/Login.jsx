@@ -39,23 +39,42 @@ function Login() {
         localStorage.setItem("card_symmetric_key", data.symmetric_key);
       }
 
-      // Set up E2E encryption keypair if this device doesn't have one yet.
-      // Private key stays in localStorage — only the public key is uploaded.
-      if (!encryptionUtils.getKeypair()) {
+      // Derive the chat keypair deterministically from the user's
+      // server-stored symmetric_key. Every device that logs in as the
+      // same user lands on the *same* keypair, so a message encrypted on
+      // the phone is decryptable on the laptop without needing peers to
+      // re-distribute the session key. Also overwrites any previously
+      // generated random keypair on this device — old conversations may
+      // require a one-time peer redistribution because the old session
+      // keys were encrypted to the random public key, but new messages
+      // and any conversation a peer reopens will sync cleanly.
+      if (data.symmetric_key) {
+        try {
+          const keypair = encryptionUtils.generateKeypairFromSeed(data.symmetric_key);
+          encryptionUtils.storeKeypair(keypair);
+          await chatApi.uploadPublicKey(keypair.public_key);
+        } catch (err) {
+          console.error("Deterministic keypair setup failed:", err);
+          // Fall through to the legacy random keypair so chat still works.
+          if (!encryptionUtils.getKeypair()) {
+            try {
+              const keypair = encryptionUtils.generateKeypair();
+              encryptionUtils.storeKeypair(keypair);
+              await chatApi.uploadPublicKey(keypair.public_key);
+            } catch (err2) {
+              console.error("Keypair fallback also failed:", err2);
+            }
+          }
+        }
+      } else if (!encryptionUtils.getKeypair()) {
+        // No symmetric_key in the login response (older backend?) — fall
+        // back to a one-off random keypair so chat works on this device.
         try {
           const keypair = encryptionUtils.generateKeypair();
           encryptionUtils.storeKeypair(keypair);
           await chatApi.uploadPublicKey(keypair.public_key);
         } catch (err) {
           console.error("Keypair setup failed:", err);
-        }
-      } else {
-        // Keypair exists locally — ensure public key is on the server
-        try {
-          const keypair = encryptionUtils.getKeypair();
-          await chatApi.uploadPublicKey(keypair.public_key);
-        } catch (err) {
-          console.error("Public key upload failed:", err);
         }
       }
 
