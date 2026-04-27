@@ -88,6 +88,59 @@ export function MapHeart({ size = 44, color = "#183a37", accent = "#c8a96e" }) {
   );
 }
 
+// ── BellQuiet: empty notifications inbox ─────────────────────────────────
+export function BellQuiet({ size = 44, color = "#183a37", accent = "#c8a96e" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" {...baseProps} stroke={color} strokeWidth="2.4">
+      {/* Bell body */}
+      <path d="M14 32V22a10 10 0 0 1 20 0v10l3 3H11z" />
+      {/* Clapper */}
+      <path d="M21 38a3 3 0 0 0 6 0" />
+      {/* "z" sparkle so it reads as quiet/asleep, not broken */}
+      <path d="M38 12h5l-5 5h5" stroke={accent} strokeWidth="1.8" />
+      <circle cx="11" cy="14" r="1" fill={accent} stroke="none" />
+    </svg>
+  );
+}
+
+// ── ChecklistSpark: empty to-do list ─────────────────────────────────────
+export function ChecklistSpark({ size = 44, color = "#183a37", accent = "#c8a96e" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" {...baseProps} stroke={color} strokeWidth="2.4">
+      {/* Clipboard body */}
+      <rect x="11" y="10" width="26" height="32" rx="3" />
+      {/* Clip */}
+      <path d="M19 8h10v6H19z" />
+      {/* Checked line */}
+      <path d="M16 22l3 3 5-5" stroke={accent} strokeWidth="2.2" />
+      {/* Other rows (faint) */}
+      <path d="M27 24h7" />
+      <path d="M16 32h18" />
+      <path d="M16 38h12" />
+      {/* Sparkle */}
+      <path d="M40 6l0.7 1.6 1.6 0.7-1.6 0.7-0.7 1.6-0.7-1.6-1.6-0.7 1.6-0.7z" fill={accent} stroke={accent} strokeWidth="0.8" />
+    </svg>
+  );
+}
+
+// ── BallotSpark: empty polls / no votes yet ──────────────────────────────
+export function BallotSpark({ size = 44, color = "#183a37", accent = "#c8a96e" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" {...baseProps} stroke={color} strokeWidth="2.4">
+      {/* Box */}
+      <path d="M9 22h30v18a2 2 0 0 1-2 2H11a2 2 0 0 1-2-2z" />
+      {/* Slot */}
+      <path d="M16 22v-2h16v2" />
+      {/* Ballot poking in */}
+      <path d="M21 14h6v8h-6z" />
+      <path d="M22.5 17h3" stroke={accent} strokeWidth="2" />
+      <path d="M22.5 19.5h3" stroke={accent} strokeWidth="2" />
+      {/* Sparkle */}
+      <path d="M40 8l0.7 1.6 1.6 0.7-1.6 0.7-0.7 1.6-0.7-1.6-1.6-0.7 1.6-0.7z" fill={accent} stroke={accent} strokeWidth="0.8" />
+    </svg>
+  );
+}
+
 // ── PartyWelcome: celebratory empty / first-run state ─────────────────────
 export function PartyWelcome({ size = 44, color = "#183a37", accent = "#c8a96e" }) {
   return (
