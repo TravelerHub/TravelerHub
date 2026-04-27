@@ -167,3 +167,13 @@ export function SparkleIcon({ size = 24, className }) {
     </svg>
   );
 }
+
+// Friendly bell — rounded, plump, slight bell-bottom flare. Used in the navbar.
+export function BellIcon({ size = 24, className }) {
+  return (
+    <svg width={size} height={size} className={className} {...baseProps}>
+      <path d="M6.5 16.5 5 18.2a0.6 0.6 0 0 0 0.45 1H18.55a0.6 0.6 0 0 0 0.45-1L17.5 16.5V11.5a5.5 5.5 0 0 0-4-5.3V5a1.5 1.5 0 0 0-3 0v1.2a5.5 5.5 0 0 0-4 5.3v5Z" />
+      <path d="M10 19.5a2 2 0 0 0 4 0" />
+    </svg>
+  );
+}

@@ -28,7 +28,10 @@ supabase.postgrest.session = httpx.Client(
 )
 
 # Admin client using service role key — bypasses RLS for server-side storage ops.
-# Falls back to the anon client if the key is not configured.
+# Falls back to the anon client if the key is not configured. Callers can read
+# `has_service_role` to surface a clear error in that case rather than letting
+# RLS reject the operation with an opaque storage / DB error.
+has_service_role: bool = bool(SUPABASE_SERVICE_ROLE_KEY)
 supabase_admin: Client = (
     create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     if SUPABASE_SERVICE_ROLE_KEY

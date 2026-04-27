@@ -260,25 +260,47 @@ async def upload_trip_media(
     safe_filename = raw_filename.replace(" ", "_")
     file_path = f"{trip_id}/{random_hex}_{safe_filename}"
 
+    # Hard-fail loudly when the deploy is missing the service role key — without
+    # it `supabase_admin` falls back to the anon client and storage uploads
+    # silently 4xx with an opaque RLS error.
+    if not has_service_role:
+        logger.error("[upload_trip_media] SUPABASE_SERVICE_ROLE_KEY is not set in this environment")
+        raise HTTPException(
+            status_code=503,
+            detail="Photo uploads aren't configured on the server (missing storage credentials). Please ask an admin to set SUPABASE_SERVICE_ROLE_KEY.",
+        )
+
     try:
         file_content = await file.read()
+    except Exception as e:
+        logger.error("[upload_trip_media] read failure trip=%s: %s", trip_id, e, exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Could not read uploaded file: {type(e).__name__}")
 
-        # Validate file size after reading (nginx enforces 20 MB, but catch it here too
-        # to give a clear error message instead of a silent storage failure)
-        if len(file_content) > MAX_UPLOAD_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail=f"File too large. Maximum allowed size is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
-            )
+    if len(file_content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum allowed size is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
+        )
 
+    # Step 1: storage upload — distinct error so we know if the bucket / key is
+    # the problem.
+    try:
         supabase_admin.storage.from_(BUCKET_NAME).upload(
             path=file_path,
             file=file_content,
             file_options={"content-type": file.content_type},
         )
-
         public_url = supabase_admin.storage.from_(BUCKET_NAME).get_public_url(file_path)
+    except Exception as e:
+        logger.error("[upload_trip_media] storage upload failed trip=%s: %s", trip_id, e, exc_info=True)
+        # Surface enough detail for the client error toast to be useful, but
+        # keep it short and free of credentials.
+        msg = str(e)[:160] or type(e).__name__
+        raise HTTPException(status_code=502, detail=f"Storage upload failed: {msg}")
 
+    # Step 2: DB insert — separate so we can tell storage vs metadata failures
+    # apart in the logs and the client error message.
+    try:
         db_record = {
             "trip_id": trip_id,
             "storage_path": file_path,
@@ -287,19 +309,15 @@ async def upload_trip_media(
             "uploaded_by_name": current_user.get("username") or current_user.get("email") or "Group Member",
             "caption": caption,
         }
-
         db_res = supabase.table("trip_media").insert(db_record).execute()
         saved = (db_res.data or [None])[0]
         if not saved:
-            raise Exception("Database insert returned empty.")
-
+            raise Exception("trip_media insert returned no row")
         return saved
-
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error("[upload_trip_media] trip=%s: %s", trip_id, e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to upload media")
+        logger.error("[upload_trip_media] DB insert failed trip=%s: %s", trip_id, e, exc_info=True)
+        msg = str(e)[:160] or type(e).__name__
+        raise HTTPException(status_code=500, detail=f"Saved file but couldn't write metadata: {msg}")
 
 
 # ── PATCH: Update caption ─────────────────────────────────────────────────────
