@@ -314,49 +314,51 @@ function BookingCard({ b, onEdit, onCancel, onDelete, loading }) {
   const isCancelled = (b.status || "active") === "cancelled";
   return (
     <div
-      className="rounded-2xl p-4 flex gap-4 transition"
+      className="rounded-2xl p-4 flex flex-col sm:flex-row gap-3 sm:gap-4 transition"
       style={{
         background: "#fff",
         border: "1px solid #e5e7eb",
         opacity: isCancelled ? 0.65 : 1,
       }}
     >
-      {/* Icon */}
-      <div
-        className="w-11 h-11 shrink-0 flex items-center justify-center rounded-xl text-xl"
-        style={{ background: "#f3f4f6" }}
-      >
-        {icon}
-      </div>
-
-      {/* Body */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap mb-1">
-          <p className="font-semibold text-sm truncate" style={{ color: "#160f29" }}>{b.title}</p>
-          <StatusBadge status={b.status} />
+      <div className="flex gap-4 flex-1 min-w-0">
+        {/* Icon */}
+        <div
+          className="w-11 h-11 shrink-0 flex items-center justify-center rounded-xl text-xl"
+          style={{ background: "#f3f4f6" }}
+        >
+          {icon}
         </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs" style={{ color: "#5c6b73" }}>
-          {b.vendor && <span>🏢 {b.vendor}</span>}
-          {b.confirmation_code && <span>🔖 {b.confirmation_code}</span>}
-          {b.start_time && (
-            <span>
-              📅 {fmtDate(b.start_time)} {fmtTime(b.start_time)}
-              {b.end_time && ` → ${fmtDate(b.end_time)}`}
-            </span>
+
+        {/* Body */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <p className="font-semibold text-sm truncate" style={{ color: "#160f29" }}>{b.title}</p>
+            <StatusBadge status={b.status} />
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs" style={{ color: "#5c6b73" }}>
+            {b.vendor && <span>🏢 {b.vendor}</span>}
+            {b.confirmation_code && <span>🔖 {b.confirmation_code}</span>}
+            {b.start_time && (
+              <span>
+                📅 {fmtDate(b.start_time)} {fmtTime(b.start_time)}
+                {b.end_time && ` → ${fmtDate(b.end_time)}`}
+              </span>
+            )}
+            {b.cost != null && <span>💰 {b.cost} {b.currency || "USD"}</span>}
+          </div>
+          {b.notes && (
+            <p className="mt-1.5 text-xs leading-relaxed" style={{ color: "#6b7280" }}>{b.notes}</p>
           )}
-          {b.cost != null && <span>💰 {b.cost} {b.currency || "USD"}</span>}
         </div>
-        {b.notes && (
-          <p className="mt-1.5 text-xs leading-relaxed" style={{ color: "#6b7280" }}>{b.notes}</p>
-        )}
       </div>
 
-      {/* Actions */}
-      <div className="flex flex-col gap-1.5 shrink-0">
+      {/* Actions — row on mobile (full-width buttons), column on sm+ */}
+      <div className="flex sm:flex-col gap-1.5 sm:shrink-0">
         <button
           onClick={() => onEdit(b)}
           disabled={loading}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium transition hover:bg-gray-100"
+          className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-medium transition hover:bg-gray-100"
           style={{ border: "1px solid #e5e7eb", color: "#374151" }}
         >
           Edit
@@ -364,7 +366,7 @@ function BookingCard({ b, onEdit, onCancel, onDelete, loading }) {
         <button
           onClick={() => onCancel(b)}
           disabled={loading || isCancelled}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium transition hover:bg-amber-50 disabled:opacity-40"
+          className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-medium transition hover:bg-amber-50 disabled:opacity-40"
           style={{ border: "1px solid #fcd34d", color: "#92400e" }}
         >
           Cancel
@@ -372,7 +374,7 @@ function BookingCard({ b, onEdit, onCancel, onDelete, loading }) {
         <button
           onClick={() => onDelete(b)}
           disabled={loading}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium transition hover:bg-red-50"
+          className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-medium transition hover:bg-red-50"
           style={{ border: "1px solid #fca5a5", color: "#dc2626" }}
         >
           Delete
@@ -590,7 +592,7 @@ export default function Booking({ tripId: tripIdProp }) {
           </div>
 
           {/* ── Summary cards ── */}
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { label: "Total Bookings",  value: counts.all,                        icon: "📋" },
               { label: "Hotels",          value: counts.hotel,                       icon: "🏨" },

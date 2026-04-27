@@ -485,10 +485,12 @@ export default function Dashboard() {
             </div>
           )}
 
-          <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1.4fr 1fr" }}>
+          {/* Mobile: single column. lg+: 3-column bento with the existing
+              1fr / 1.4fr / 1fr ratios. col-span overrides only kick in on lg. */}
+          <div className="grid gap-4 grid-cols-1 lg:grid-cols-[1fr_1.4fr_1fr]">
 
             {/* ── ROW 1 · Weather (col 1-2) + Map Snapshot (col 3) ────────── */}
-            <Widget title="Weather" className="col-span-2" style={{ minHeight: "88px" }}>
+            <Widget title="Weather" className="lg:col-span-2" style={{ minHeight: "88px" }}>
               <WeatherWidget />
             </Widget>
 
@@ -659,7 +661,7 @@ export default function Dashboard() {
               <TodoWidget />
             </Widget>
 
-            <Widget title="Calendar" className="col-span-2" style={{ minHeight: "220px" }}>
+            <Widget title="Calendar" className="lg:col-span-2" style={{ minHeight: "220px" }}>
               <div className="h-full p-4">
                 <MiniCalendar events={calendarEvents} />
               </div>
@@ -670,17 +672,17 @@ export default function Dashboard() {
               <LocalInfoWidget />
             </Widget>
 
-            <Widget title="Booking Summary" className="col-span-2" style={{ minHeight: "260px" }}>
+            <Widget title="Booking Summary" className="lg:col-span-2" style={{ minHeight: "260px" }}>
               <BookingSummaryWidget bookings={upcomingBookings} />
             </Widget>
 
             {/* ── ROW 5 · Trip Gallery ──────────────────────────────────────── */}
-            <Widget title="Trip Gallery" className="col-span-2" style={{ minHeight: "260px" }}>
+            <Widget title="Trip Gallery" className="lg:col-span-2" style={{ minHeight: "260px" }}>
               <GalleryWidget />
             </Widget>
 
             {/* ── ROW 6 · Group Activity Feed ──────────────────────────────── */}
-            <Widget title="Group Activity" className="col-span-3" style={{ minHeight: "200px" }}>
+            <Widget title="Group Activity" className="lg:col-span-3" style={{ minHeight: "200px" }}>
               {activeTripId ? (
                 <ActivityFeed tripId={activeTripId} limit={15} />
               ) : (
