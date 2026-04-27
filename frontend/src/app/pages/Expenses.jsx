@@ -56,6 +56,7 @@ function Expenses() {
   const [checklistChecked, setChecklistChecked] = useState({});
   const [savingChecklist, setSavingChecklist] = useState(false);
   const [checklistSaved, setChecklistSaved] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState("");
 
   // Handle file selection (from gallery)
   const handleFileSelect = (e) => {
@@ -137,6 +138,8 @@ function Expenses() {
   const handleSaveExpense = async () => {
     const token = localStorage.getItem("token");
     const data = isEditing ? editData : result;
+    setError("");
+    setSaveSuccess("");
     try {
       const response = await fetch(`${API_BASE}/vision/save-expense`, {
         method: "POST",
@@ -148,14 +151,16 @@ function Expenses() {
       });
       if (response.ok) {
         haptic('light');
-        alert("Expense saved successfully!");
+        setSaveSuccess("Expense saved.");
+        setTimeout(() => setSaveSuccess(""), 2500);
         handleClear();
       } else {
-        alert("Failed to save expense.");
+        const detail = await response.json().catch(() => ({}));
+        setError(detail?.detail || `Couldn't save expense (${response.status}).`);
       }
     } catch (err) {
       console.error("Save error:", err);
-      alert("Failed to save expense.");
+      setError("Couldn't reach the server to save this expense.");
     }
   };
 
@@ -370,6 +375,16 @@ function Expenses() {
                     style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca" }}
                   >
                     {error}
+                  </div>
+                )}
+
+                {saveSuccess && (
+                  <div
+                    className="mt-4 p-3 rounded-xl text-sm flex items-center gap-2"
+                    style={{ background: "#ecfdf5", color: "#065f46", border: "1px solid #a7f3d0" }}
+                  >
+                    <CheckIcon className="w-4 h-4" />
+                    {saveSuccess}
                   </div>
                 )}
               </div>
@@ -702,7 +717,7 @@ function Expenses() {
                                 setChecklistSaved(true);
                               } catch (err) {
                                 console.error('Save checklist error:', err);
-                                alert('Failed to save checklist.');
+                                setError(err?.message || "Failed to save checklist.");
                               } finally {
                                 setSavingChecklist(false);
                               }

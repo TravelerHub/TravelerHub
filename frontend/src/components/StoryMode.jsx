@@ -292,7 +292,7 @@ export default function StoryMode({ tripId: tripIdProp, isPublic = false, token:
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      alert('Could not copy link. Please copy the URL manually.');
+      setError('Could not copy link. Please copy the URL manually.');
     }
   }
 
@@ -314,7 +314,7 @@ export default function StoryMode({ tripId: tripIdProp, isPublic = false, token:
       setShowShareModal(true);
     } catch (err) {
       console.error('[StoryMode] share error:', err);
-      alert('Could not generate a share link. Please try again.');
+      setError('Could not generate a share link. Please try again.');
     } finally {
       setShareLoading(false);
     }
