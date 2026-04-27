@@ -172,7 +172,9 @@ export default function GroupVote() {
     try {
       const data = await pollService.getPoll(activePoll.id);
       setActivePoll(data);
-    } catch (_) {}
+    } catch (err) {
+      console.error("[GroupVote] refresh failed:", err);
+    }
   }, [activePoll]);
 
   // ── Create poll ────────────────────────────────────────────────────────────

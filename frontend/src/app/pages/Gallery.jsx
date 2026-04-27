@@ -55,6 +55,11 @@ export default function Gallery() {
   // Edit caption
   const [editingId, setEditingId] = useState(null);
   const [editCaption, setEditCaption] = useState("");
+  const [toast, setToast] = useState("");
+  const showToast = useCallback((msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 2200);
+  }, []);
 
   // Social: likes, saves, share — track which item is in-flight
   const [likingId, setLikingId] = useState(null);
@@ -381,7 +386,7 @@ export default function Gallery() {
       try { await navigator.share(shareData); } catch { /* user cancelled */ }
     } else {
       await navigator.clipboard.writeText(photo.public_url);
-      alert("Link copied to clipboard!");
+      showToast("Link copied");
     }
   };
 
@@ -472,7 +477,7 @@ export default function Gallery() {
       } catch { /* user cancelled */ }
     } else {
       await navigator.clipboard.writeText(text);
-      alert(`${selected.length} photo link${selected.length > 1 ? "s" : ""} copied to clipboard!`);
+      showToast(`${selected.length} link${selected.length > 1 ? "s" : ""} copied`);
     }
     setSelectMode(false);
     setSelectedIds(new Set());
@@ -942,6 +947,21 @@ export default function Gallery() {
           )}
         </main>
       </div>
+
+      {/* ═══ TOAST ═══════════════════════════════════════════════════════════ */}
+      {toast && (
+        <div
+          className="fixed left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full text-sm font-medium shadow-soft-lg"
+          style={{
+            bottom: "calc(80px + env(safe-area-inset-bottom, 0px))",
+            background: "#160f29",
+            color: "#fbfbf2",
+          }}
+          role="status"
+        >
+          {toast}
+        </div>
+      )}
 
       {/* ═══ LIGHTBOX ════════════════════════════════════════════════════════ */}
       {lightboxPhoto && (

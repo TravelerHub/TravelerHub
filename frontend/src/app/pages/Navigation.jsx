@@ -695,7 +695,7 @@ function Navigation() {
   };
 
   const handleGetCurrentLocation = () => {
-    if (!navigator.geolocation) { alert('Geolocation is not supported by your browser'); return; }
+    if (!navigator.geolocation) { showToast('Geolocation is not supported by your browser', 'error'); return; }
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const coords = [position.coords.longitude, position.coords.latitude];
@@ -713,7 +713,7 @@ function Navigation() {
         if (error.code === error.PERMISSION_DENIED) errorMessage += 'Please enable location permissions.';
         else if (error.code === error.POSITION_UNAVAILABLE) errorMessage += 'Location information is unavailable.';
         else if (error.code === error.TIMEOUT) errorMessage += 'Location request timed out.';
-        alert(errorMessage);
+        showToast(errorMessage, 'error');
       }
     );
   };
@@ -963,7 +963,7 @@ function Navigation() {
   };
 
   const handleSaveRoute = async () => {
-    if (!currentRoute || markers.length < 2) { alert('Please plan a route first'); return; }
+    if (!currentRoute || markers.length < 2) { showToast('Please plan a route first', 'error'); return; }
     setSavingRoute(true);
     try {
       const token = localStorage.getItem('token');
@@ -1057,7 +1057,7 @@ function Navigation() {
   };
 
   const handleOptimizeRoute = async () => {
-    if (markers.length < 3) { alert('Need at least 3 stops to optimize'); return; }
+    if (markers.length < 3) { showToast('Need at least 3 stops to optimize', 'error'); return; }
     setRouteLoading(true);
     try {
       const token = localStorage.getItem('token');
@@ -1079,7 +1079,7 @@ function Navigation() {
       setTimeout(() => { handlePlanRoute(); }, 300);
     } catch (error) {
       console.error('Optimization error:', error);
-      alert(error.message || 'Failed to optimize route. Please try again.');
+      showToast(error.message || 'Failed to optimize route. Please try again.', 'error');
     } finally {
       setRouteLoading(false);
     }
