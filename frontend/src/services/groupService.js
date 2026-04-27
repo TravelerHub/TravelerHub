@@ -1,6 +1,10 @@
 import { API_BASE } from '../config';
 
 const ACTIVE_GROUP_KEY = 'active_group_id';
+// Custom event name pages can subscribe to — fired whenever the active trip
+// changes (via the navbar or otherwise). Lets pages refetch their data
+// without a hard `window.location.reload()`.
+export const ACTIVE_TRIP_EVENT = 'active-trip-changed';
 
 function getToken() {
   return localStorage.getItem('token');
@@ -11,11 +15,19 @@ export function getActiveGroupId() {
 }
 
 export function setActiveGroupId(groupId) {
-  if (!groupId) {
+  const next = groupId ? String(groupId) : '';
+  const prev = getActiveGroupId();
+  if (next === prev) return;
+  if (!next) {
     localStorage.removeItem(ACTIVE_GROUP_KEY);
-    return;
+  } else {
+    localStorage.setItem(ACTIVE_GROUP_KEY, next);
   }
-  localStorage.setItem(ACTIVE_GROUP_KEY, String(groupId));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent(ACTIVE_TRIP_EVENT, { detail: { tripId: next } })
+    );
+  }
 }
 
 export async function getMyGroups() {

@@ -14,7 +14,7 @@ import {
   SosIcon,
   SparkleIcon,
 } from "../../components/icons/NavIcons.jsx";
-import { setActiveGroupId } from "../../services/groupService";
+import { ACTIVE_TRIP_EVENT, setActiveGroupId } from "../../services/groupService";
 
 // ── Dashboard widgets ─────────────────────────────────────────────────────────
 import Widget              from "../../components/dashboard/Widget.jsx";
@@ -86,6 +86,20 @@ export default function Dashboard() {
   const [activeTripId, setActiveTripId] = useState(
     () => localStorage.getItem("active_group_id") || localStorage.getItem("activeGroupId") || null
   );
+
+  // Keep this page in sync when the navbar TripSwitcher fires
+  // `active-trip-changed`. Without this, picking a trip from the navbar
+  // wouldn't update the trip-card highlight or the activity feed.
+  useEffect(() => {
+    const onTripChange = (e) => {
+      const next = e?.detail?.tripId
+        ?? localStorage.getItem("active_group_id")
+        ?? null;
+      if (next !== activeTripId) setActiveTripId(next);
+    };
+    window.addEventListener(ACTIVE_TRIP_EVENT, onTripChange);
+    return () => window.removeEventListener(ACTIVE_TRIP_EVENT, onTripChange);
+  }, [activeTripId]);
 
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [wrapUpTrip,     setWrapUpTrip]     = useState(null);

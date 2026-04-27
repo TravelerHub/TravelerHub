@@ -9,6 +9,7 @@ import EmptyState from "../../components/EmptyState.jsx";
 import { useFocusTrap } from "../../hooks/useFocusTrap.js";
 import ContributorStrip from "../../components/gallery/ContributorStrip.jsx";
 import { CameraSmile, LockHeart, AlertSpark } from "../../components/icons/StateIcons.jsx";
+import { ACTIVE_TRIP_EVENT } from "../../services/groupService";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -112,6 +113,20 @@ export default function Gallery() {
     queryFn: () => apiFetch("/trips/my-albums"),
   });
   const albums = albumsData?.albums || [];
+
+  // React to navbar trip switches without a hard reload — keeps the gallery
+  // showing the same trip the rest of the app is scoped to.
+  useEffect(() => {
+    const onTripChange = (e) => {
+      const next = e?.detail?.tripId
+        ?? localStorage.getItem("active_group_id")
+        ?? localStorage.getItem("activeGroupId")
+        ?? "";
+      if (next) setActiveTrip(next);
+    };
+    window.addEventListener(ACTIVE_TRIP_EVENT, onTripChange);
+    return () => window.removeEventListener(ACTIVE_TRIP_EVENT, onTripChange);
+  }, []);
 
   // Auto-select first album when none is active. Also recover from a stale
   // localStorage trip_id (left the trip / removed) by snapping to the first

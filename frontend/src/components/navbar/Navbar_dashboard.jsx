@@ -240,7 +240,9 @@ function TripSwitcher() {
 
   const truncated = activeName.length > 30 ? activeName.slice(0, 29) + "…" : activeName;
 
-  // Load groups when dropdown opens for the first time
+  // Load groups eagerly on mount so the active trip name is visible
+  // immediately. Used to lazy-load on first dropdown open, which meant the
+  // navbar showed a generic "Trip" until the user clicked.
   const loadGroups = useCallback(async () => {
     setLoading(true);
     try {
@@ -253,8 +255,13 @@ function TripSwitcher() {
     }
   }, []);
 
+  useEffect(() => { loadGroups(); }, [loadGroups]);
+
   const toggleOpen = () => {
-    if (!open && groups.length === 0) loadGroups();
+    // Re-fetch on each open so the list reflects fresh data (a trip created in
+    // another tab, etc). The eager load above keeps the trigger label correct
+    // even before the user clicks for the first time.
+    if (!open) loadGroups();
     setOpen((v) => !v);
   };
 
@@ -269,11 +276,13 @@ function TripSwitcher() {
   }, [open]);
 
   const handleSelect = (groupId) => {
+    // setActiveGroupId in groupService now dispatches the
+    // `active-trip-changed` event — pages that subscribe via useActiveTrip
+    // re-render automatically. Subscribed pages refetch their own data;
+    // unsubscribed pages will still see the new id on their next mount.
     setActiveGroupId(groupId);
     setActiveId(groupId);
     setOpen(false);
-    // Reload page so all components pick up new active group
-    window.location.reload();
   };
 
   return (

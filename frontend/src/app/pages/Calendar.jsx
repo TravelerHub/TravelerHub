@@ -6,6 +6,7 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { getCalendarEvents } from '../../services/calendarService';
+import { useActiveTrip } from '../../hooks/useActiveTrip';
 import Navbar_Dashboard from '../../components/navbar/Navbar_dashboard.jsx';
 import AppSidebar from '../../components/navbar/AppSidebar.jsx';
 import {
@@ -133,8 +134,17 @@ function CalendarPage() {
   const [loading,        setLoading]        = useState(true);
   const [selectedEvent,  setSelectedEvent]  = useState(null);
   const [trips,          setTrips]          = useState([]);
-  const [selectedTripId, setSelectedTripId] = useState(null);
+  // Default to whichever trip the navbar dropdown has marked as active.
+  // The `useActiveTrip` hook keeps this in sync if the user switches trips
+  // from the navbar without leaving this page.
+  const { tripId: activeTripId } = useActiveTrip(trips);
+  const [selectedTripId, setSelectedTripId] = useState(() => activeTripId || null);
   const [view,           setView]           = useState('dayGridMonth'); // month | timeGridWeek | timeGridDay
+
+  // When the navbar switches active trip, re-scope this page automatically.
+  useEffect(() => {
+    if (activeTripId) setSelectedTripId(activeTripId);
+  }, [activeTripId]);
 
   // ── Fetch trips ────────────────────────────────────────────────────────────
   useEffect(() => {

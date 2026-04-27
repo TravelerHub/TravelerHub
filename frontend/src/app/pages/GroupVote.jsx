@@ -7,6 +7,7 @@ import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import AppSidebar from "../../components/navbar/AppSidebar.jsx";
 import { logActivity } from "../../components/ActivityFeed.jsx";
 import { BallotSpark } from "../../components/icons/StateIcons.jsx";
+import { useActiveTrip } from "../../hooks/useActiveTrip";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -90,6 +91,11 @@ export default function GroupVote() {
   const [menuOpen, setMenuOpen]         = useState(false);
   const [trips, setTrips]               = useState([]);
   const [selectedTrip, setSelectedTrip] = useState(null);
+  // Single source of truth for which trip is active. Lets us default the
+  // initial poll list to the trip the user picked in the navbar instead of
+  // arbitrarily showing the first one in the list, and re-scopes this page
+  // automatically when the navbar switch fires.
+  const { tripId: activeTripId } = useActiveTrip(trips);
 
   // ── State: polls ──────────────────────────────────────────────────────────
   const [polls, setPolls]                   = useState([]);
@@ -132,10 +138,30 @@ export default function GroupVote() {
       .then((data) => {
         const list = Array.isArray(data) ? data : [];
         setTrips(list);
-        if (list.length > 0) setSelectedTrip(list[0]);
+        if (list.length === 0) return;
+        // Prefer the navbar's active trip if it's in our list; otherwise
+        // fall back to the first one. Avoids the surprise where the navbar
+        // says "Paris 2025" but this page lists polls for some other trip.
+        const preferred = activeTripId
+          ? list.find((g) => String(g.group_id || g.id) === String(activeTripId))
+          : null;
+        setSelectedTrip(preferred || list[0]);
       })
       .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // When the navbar switches active trip mid-page, re-scope this page too.
+  useEffect(() => {
+    if (!activeTripId || trips.length === 0) return;
+    const match = trips.find(
+      (g) => String(g.group_id || g.id) === String(activeTripId)
+    );
+    if (match && (selectedTrip?.id || selectedTrip?.group_id) !== (match.id || match.group_id)) {
+      setSelectedTrip(match);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTripId, trips]);
 
   // ── Fetch polls when trip changes ──────────────────────────────────────────
   useEffect(() => {
