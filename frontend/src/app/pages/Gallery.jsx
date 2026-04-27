@@ -152,14 +152,29 @@ export default function Gallery() {
       const formData = new FormData();
       formData.append("file", file);
       if (caption.trim()) formData.append("caption", caption.trim());
-      const res = await fetch(`${API_BASE}/trips/${tripId}/upload`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: formData,
-      });
+      let res;
+      try {
+        res = await fetch(`${API_BASE}/trips/${tripId}/upload`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: formData,
+        });
+      } catch (networkErr) {
+        // fetch() throws TypeError ("Failed to fetch") only for browser-level
+        // failures: CORS preflight rejection, mixed content, server unreachable,
+        // request body rejected by an upstream proxy (often nginx
+        // client_max_body_size). Surface a useful hint instead of a bare
+        // "Failed to fetch".
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+        throw new Error(
+          `Couldn't reach the server to upload (${sizeMB} MB photo). ` +
+          `If this keeps happening, your photo may be larger than the server allows — ` +
+          `try a smaller image, or check that the API is online.`
+        );
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "Upload failed");
+        throw new Error(err.detail || `Upload failed (${res.status})`);
       }
       return res.json();
     },
