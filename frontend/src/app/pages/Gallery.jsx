@@ -1205,8 +1205,8 @@ export default function Gallery() {
         >
           <div
             ref={uploadModalRef}
-            className="w-full rounded-3xl overflow-y-auto"
-            style={{ maxWidth: 480, maxHeight: "90vh", background: "#fff", boxShadow: "0 32px 80px rgba(0,0,0,0.3)" }}
+            className="w-full rounded-2xl overflow-y-auto"
+            style={{ maxWidth: 480, maxHeight: "90vh", background: "#fff", boxShadow: "var(--shadow-lg)" }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}

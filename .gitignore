@@ -52,3 +52,7 @@ CLAUDE.md
 *.mov
 *.avi
 *.mkv
+
+# Local test fixtures (e.g. throwaway image dropped during upload tests)
+backend/test_image.jpg
+backend/test_*.jpg
