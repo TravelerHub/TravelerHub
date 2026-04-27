@@ -163,7 +163,7 @@ export default function OnboardingModal({ onClose }) {
           <div className="text-center">
             <div className="text-6xl mb-4" aria-hidden="true">🎉</div>
             <h2 id="onboarding-modal-title" className="text-white text-2xl font-bold mb-2">You're all set!</h2>
-            <p className="text-white/50 text-sm mb-6">TravelerHub is ready. Start planning, voting on spots, and exploring together.</p>
+            <p className="text-white/50 text-sm mb-6">Plan, vote, and explore together.</p>
             <button
               onClick={handleFinish}
               className="w-full py-3 rounded-xl bg-[#c8a96e] text-[#160f29] font-semibold hover:bg-[#d4b87a] transition-colors"
