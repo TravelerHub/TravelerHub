@@ -7,6 +7,13 @@ export async function apiFetch(path, options = {}) {
     ...options,
     headers: { ...authHeaders(), ...options.headers },
   })
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    const detail = body && (body.detail || body.message || body.error)
+    const err = new Error(detail || `${res.status} ${res.statusText}`)
+    err.status = res.status
+    err.body = body
+    throw err
+  }
   return res.json()
 }

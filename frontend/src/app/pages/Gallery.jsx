@@ -88,10 +88,20 @@ export default function Gallery() {
   });
   const albums = albumsData?.albums || [];
 
-  // Auto-select first album when none is active
+  // Auto-select first album when none is active. Also recover from a stale
+  // localStorage trip_id (left the trip / removed) by snapping to the first
+  // album the user is still a member of, instead of letting the photos query
+  // 403 forever.
   useEffect(() => {
-    if (!activeTrip && albums.length > 0) {
-      setActiveTrip(albums[0].trip_id);
+    if (albums.length === 0) return;
+    const stillMember = activeTrip && albums.some((a) => a.trip_id === activeTrip);
+    if (!stillMember) {
+      const firstId = albums[0].trip_id;
+      setActiveTrip(firstId);
+      try {
+        localStorage.setItem("active_group_id", firstId);
+        localStorage.setItem("activeGroupId", firstId);
+      } catch { /* localStorage unavailable */ }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [albumsData]);
@@ -101,6 +111,8 @@ export default function Gallery() {
   const {
     data: photosInfiniteData,
     isLoading: loading,
+    isError: photosError,
+    error: photosErrorObj,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -110,8 +122,10 @@ export default function Gallery() {
       apiFetch(`/trips/${activeTrip}/media?limit=20${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""}`),
     getNextPageParam: (lastPage) => lastPage.has_more ? lastPage.next_cursor : undefined,
     enabled: !!activeTrip,
+    retry: (failureCount, err) => err?.status >= 500 && failureCount < 2,
   });
   const photos = photosInfiniteData?.pages.flatMap((p) => p.photos) ?? [];
+  const photosForbidden = photosError && photosErrorObj?.status === 403;
 
   // ── useMutation: upload photo ─────────────────────────────────────────────
 
@@ -606,6 +620,21 @@ export default function Gallery() {
               <div className="flex justify-center items-center h-64">
                 <div className="w-8 h-8 border-3 border-gray-300 border-t-gray-800 rounded-full animate-spin" />
               </div>
+            ) : photosError ? (
+              <EmptyState
+                icon={photosForbidden ? "🔒" : "⚠️"}
+                title={photosForbidden ? "You're not a member of this trip" : "Couldn't load photos"}
+                subtitle={
+                  photosForbidden
+                    ? "Pick another trip from the dropdown above, or ask the trip creator to add you."
+                    : (photosErrorObj?.message || "Something went wrong loading this album.")
+                }
+                action={
+                  albums.length > 1
+                    ? { label: "Switch trip", onClick: () => setActiveTrip(albums[0].trip_id) }
+                    : null
+                }
+              />
             ) : photos.length === 0 ? (
               <EmptyState
                 icon="📸"
