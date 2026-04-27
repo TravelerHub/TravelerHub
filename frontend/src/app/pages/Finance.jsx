@@ -13,7 +13,7 @@ import {
   getSettlementSummary,
 } from "../../services/financeService";
 import { chargeSavedCard, getSavedCards } from "../../services/billingService";
-import { ensureActiveGroupId, getActiveGroupId, getMyGroups, setActiveGroupId } from "../../services/groupService";
+import { ensureActiveGroupId, getActiveGroupId, getMyGroups, setActiveGroupId, ACTIVE_TRIP_EVENT } from "../../services/groupService";
 import CardRecommendation from "../../components/CardRecommendation.jsx";
 import BudgetTracker from "../../components/BudgetTracker.jsx";
 import CardWallet from "../../components/CardWallet.jsx";
@@ -327,6 +327,16 @@ function Finance() {
       setGroups([]);
       setActiveGroupIdState("");
     }
+  }, []);
+
+  // Re-scope when the navbar TripSwitcher fires `active-trip-changed`.
+  useEffect(() => {
+    const onTripChange = (e) => {
+      const next = e?.detail?.tripId ?? getActiveGroupId() ?? "";
+      setActiveGroupIdState(next);
+    };
+    window.addEventListener(ACTIVE_TRIP_EVENT, onTripChange);
+    return () => window.removeEventListener(ACTIVE_TRIP_EVENT, onTripChange);
   }, []);
 
   const loadTransactions = useCallback(async () => {

@@ -7,7 +7,7 @@ import { haversineDistance } from '../../utils/haversine';
 import Map from '../../components/Map';
 import { searchPlaces, getPlaceName } from '../../services/geocodingService';
 import { getOptimizedRoute, getMultiModalRoute } from '../../services/routeService';
-import { ensureActiveGroupId, getActiveGroupId, getMyGroups, setActiveGroupId } from '../../services/groupService';
+import { ensureActiveGroupId, getActiveGroupId, getMyGroups, setActiveGroupId, ACTIVE_TRIP_EVENT } from '../../services/groupService';
 import { planSmartRoute, syncMyPosition } from '../../services/smartRouteService';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -347,6 +347,16 @@ function Navigation() {
       }
     };
     boot();
+
+    // Keep this page's local copy of the active trip in sync with the
+    // navbar's TripSwitcher. Without this, switching trips in the top bar
+    // didn't change the markers / pins / route this page is showing.
+    const handleActiveTripChange = (e) => {
+      const next = e?.detail?.tripId ?? getActiveGroupId() ?? '';
+      setActiveGroupIdState(next);
+    };
+    window.addEventListener(ACTIVE_TRIP_EVENT, handleActiveTripChange);
+    return () => window.removeEventListener(ACTIVE_TRIP_EVENT, handleActiveTripChange);
   }, []);
 
   // Keep legModes in sync with markers count
