@@ -48,6 +48,17 @@ export default function Gallery() {
   const [uploadCaption, setUploadCaption] = useState("");
   const [uploadError, setUploadError] = useState("");
   const fileRef = useRef(null);
+  const captionInputRef = useRef(null);
+
+  // Auto-focus the caption field once a preview is ready so the keyboard
+  // pops up on mobile and the user can type immediately, the way Instagram
+  // does. Slight delay lets the modal finish its mount transition first.
+  useEffect(() => {
+    if (!uploadPreview) return;
+    const t = setTimeout(() => captionInputRef.current?.focus(), 60);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uploadPreview]);
 
   // Lightbox
   const [lightboxIdx, setLightboxIdx] = useState(-1);
@@ -1171,9 +1182,17 @@ export default function Gallery() {
                 </form>
               </div>
 
-              {/* Counter */}
-              <p className="text-xs text-white/30 mt-3 text-center">
-                {lightboxIdx + 1} / {photos.length}
+              {/* Counter — announced to screen readers when navigating photos */}
+              <p
+                className="text-xs text-white/30 mt-3 text-center"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                <span className="sr-only">Photo </span>
+                {lightboxIdx + 1}
+                <span aria-hidden="true"> / </span>
+                <span className="sr-only">of </span>
+                {photos.length}
               </p>
             </div>
           </div>
@@ -1251,6 +1270,7 @@ export default function Gallery() {
               <label htmlFor="upload-caption" className="sr-only">Caption (optional)</label>
               <input
                 id="upload-caption"
+                ref={captionInputRef}
                 type="text"
                 value={uploadCaption}
                 onChange={(e) => setUploadCaption(e.target.value)}

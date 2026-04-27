@@ -863,13 +863,19 @@ function Profile() {
 
       {/* ── Delete Account Modal (two-step confirmation) ─────────────────────── */}
       {showDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.6)" }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-account-title"
+        >
           <div className="w-full rounded-2xl overflow-y-auto" style={{ maxWidth: 440, maxHeight: "90vh", background: "#fff", boxShadow: "var(--shadow-lg)" }}>
             <div className="px-6 pt-6 pb-4">
               <div className="w-10 h-10 rounded-full flex items-center justify-center mb-4" style={{ background: "#fef2f2" }}>
-                <span style={{ color: "#dc2626", fontSize: 18 }}>&#9888;</span>
+                <span style={{ color: "#dc2626", fontSize: 18 }} aria-hidden="true">&#9888;</span>
               </div>
-              <h3 className="text-base font-bold mb-2" style={{ color: "#160f29" }}>Delete Account?</h3>
+              <h3 id="delete-account-title" className="text-base font-bold mb-2" style={{ color: "#160f29" }}>Delete Account?</h3>
               <p className="text-sm mb-4" style={{ color: "#5c6b73" }}>
                 This will permanently delete your account. Your trip history and photos will remain
                 visible to other group members but your name will show as <strong>[deleted]</strong>.

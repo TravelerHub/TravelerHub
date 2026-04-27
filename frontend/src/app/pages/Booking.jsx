@@ -115,11 +115,18 @@ function StatusBadge({ status }) {
 
 function Modal({ open, title, onClose, children }) {
   if (!open) return null;
+  // Stable per-modal id so screen readers can announce the title via
+  // aria-labelledby. `useId` would be overkill here since each Modal call
+  // site already has a unique title.
+  const titleId = `booking-modal-${(title || "").replace(/\s+/g, "-").toLowerCase()}`;
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.4)" }}
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
     >
       <div
         className="w-full max-h-[90vh] overflow-y-auto rounded-2xl p-4 sm:p-6"
@@ -127,11 +134,12 @@ function Modal({ open, title, onClose, children }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold" style={{ color: "#160f29" }}>{title}</h2>
+          <h2 id={titleId} className="text-lg font-bold" style={{ color: "#160f29" }}>{title}</h2>
           <button
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-lg text-sm hover:bg-gray-100 transition"
             style={{ color: "#5c6b73" }}
+            aria-label="Close dialog"
           >✕</button>
         </div>
         {children}
