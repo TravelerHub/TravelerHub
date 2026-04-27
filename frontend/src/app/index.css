@@ -108,6 +108,10 @@ button:focus-visible {
 .shadow-soft-md { box-shadow: var(--shadow-md); }
 .shadow-soft-lg { box-shadow: var(--shadow-lg); }
 
+/* Hide scrollbar on horizontally-scrollable nav strips while keeping scroll. */
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+
 /* Landing page animations */
 @keyframes kenBurns {
   from { transform: scale(1); }

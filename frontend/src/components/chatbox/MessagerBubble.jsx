@@ -31,12 +31,30 @@ function bubbleRadius(position, isMine) {
   return `${tl} ${tr} ${br} ${bl}`;
 }
 
-// ── Status icon (single check / double check / read) ─────────────────────────
-function StatusIcon({ readers }) {
-  // We don't have explicit "delivered" state in the data model right now, so:
-  //   readers.length === 0 → single check (sent)
-  //   readers.length  >  0 → double check teal (read)
-  // The "delivered" state can be wired up later when the backend exposes it.
+// ── Status icon (clock / single check / double check / read) ────────────────
+function StatusIcon({ readers, sending }) {
+  // Sending → tiny clock outline (optimistic message, not yet acked by server)
+  // readers.length === 0 → single check (sent)
+  // readers.length  >  0 → double check (read)
+  if (sending) {
+    return (
+      <svg
+        width="11"
+        height="11"
+        viewBox="0 0 12 12"
+        fill="none"
+        stroke="rgba(255,255,255,0.55)"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="shrink-0"
+        aria-label="Sending"
+      >
+        <circle cx="6" cy="6" r="4.5" />
+        <path d="M6 3.5v2.5l1.5 1" />
+      </svg>
+    );
+  }
   const isRead = (readers?.length ?? 0) > 0;
   const tint = isRead ? "#fbfbf2" : "rgba(255,255,255,0.55)";
   return (
@@ -52,9 +70,7 @@ function StatusIcon({ readers }) {
       className="shrink-0"
       aria-label={isRead ? "Read" : "Sent"}
     >
-      {/* primary check */}
       <path d="M2 6.5l3 3 6-7" />
-      {/* second check (visible only when read) */}
       {isRead && <path d="M7 9.5l1.5 1.5L15 3" />}
     </svg>
   );
@@ -201,7 +217,7 @@ export default function MessageBubble({
               <span className="text-[10px] leading-none">
                 {formatTimeShort(msg.sent_datetime)}
               </span>
-              {isMine && <StatusIcon readers={readers} />}
+              {isMine && <StatusIcon readers={readers} sending={msg._optimistic} />}
             </div>
           )}
         </div>

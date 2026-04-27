@@ -204,35 +204,8 @@ export default function Message() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Navbar_Dashboard onMenuClick={() => setShowMobileSidebar(true)} />
 
-        {/* Chat area */}
+        {/* Chat area — trip selector lives in the top navbar; no duplicate here. */}
         <div className="flex-1 overflow-hidden p-2 sm:p-4 pb-[calc(60px+env(safe-area-inset-bottom,0px))] md:pb-4" style={{ background: "#f3f4f6" }}>
-          <div className="mb-3 flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold" style={{ color: "#6b7280" }}>Group</span>
-            <select
-              value={activeGroupId}
-              onChange={(e) => {
-                const value = e.target.value;
-                setActiveGroupId(value);
-                setActiveGroupIdState(value);
-                setRefreshTrigger((n) => n + 1);
-              }}
-              className="px-3 py-1.5 rounded-lg text-xs"
-              style={{ border: "1px solid #d1d5db", background: "#fff", color: "#111827" }}
-            >
-              {groups.length === 0 ? (
-                <option value="">No groups</option>
-              ) : (
-                groups.map((group) => {
-                  const gid = group.group_id || group.id;
-                  return (
-                    <option key={gid} value={gid}>
-                      {group.name || "Untitled Group"}
-                    </option>
-                  );
-                })
-              )}
-            </select>
-          </div>
           <ChatLayout
             key={refreshTrigger}
             currentUser={user}

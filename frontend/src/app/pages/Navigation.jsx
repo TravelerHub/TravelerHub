@@ -1162,7 +1162,7 @@ function Navigation() {
 
           {/* ── Left Tools Panel (slide-over on mobile, static on desktop) ── */}
           <div className={`
-            fixed inset-y-0 left-0 z-40 w-80 max-w-[85vw] flex flex-col overflow-y-auto border-r transition-transform duration-300
+            fixed inset-y-0 left-0 z-40 w-80 max-w-[85vw] flex flex-col overflow-y-auto overflow-x-hidden border-r transition-transform duration-300
             lg:static lg:translate-x-0 lg:shrink-0 lg:z-auto
             ${showMobileTools ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
           `} style={{ background: '#fbfbf2', borderColor: '#d1d1c7' }}>
