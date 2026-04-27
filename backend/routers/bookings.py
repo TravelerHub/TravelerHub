@@ -70,7 +70,10 @@ def _user_id(current_user) -> str:
 # ── City lookup (Google Geocoding) ─────────────────────────────────────────────
 
 @router.get("/hotels/city")
-async def hotels_city(name: str = Query(..., description="City name, e.g. 'Los Angeles'")):
+async def hotels_city(
+    name: str = Query(..., description="City name, e.g. 'Los Angeles'"),
+    current_user=Depends(oauth2.get_current_user),
+):
     """Resolve a city name to lat/lng via Google Geocoding API."""
     return await search_city(name)
 
@@ -85,12 +88,16 @@ async def hotels_search(
     checkout: str = Query(..., description="YYYY-MM-DD"),
     adults: int = Query(..., ge=1),
     rooms: int = Query(1, ge=1),
+    current_user=Depends(oauth2.get_current_user),
 ):
     return await search_hotels(lat, lng, checkin, checkout, adults, rooms)
 
 
 @router.get("/hotels/{place_id}")
-async def hotels_details(place_id: str):
+async def hotels_details(
+    place_id: str,
+    current_user=Depends(oauth2.get_current_user),
+):
     return await get_hotel_offer(place_id)
 
 
@@ -102,12 +109,16 @@ async def cars_search(
     pickup: str = Query(...),
     dropoff: str = Query(...),
     driver_age: int = Query(25, ge=18),
+    current_user=Depends(oauth2.get_current_user),
 ):
     return await search_cars(airport, pickup, dropoff, driver_age)
 
 
 @router.get("/cars/{car_id}")
-async def cars_details(car_id: str):
+async def cars_details(
+    car_id: str,
+    current_user=Depends(oauth2.get_current_user),
+):
     return await get_car_details(car_id)
 
 
@@ -118,12 +129,16 @@ async def attractions_search(
     lat: float = Query(..., description="Latitude of the city centre"),
     lng: float = Query(..., description="Longitude of the city centre"),
     radius: int = Query(5, ge=1, le=20, description="Search radius in km"),
+    current_user=Depends(oauth2.get_current_user),
 ):
     return await search_activities(lat, lng, radius)
 
 
 @router.get("/attractions/{activity_id}")
-async def attractions_details(activity_id: str):
+async def attractions_details(
+    activity_id: str,
+    current_user=Depends(oauth2.get_current_user),
+):
     return await get_activity_details(activity_id)
 
 
@@ -236,6 +251,7 @@ async def flights_search(
     date: str = Query(..., description="Departure date YYYY-MM-DD"),
     adults: int = Query(1, ge=1),
     cabin_class: str = Query("ECONOMY", description="ECONOMY | PREMIUM_ECONOMY | BUSINESS | FIRST"),
+    current_user=Depends(oauth2.get_current_user),
 ):
     return await search_flights(
         origin=origin,
@@ -247,7 +263,10 @@ async def flights_search(
 
 
 @router.get("/flights/{offer_id}")
-async def flights_details(offer_id: str):
+async def flights_details(
+    offer_id: str,
+    current_user=Depends(oauth2.get_current_user),
+):
     return await get_flight_details(offer_id)
 
 

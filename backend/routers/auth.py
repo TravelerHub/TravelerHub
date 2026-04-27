@@ -5,15 +5,31 @@ from supabase_client import supabase
 
 limiter = Limiter(key_func=get_remote_address)
 
-from schemas import SignupRequest, LoginRequest, OtpRequest, OtpVerifyRequest  
+from schemas import SignupRequest, LoginRequest, OtpRequest, OtpVerifyRequest
 
 # hasing: hash_password, verify_password; oauth2: create_access_token
 from utils import hasing, oauth2, otp
 from utils.encryption import generate_conversation_key
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(
     tags=["auth"]
 )
+
+
+# Fields we never want to ship back to the client. `password` is the bcrypt
+# hash; the others are kept for parity if/when more sensitive columns get
+# added to the users table.
+_SENSITIVE_USER_FIELDS = {"password", "password_hash"}
+
+
+def _safe_user(user: dict) -> dict:
+    """Strip credentials from a users-table row before returning to the client."""
+    if not user:
+        return user
+    return {k: v for k, v in user.items() if k not in _SENSITIVE_USER_FIELDS}
 
 
 def _get_or_create_user_symmetric_key(user_id: str) -> str:
@@ -104,7 +120,7 @@ def signup(request: Request, data: SignupRequest):
 
     return {
         "message": "Signup successful",
-        "user": new_user,
+        "user": _safe_user(new_user),
         "symmetric_key": symmetric_key,
         "access_token": access_token,
         "token_type": "bearer",
@@ -157,7 +173,7 @@ def login(request: Request, data: LoginRequest):
         "message": "Login successful",
         "access_token": access_token,
         "token_type": "bearer",
-        "user": user,
+        "user": _safe_user(user),
         "symmetric_key": symmetric_key,
     }
 
@@ -209,7 +225,7 @@ def check_email_for_otp(data: OtpRequest):
         
         if not success:
             # Log the error but don't fail the request completely
-            print(f"Warning: OTP email failed to send to {data.email}, but OTP was generated")
+            logger.warning("OTP email failed to send to %s, but OTP was generated", data.email)
             return {
                 "exists": True,
                 "message": "Email verified, but OTP delivery failed. Please check your connection.",
@@ -223,7 +239,7 @@ def check_email_for_otp(data: OtpRequest):
         }
         
     except Exception as e:
-        print(f"Error generating/sending OTP: {e}")
+        logger.error("Error generating/sending OTP: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error sending OTP. Please try again."
@@ -261,7 +277,7 @@ def verify_otp_code(data: OtpVerifyRequest):
         }
         
     except Exception as e:
-        print(f"Error verifying OTP: {e}")
+        logger.error("Error verifying OTP: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error verifying OTP. Please try again."
@@ -296,7 +312,7 @@ def update_password(payload: dict):
 
         # Supabase returns data on success
         if getattr(res, "error", None):
-            print(f"Supabase update error: {res.error}")
+            logger.error("Supabase update error: %s", res.error)
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update password")
 
         if not res.data:
@@ -307,6 +323,6 @@ def update_password(payload: dict):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error updating password: {e}")
+        logger.error("Error updating password: %s", e, exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while updating password")
 

@@ -18,7 +18,7 @@ import secrets
 from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Query, Request
 from pydantic import BaseModel
-from supabase_client import supabase, supabase_admin, safe_single
+from supabase_client import supabase, supabase_admin, safe_single, has_service_role
 from utils import oauth2
 from utils.logger import get_logger
 from utils.trip_access import require_trip_member
