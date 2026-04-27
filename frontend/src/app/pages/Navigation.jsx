@@ -6,7 +6,7 @@ import { API_BASE } from '../../config';
 import { haversineDistance } from '../../utils/haversine';
 import Map from '../../components/Map';
 import { searchPlaces, getPlaceName } from '../../services/geocodingService';
-import { getOptimizedRoute, getMultiModalRoute, loadPolyline } from '../../services/routeService';
+import { getOptimizedRoute, getMultiModalRoute } from '../../services/routeService';
 import { ensureActiveGroupId, getActiveGroupId, getMyGroups, setActiveGroupId } from '../../services/groupService';
 import { planSmartRoute, syncMyPosition } from '../../services/smartRouteService';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -299,7 +299,6 @@ function Navigation() {
   const [showStoryMode, setShowStoryMode] = useState(false);
   const [discoveryPlaces, setDiscoveryPlaces] = useState([]);
   const [expenseMapMarkers, setExpenseMapMarkers] = useState([]);
-  const [activeTripId] = useState(null);
 
   // Group live tracking (replaces old memberMarkers state)
   const [groupMemberMarkers, setGroupMemberMarkers] = useState([]);
@@ -769,90 +768,10 @@ function Navigation() {
     }
   };
 
-  // Plan a smart route with preference engine (scenic/foodie/budget/fastest)
-  const handlePlanSmartRoute = async () => {
-    if (markers.length < 2) {
-      setRouteError('Please add at least 2 locations');
-      return;
-    }
-
-    setRouteLoading(true);
-    setRouteError('');
-
-    try {
-      const waypoints = markers.map(m => ({
-        name: m.title || 'Stop',
-        coordinates: m.coordinates,
-      }));
-
-      const result = await planSmartRoute(
-        waypoints,
-        transportMode,
-        routePreference,
-        null, // departure_time
-        activeGroupId,
-      );
-
-      // Use the base directions data to build the same route format
-      if (result.directions_data?.routes?.[0]) {
-        const gRoute = result.directions_data.routes[0];
-        const polyline = await loadPolyline();
-        const decodedPoints = polyline.decode(gRoute.overview_polyline.points);
-        const coordinates = decodedPoints.map(([lat, lng]) => [lng, lat]);
-        const geometry = { type: 'LineString', coordinates };
-
-        const totalDuration = gRoute.legs.reduce((sum, leg) => sum + leg.duration.value, 0);
-        const totalDistance = gRoute.legs.reduce((sum, leg) => sum + leg.distance.value, 0);
-
-        const steps = gRoute.legs.flatMap(leg =>
-          leg.steps.map(step => ({
-            maneuver: {
-              instruction: step.html_instructions.replace(/<[^>]*>/g, ''),
-              type: step.maneuver || null,
-            },
-            name: step.name || null,
-            distance: step.distance.value,
-            duration: step.duration.value,
-            travel_mode: step.travel_mode,
-            start_location: step.start_location ? [step.start_location.lng, step.start_location.lat] : null,
-            end_location: step.end_location ? [step.end_location.lng, step.end_location.lat] : null,
-            transit: step.transit_details ? {
-              vehicleType: step.transit_details.line?.vehicle?.type || 'BUS',
-              lineName: step.transit_details.line?.name || null,
-              lineShortName: step.transit_details.line?.short_name || null,
-              headsign: step.transit_details.headsign || null,
-              departureStop: step.transit_details.departure_stop?.name || null,
-              arrivalStop: step.transit_details.arrival_stop?.name || null,
-              numStops: step.transit_details.num_stops || null,
-              departureTime: step.transit_details.departure_time?.text || null,
-              arrivalTime: step.transit_details.arrival_time?.text || null,
-            } : null,
-          }))
-        );
-
-        setCurrentRoute({
-          geometry,
-          duration: totalDuration,
-          distance: totalDistance,
-          steps,
-          summary: {
-            totalDistance: (totalDistance / 1000).toFixed(2) + ' km',
-            totalDuration: formatDuration(totalDuration),
-            estimatedArrival: calculateArrivalTime(totalDuration),
-          },
-        });
-      }
-
-      // Set chapters and suggestions from smart route
-      setSmartChapters(result.chapters || []);
-      setSmartSuggestions(result.suggestions || []);
-    } catch (error) {
-      setRouteError(error.message || 'Unable to plan smart route.');
-      console.error('Smart route error:', error);
-    } finally {
-      setRouteLoading(false);
-    }
-  };
+  // (Removed: handlePlanSmartRoute — superseded by handlePlanRoute, which
+  // already calls the same backend smart-route service when routePreference
+  // ≠ 'fastest'. Keeping two near-identical planners caused unused-handler
+  // lint noise + drift in behavior between them.)
 
   // Insert a stop at a specific index (for multi-modal leg splitting)
   const [splitSearchIndex, setSplitSearchIndex] = useState(null);
@@ -888,26 +807,10 @@ function Navigation() {
     setSplitSearchResults([]);
   };
 
-  // Handle adding a smart-route suggestion as a waypoint
-  const handleAddSuggestionToRoute = (suggestion) => {
-    const newMarker = {
-      coordinates: suggestion.coordinates,
-      title: suggestion.name,
-      description: suggestion.vicinity || '',
-    };
-    setMarkers(prev => [...prev, newMarker]);
-  };
-
-  // Handle adding an approved nomination to the route
-  const handleAddNominationToRoute = (nomination) => {
-    if (!nomination.lat || !nomination.lng) return;
-    const newMarker = {
-      coordinates: [nomination.lng, nomination.lat],
-      title: nomination.place_name,
-      description: nomination.place_address || '',
-    };
-    setMarkers(prev => [...prev, newMarker]);
-  };
+  // (Removed: handleAddSuggestionToRoute — duplicated the inline
+  // onSuggestionClick already wired into <RoutePreferences/> below.)
+  // (Removed: handleAddNominationToRoute — the GroupVote → route handoff
+  // isn't built yet on the UI side. Re-add when the nominations panel ships.)
 
   // Fetch interesting places along the calculated route
   const fetchAlongRouteSuggestions = async (route) => {
@@ -1556,6 +1459,46 @@ function Navigation() {
                   </button>
                 ))}
               </div>
+
+              {/* Multi-modal toggle — when on, each leg can use a different
+                  mode (defaults to current Transport Mode). The actual per-leg
+                  pickers come up when this is enabled and ≥3 stops exist. */}
+              <label
+                className="flex items-center justify-between gap-3 px-3 py-2 mb-3 rounded-lg cursor-pointer select-none transition"
+                style={{ background: multiModalEnabled ? 'rgba(24,58,55,0.08)' : '#f6f5ee', border: '1px solid #e8e8e0' }}
+              >
+                <span className="flex items-center gap-2 text-xs">
+                  <span style={{ color: '#160f29', fontWeight: 600 }}>Multi-modal</span>
+                  <span style={{ color: '#5c6b73' }}>different mode per leg</span>
+                </span>
+                <span
+                  className="relative inline-block transition"
+                  style={{
+                    width: 32,
+                    height: 18,
+                    borderRadius: 999,
+                    background: multiModalEnabled ? '#183a37' : '#d1d1c7',
+                  }}
+                >
+                  <span
+                    className="absolute top-0.5 transition-all"
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: 999,
+                      background: '#ffffff',
+                      left: multiModalEnabled ? 16 : 2,
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                    }}
+                  />
+                </span>
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={multiModalEnabled}
+                  onChange={(e) => setMultiModalEnabled(e.target.checked)}
+                />
+              </label>
 
               {/* Route Preference Selector (scenic/foodie/budget/fastest) */}
               <div className="mb-3">
