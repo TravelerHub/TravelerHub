@@ -51,6 +51,7 @@ from routers import notifications
 from routers import push
 from routers import currency
 from routers import trip_wrapup
+from routers import feedback as feedback_router
 
 limiter = Limiter(key_func=get_remote_address)
 # redirect_slashes=False prevents FastAPI from issuing 307 redirects when a
@@ -146,6 +147,7 @@ app.include_router(notifications.router)  # /notifications
 app.include_router(push.router)            # /push (web push subscriptions)
 app.include_router(currency.router)       # /api/currency (exchange rates)
 app.include_router(trip_wrapup.router)    # /trips/{trip_id}/wrapup-data|complete
+app.include_router(feedback_router.router) # /feedback (auth) + /contact (public)
 
 
 

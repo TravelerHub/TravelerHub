@@ -154,12 +154,40 @@ function CalendarPage() {
   }, []);
 
   // ── Fetch calendar events ──────────────────────────────────────────────────
+  // The backend can return overlapping rows for the same activity (e.g. a
+  // booking + a manual todo titled "Hilton check-in" on the same day). We
+  // dedup on (date, normalized title) and prefer booking rows over routes /
+  // checklists / todos so the calendar isn't crowded with duplicates.
+  const TYPE_PRIORITY = { booking: 0, route: 1, checklist: 2, todo: 3 };
+  const dedupeEvents = (rows) => {
+    const seen = new Map(); // key → existing row
+    const sorted = [...rows].sort(
+      (a, b) => (TYPE_PRIORITY[a.type] ?? 99) - (TYPE_PRIORITY[b.type] ?? 99)
+    );
+    const result = [];
+    for (const evt of sorted) {
+      const day = (evt.start || '').slice(0, 10);
+      const norm = String(evt.title || '').trim().toLowerCase();
+      const key = `${day}::${norm}`;
+      if (!norm || !day) {
+        result.push(evt);
+        continue;
+      }
+      if (!seen.has(key)) {
+        seen.set(key, true);
+        result.push(evt);
+      }
+    }
+    return result;
+  };
+
   const fetchEvents = async () => {
     setLoading(true);
     try {
       const data = await getCalendarEvents(selectedTripId);
+      const deduped = dedupeEvents(data);
       setEvents(
-        data.map((evt) => ({
+        deduped.map((evt) => ({
           id:    evt.id,
           title: evt.title,
           start: evt.start,

@@ -178,6 +178,33 @@ export default function GroupVote() {
     }
   }, [activePoll]);
 
+  // Poll the active poll every 6 seconds while it's open and the tab is
+  // visible so other members' votes appear in near-real time. Stops when
+  // the poll is closed (no need to keep polling tally-locked results) or
+  // when the tab is hidden.
+  useEffect(() => {
+    if (!activePoll || activePoll.status === "closed") return;
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      if (typeof document !== "undefined" && document.hidden) return;
+      try {
+        const data = await pollService.getPoll(activePoll.id);
+        if (!cancelled) setActivePoll(data);
+      } catch (err) {
+        // Swallow — the next tick will retry. Log so transient failures
+        // are visible.
+        console.error("[GroupVote] live refresh tick failed:", err);
+      }
+    };
+    const interval = setInterval(tick, 6000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePoll?.id, activePoll?.status]);
+
   // ── Create poll ────────────────────────────────────────────────────────────
   const handleCreatePoll = async (e) => {
     e.preventDefault();
@@ -682,7 +709,8 @@ export default function GroupVote() {
                 <input
                   type="text"
                   value={newPollTitle}
-                  onChange={(e) => setNewPollTitle(e.target.value)}
+                  onChange={(e) => setNewPollTitle(e.target.value.slice(0, 80))}
+                  maxLength={80}
                   placeholder={
                     newPollType === "length_of_stay"
                       ? "e.g. How long should we stay?"
@@ -694,6 +722,9 @@ export default function GroupVote() {
                   className="w-full px-4 py-2.5 rounded-xl outline-none text-sm"
                   style={{ background: "#f3f4f6", color: "#000000", border: "1px solid #374151" }}
                 />
+                <p className="text-[11px] mt-1 text-right" style={{ color: newPollTitle.length >= 75 ? "#dc2626" : "#9ca3af" }}>
+                  {newPollTitle.length} / 80
+                </p>
               </div>
 
               {createError && <p className="text-sm text-red-500">{createError}</p>}

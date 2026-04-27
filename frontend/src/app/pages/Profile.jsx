@@ -124,8 +124,8 @@ function Profile() {
       setPasswordError("New passwords do not match");
       return;
     }
-    if (passwordData.newPassword.length < 6) {
-      setPasswordError("New password must be at least 6 characters");
+    if (passwordData.newPassword.length < 8) {
+      setPasswordError("New password must be at least 8 characters");
       return;
     }
     setPasswordSaving(true);

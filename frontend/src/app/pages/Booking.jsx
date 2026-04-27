@@ -309,7 +309,7 @@ function ToursSearchModal({ open, onClose, onSave }) {
 }
 
 // ── Booking card ───────────────────────────────────────────────────────────────
-function BookingCard({ b, onEdit, onCancel, onDelete, loading }) {
+function BookingCard({ b, onEdit, onCancel, onDelete, onCopyCode, loading }) {
   const icon = TYPE_ICONS[b.type] || "📋";
   const isCancelled = (b.status || "active") === "cancelled";
   return (
@@ -338,7 +338,16 @@ function BookingCard({ b, onEdit, onCancel, onDelete, loading }) {
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs" style={{ color: "#5c6b73" }}>
             {b.vendor && <span>🏢 {b.vendor}</span>}
-            {b.confirmation_code && <span>🔖 {b.confirmation_code}</span>}
+            {b.confirmation_code && (
+              <button
+                type="button"
+                onClick={() => onCopyCode?.(b.confirmation_code)}
+                className="inline-flex items-center gap-1 hover:opacity-80 transition"
+                title="Copy confirmation code"
+              >
+                🔖 <span className="underline-offset-2 hover:underline">{b.confirmation_code}</span>
+              </button>
+            )}
             {b.start_time && (
               <span>
                 📅 {fmtDate(b.start_time)} {fmtTime(b.start_time)}
@@ -398,6 +407,20 @@ export default function Booking({ tripId: tripIdProp }) {
   const [menuOpen, setMenuOpen]           = useState(false);
   const [bookings, setBookings]           = useState([]);
   const [loading, setLoading]             = useState(false);
+  const [toast, setToast]                 = useState("");
+
+  const handleCopyCode = async (code) => {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      setToast("Confirmation code copied");
+      setTimeout(() => setToast(""), 2000);
+    } catch {
+      // Clipboard API unavailable (e.g. non-HTTPS preview build).
+      setToast("Copy not available — long-press to select");
+      setTimeout(() => setToast(""), 2500);
+    }
+  };
   const [err, setErr]                     = useState("");
   const [activeTab, setActiveTab]         = useState("all");
   const [query, setQuery]                 = useState("");
@@ -654,12 +677,28 @@ export default function Booking({ tripId: tripIdProp }) {
                   onEdit={openEdit}
                   onCancel={(b) => { setConfirmAction({ kind: "cancel", booking: b }); setConfirmOpen(true); }}
                   onDelete={(b) => { setConfirmAction({ kind: "delete", booking: b }); setConfirmOpen(true); }}
+                  onCopyCode={handleCopyCode}
                 />
               ))}
             </div>
           )}
         </main>
       </div>
+
+      {/* ══ Toast ════════════════════════════════════════════════════════════════ */}
+      {toast && (
+        <div
+          className="fixed left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full text-sm font-medium shadow-soft-lg"
+          style={{
+            bottom: "calc(80px + env(safe-area-inset-bottom, 0px))",
+            background: "#160f29",
+            color: "#fbfbf2",
+          }}
+          role="status"
+        >
+          {toast}
+        </div>
+      )}
 
       {/* ══ Modals ════════════════════════════════════════════════════════════════ */}
 
