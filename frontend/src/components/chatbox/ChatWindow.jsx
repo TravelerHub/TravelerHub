@@ -93,9 +93,9 @@ export default function ChatWindow({
 
   const handleInputChange = useCallback((e) => {
     setText(e.target.value);
-    // Auto-grow up to ~4 lines
+    // Auto-grow up to ~7 lines (was ~4) so longer messages don't feel cramped.
     e.target.style.height = "auto";
-    e.target.style.height = Math.min(e.target.scrollHeight, 104) + "px";
+    e.target.style.height = Math.min(e.target.scrollHeight, 180) + "px";
 
     // Send typing event (debounced stop after 2 s)
     if (!isTypingRef.current) {
@@ -118,17 +118,55 @@ export default function ChatWindow({
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     sendTypingStop();
 
+    // Optimistic render — show the message in the sender's own thread
+    // immediately so the chat feels responsive, even before the WS echo
+    // round-trips back. Field names match what MessagerList / MessagerBubble
+    // expect (from_user, sent_datetime, content) so the bubble renders
+    // correctly without special-casing optimistic messages.
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const sentAt = new Date().toISOString();
+    const optimisticMessage = {
+      message_id: tempId,
+      conversation_id: conversationID,
+      from_user: currentUserId,
+      content: trimmed,
+      sent_datetime: sentAt,
+      is_encrypted: false,
+      _optimistic: true,
+    };
+    setLocalMessages((prev) => [...prev, optimisticMessage]);
+    setText("");
+    if (inputRef.current) {
+      inputRef.current.style.height = "auto";
+      inputRef.current.focus();
+    }
+
     setSending(true);
     try {
       setEncryptionError(null);
-      await chatApi.sendMessage(conversationID, trimmed);
-      setText("");
-      if (inputRef.current) {
-        inputRef.current.style.height = "auto";
-        inputRef.current.focus();
+      const sent = await chatApi.sendMessage(conversationID, trimmed);
+      // Replace the optimistic placeholder with the server's canonical row
+      // so it carries the real message_id (needed for read receipts) and
+      // sent_datetime. We keep showing the user's plaintext locally rather
+      // than re-decrypting the encrypted payload.
+      if (sent && sent.message_id) {
+        setLocalMessages((prev) =>
+          prev.map((m) =>
+            m.message_id === tempId
+              ? { ...sent, content: trimmed, is_encrypted: false, _optimistic: false }
+              : m
+          )
+        );
+      } else {
+        setLocalMessages((prev) =>
+          prev.map((m) => (m.message_id === tempId ? { ...m, _optimistic: false } : m))
+        );
       }
     } catch (err) {
       console.error("Send error:", err);
+      // Remove the failed optimistic message and put the text back so the user can retry.
+      setLocalMessages((prev) => prev.filter((m) => m.message_id !== tempId));
+      setText(trimmed);
       setEncryptionError(err.message || "Failed to send");
     } finally {
       setSending(false);
@@ -138,7 +176,22 @@ export default function ChatWindow({
   // ── Sync messages from parent ──────────────────────────────────────────────
 
   useEffect(() => {
-    setLocalMessages(messages || []);
+    // Preserve any optimistic messages still pending — the parent re-fetch
+    // might not include them yet if the server is just behind the WS echo.
+    setLocalMessages((prev) => {
+      const pending = prev.filter((m) => m._optimistic);
+      const incoming = messages || [];
+      if (pending.length === 0) return incoming;
+      const stillPending = pending.filter((p) => {
+        const pts = new Date(p.sent_datetime).getTime();
+        return !incoming.some((m) => {
+          if ((m.from_user || m.sender_id) !== p.from_user) return false;
+          const mts = new Date(m.sent_datetime || m.created_at).getTime();
+          return Math.abs(mts - pts) < 30_000;
+        });
+      });
+      return [...incoming, ...stillPending];
+    });
   }, [messages, conversationID]);
 
   // Stop any pending key-wait retry when conversation changes
@@ -283,7 +336,32 @@ export default function ChatWindow({
           const msg = data;
           if (msg.message_id) {
             setLocalMessages((prev) => {
+              // Already have it (e.g. server returned it from the POST response)
               if (prev.some((m) => m.message_id === msg.message_id)) return prev;
+              // Race: WS echo can land before the API response replaces the
+              // optimistic placeholder. The encrypted ciphertext won't match
+              // the plaintext we stored locally, so dedupe by sender + a tight
+              // recency window instead. Keep the local plaintext content so
+              // the user doesn't see their own message rendered as ciphertext.
+              const senderField = msg.from_user || msg.sender_id;
+              const ts = new Date(msg.sent_datetime || msg.created_at || Date.now()).getTime();
+              const optimisticIdx = prev.findIndex((m) => {
+                if (!m._optimistic) return false;
+                if (m.from_user !== senderField) return false;
+                const mts = new Date(m.sent_datetime).getTime();
+                return Math.abs(ts - mts) < 30_000;
+              });
+              if (optimisticIdx !== -1) {
+                const next = prev.slice();
+                const optimistic = next[optimisticIdx];
+                next[optimisticIdx] = {
+                  ...msg,
+                  content: optimistic.content,
+                  is_encrypted: false,
+                  _optimistic: false,
+                };
+                return next;
+              }
               return [...prev, msg];
             });
           }
@@ -341,6 +419,27 @@ export default function ChatWindow({
     listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [localMessages?.length]);
 
+  // ── Keyboard awareness — keep the composer pinned above the on-screen
+  //    keyboard on mobile. visualViewport.height shrinks when the keyboard
+  //    opens; we offset the wrapping container by the inverse so the input
+  //    bar never gets covered by the keyboard.
+  const [keyboardInset, setKeyboardInset] = useState(0);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.visualViewport) return;
+    const vv = window.visualViewport;
+    const update = () => {
+      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKeyboardInset(inset);
+      if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+    };
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+
   // ── Subtitle ───────────────────────────────────────────────────────────────
 
   const subtitle = useMemo(() => {
@@ -354,7 +453,10 @@ export default function ChatWindow({
       {/* Inject keyframe CSS once */}
       <style>{typingDotsStyle}</style>
 
-      <div className="flex flex-col h-full">
+      <div
+        className="flex flex-col h-full"
+        style={keyboardInset > 0 ? { paddingBottom: keyboardInset } : undefined}
+      >
 
         {/* ── Chat header (sticky, Telegram-style) ─────────────────────── */}
         <div
@@ -437,16 +539,16 @@ export default function ChatWindow({
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
             }}
-            placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
+            placeholder="Message"
             rows={1}
-            className="flex-1 resize-none rounded-xl px-4 py-2.5 text-sm outline-none transition focus:ring-2 leading-relaxed"
+            className="flex-1 resize-none rounded-2xl px-4 py-2.5 text-sm outline-none transition focus:ring-2 leading-relaxed"
             style={{
               background: "#f3f4f6",
               border: "1px solid #e5e7eb",
               color: "#160f29",
               "--tw-ring-color": "#183a37",
               minHeight: "40px",
-              maxHeight: "104px",
+              maxHeight: "180px",
             }}
           />
           <button

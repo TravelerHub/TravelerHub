@@ -400,16 +400,16 @@ function Profile() {
                 </div>
               </div>
 
-              {/* Tab pills inside hero */}
+              {/* Tab pills inside hero — horizontally scrollable on mobile */}
               <div
-                className="flex px-8 gap-1 pb-1"
+                className="flex px-4 sm:px-8 gap-1 pb-1 overflow-x-auto scrollbar-hide"
                 style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
               >
                 {TABS.map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className="px-4 py-2.5 text-xs font-semibold transition rounded-t-lg"
+                    className="shrink-0 px-3 sm:px-4 py-2.5 text-xs font-semibold transition rounded-t-lg whitespace-nowrap"
                     style={
                       activeTab === tab.id
                         ? { color: "#fbfbf2", borderBottom: "2px solid #fbfbf2" }

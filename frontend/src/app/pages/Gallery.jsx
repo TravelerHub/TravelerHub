@@ -152,24 +152,34 @@ export default function Gallery() {
       const formData = new FormData();
       formData.append("file", file);
       if (caption.trim()) formData.append("caption", caption.trim());
+      const url = `${API_BASE}/trips/${tripId}/upload`;
       let res;
       try {
-        res = await fetch(`${API_BASE}/trips/${tripId}/upload`, {
+        res = await fetch(url, {
           method: "POST",
           headers: authHeaders(),
           body: formData,
         });
       } catch (networkErr) {
-        // fetch() throws TypeError ("Failed to fetch") only for browser-level
-        // failures: CORS preflight rejection, mixed content, server unreachable,
-        // request body rejected by an upstream proxy (often nginx
-        // client_max_body_size). Surface a useful hint instead of a bare
-        // "Failed to fetch".
         const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+        // fetch() throws TypeError ("Failed to fetch") for: CORS preflight
+        // rejection, mixed content, DNS failure, server unreachable, or an
+        // upstream proxy killing the connection (e.g. nginx
+        // client_max_body_size). Log full diagnostics so the actual cause is
+        // visible in DevTools instead of a generic "Failed to fetch".
+        // eslint-disable-next-line no-console
+        console.error("[upload] network failure", {
+          url,
+          fileSize: file.size,
+          fileName: file.name,
+          fileType: file.type,
+          origin: typeof window !== "undefined" ? window.location.origin : "?",
+          error: networkErr,
+        });
         throw new Error(
-          `Couldn't reach the server to upload (${sizeMB} MB photo). ` +
-          `If this keeps happening, your photo may be larger than the server allows — ` +
-          `try a smaller image, or check that the API is online.`
+          `Couldn't reach ${API_BASE} (${sizeMB} MB photo). ` +
+          `Check the Network tab in DevTools — most likely cause is CORS, ` +
+          `a wrong API URL, or an upstream proxy rejecting the upload.`
         );
       }
       if (!res.ok) {
@@ -500,29 +510,23 @@ export default function Gallery() {
         <main className="flex-1 overflow-y-auto pb-24 md:pb-0">
 
           {/* ── Hero header ──────────────────────────────────────────────── */}
-          <div className="relative px-8 pt-8 pb-6" style={{ background: "linear-gradient(135deg, #160f29 0%, #183a37 100%)" }}>
-            <div className="flex items-end justify-between">
-              <div>
+          <div className="relative px-5 sm:px-8 pt-5 pb-4 sm:pt-6 sm:pb-5" style={{ background: "linear-gradient(135deg, #160f29 0%, #183a37 100%)" }}>
+            <div className="flex items-end justify-between gap-3">
+              <div className="min-w-0">
                 <button
                   onClick={() => navigate("/dashboard")}
-                  className="text-xs font-medium mb-2 flex items-center gap-1 opacity-60 hover:opacity-100 transition"
+                  className="text-xs font-medium mb-1.5 flex items-center gap-1 opacity-60 hover:opacity-100 transition"
                   style={{ color: "#fbfbf2" }}
                 >
                   <span>&larr;</span> Dashboard
                 </button>
-                <p
-                  className="text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5"
-                  style={{ color: "#c8a96e" }}
-                >
-                  {activeAlbum?.trip_name || "Trip memories"}
-                </p>
                 <h1
-                  className="font-display text-3xl sm:text-4xl leading-tight"
+                  className="text-xl sm:text-2xl font-bold leading-tight truncate"
                   style={{ color: "#fbfbf2" }}
                 >
-                  Memories &amp; moments
+                  {activeAlbum?.trip_name || "Trip Gallery"}
                 </h1>
-                <div className="flex items-center gap-3 mt-2 text-xs" style={{ color: "rgba(251,251,242,0.7)" }}>
+                <div className="flex items-center gap-3 mt-1.5 text-xs" style={{ color: "rgba(251,251,242,0.7)" }}>
                   <span>
                     <strong style={{ color: "#fbfbf2" }}>{activeAlbum?.photo_count ?? photos.length}</strong>{" "}
                     photo{(activeAlbum?.photo_count ?? photos.length) === 1 ? "" : "s"}
