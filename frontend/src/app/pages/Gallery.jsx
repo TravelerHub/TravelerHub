@@ -529,8 +529,11 @@ export default function Gallery() {
             </div>
 
             {/* ── Album tabs ──────────────────────────────────────────────── */}
-            {albums.length > 1 && (
-              <div className="flex gap-2 mt-5 overflow-x-auto pb-1 no-scrollbar">
+            {albums.length > 0 && (
+              <div className="flex items-center gap-2 mt-5 overflow-x-auto pb-1 no-scrollbar">
+                <span className="shrink-0 text-[11px] font-semibold uppercase tracking-widest opacity-60 mr-1">
+                  Album
+                </span>
                 {albums.map((album) => (
                   <button
                     key={album.trip_id}
@@ -626,12 +629,12 @@ export default function Gallery() {
                 title={photosForbidden ? "You're not a member of this trip" : "Couldn't load photos"}
                 subtitle={
                   photosForbidden
-                    ? "Pick another trip from the dropdown above, or ask the trip creator to add you."
+                    ? "Pick another album from the bar above, or ask the trip creator to add you."
                     : (photosErrorObj?.message || "Something went wrong loading this album.")
                 }
                 action={
                   albums.length > 1
-                    ? { label: "Switch trip", onClick: () => setActiveTrip(albums[0].trip_id) }
+                    ? { label: "Switch album", onClick: () => setActiveTrip(albums[0].trip_id) }
                     : null
                 }
               />
