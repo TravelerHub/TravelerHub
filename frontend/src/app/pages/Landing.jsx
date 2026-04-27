@@ -130,11 +130,11 @@ className="w-full h-full object-cover transition-transform duration-700 group-ho
 className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-400"
 style={{ background: "rgba(24,58,55,0.28)" }}
 />
-<div className="absolute bottom-5 left-5">
-<p className="text-white font-bold text-lg leading-tight translate-y-1 group-hover:translate-y-0 transition-transform duration-300">
+<div className="absolute bottom-3 sm:bottom-5 left-3 sm:left-5 right-3 sm:right-5">
+<p className="text-white font-bold text-sm sm:text-lg leading-tight translate-y-1 group-hover:translate-y-0 transition-transform duration-300 wrap-break-word">
 {title}
 </p>
-<p className="text-white/70 text-sm mt-0.5 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 delay-75">
+<p className="text-white/70 text-xs sm:text-sm mt-0.5 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 delay-75">
 {tag}
 </p>
 </div>
@@ -548,22 +548,35 @@ Explore all →
 </button>
 </div>
 
-{/* Row 1: big (col-span-2) + tall (row-span-2 implicitly via CSS) */}
+{/* ── Mobile bento (≤ md): clean 2-col grid, every tile the same height ── */}
+<div
+className="grid grid-cols-2 gap-3 md:hidden"
+style={revealStyle(gridVisible, 0.1)}
+>
+<PhotoCard img={LandingImg7} title="Coastal Escapes"      tag="Sun + water"        height="h-44" />
+<PhotoCard img={LandingImg5} title="Mountain Mornings"    tag="Hikes + views"      height="h-44" />
+<PhotoCard img={LandingImg1} title="City Nights"          tag="Food + lights"      height="h-44" />
+<PhotoCard img={LandingImg4} title="Big Adventures"       tag="Go all in"          height="h-44" />
+<PhotoCard img={LandingImg6} title="Hidden Gems"          tag="Local favorites"    height="h-44" />
+<PhotoCard img={LandingImg2} title="Weekend Getaways"     tag="Quick reset"        height="h-44" />
+<PhotoCard img={LandingImg3} title="Urban Escapes"        tag="New perspectives"   height="h-44" className="col-span-2" />
+</div>
+
+{/* ── Desktop bento (md+): wide + tall + 2 small + row of 3 ── */}
+<div className="hidden md:block">
+{/* Row 1: wide (col-span-2) + tall (row-span-2) */}
 <div
 className="grid grid-cols-3 gap-4"
 style={revealStyle(gridVisible, 0.1)}
 >
-{/* Wide tile */}
 <div className="col-span-2">
 <PhotoCard img={LandingImg7} title="Coastal Escapes" tag="Sun + water" height="h-72" />
 </div>
-{/* Tall tile */}
 <div className="row-span-2" style={{ gridRow: "1 / 3" }}>
 <PhotoCard img={LandingImg5} title="Mountain Mornings" tag="Hikes + views" height="h-full" className="min-h-[592px]" />
 </div>
-{/* Two smaller tiles in row 2 */}
-<PhotoCard img={LandingImg1} title="City Nights" tag="Food + lights" height="h-72" style={revealStyle(gridVisible, 0.18)} />
-<PhotoCard img={LandingImg4} title="Big Adventures" tag="Go all in" height="h-72" style={revealStyle(gridVisible, 0.22)} />
+<PhotoCard img={LandingImg1} title="City Nights"     tag="Food + lights" height="h-72" style={revealStyle(gridVisible, 0.18)} />
+<PhotoCard img={LandingImg4} title="Big Adventures"  tag="Go all in"     height="h-72" style={revealStyle(gridVisible, 0.22)} />
 </div>
 
 {/* Row 3: three equal */}
@@ -571,9 +584,10 @@ style={revealStyle(gridVisible, 0.1)}
 className="grid grid-cols-3 gap-4 mt-4"
 style={revealStyle(gridVisible, 0.3)}
 >
-<PhotoCard img={LandingImg6} title="Hidden Gems" tag="Local favorites" height="h-56" />
-<PhotoCard img={LandingImg2} title="Weekend Getaways" tag="Quick reset" height="h-56" />
-<PhotoCard img={LandingImg3} title="Urban Escapes" tag="New perspectives" height="h-56" />
+<PhotoCard img={LandingImg6} title="Hidden Gems"        tag="Local favorites"  height="h-56" />
+<PhotoCard img={LandingImg2} title="Weekend Getaways"   tag="Quick reset"      height="h-56" />
+<PhotoCard img={LandingImg3} title="Urban Escapes"      tag="New perspectives" height="h-56" />
+</div>
 </div>
 </div>
 </section>
