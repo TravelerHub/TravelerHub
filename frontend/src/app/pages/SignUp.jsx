@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { API_BASE } from '../../config';
 import Navbar_empty from "../../components/navbar/Navbar_empty";
+import { encryptionUtils } from "../../lib/encryption";
+import { chatApi } from "../../components/chatbox/chatAPI";
 
 function SignUp() {
   const navigate = useNavigate();
@@ -52,6 +54,20 @@ function SignUp() {
         if (data.symmetric_key) {
           localStorage.setItem("card_symmetric_key", data.symmetric_key);
         }
+
+        // Derive the chat keypair deterministically from the user's
+        // symmetric_key so this device matches every other device the
+        // user logs into. See Login.jsx for the multi-device rationale.
+        if (data.symmetric_key) {
+          try {
+            const keypair = encryptionUtils.generateKeypairFromSeed(data.symmetric_key);
+            encryptionUtils.storeKeypair(keypair);
+            await chatApi.uploadPublicKey(keypair.public_key);
+          } catch (err) {
+            console.error("Keypair setup failed:", err);
+          }
+        }
+
       // Redirect to Dashboard
         navigate("/dashboard");
       }
