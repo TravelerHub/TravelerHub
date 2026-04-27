@@ -8,6 +8,7 @@ import { logActivity } from "../../components/ActivityFeed.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import { useFocusTrap } from "../../hooks/useFocusTrap.js";
 import ContributorStrip from "../../components/gallery/ContributorStrip.jsx";
+import { CameraSmile, LockHeart, AlertSpark } from "../../components/icons/StateIcons.jsx";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -501,8 +502,8 @@ export default function Gallery() {
                   {activeAlbum?.trip_name || "Trip memories"}
                 </p>
                 <h1
-                  className="text-2xl sm:text-3xl font-bold tracking-tight leading-tight"
-                  style={{ color: "#fbfbf2", fontFamily: '"Playfair Display", serif', fontStyle: "italic" }}
+                  className="font-display text-3xl sm:text-4xl leading-tight"
+                  style={{ color: "#fbfbf2" }}
                 >
                   Memories &amp; moments
                 </h1>
@@ -631,7 +632,8 @@ export default function Gallery() {
                 </div>
               ) : groupedError ? (
                 <EmptyState
-                  icon={groupedError.status === 403 ? "🔒" : "⚠️"}
+                  icon={groupedError.status === 403 ? <LockHeart /> : <AlertSpark />}
+                  tone={groupedError.status === 403 ? "lock" : "warning"}
                   title={groupedError.status === 403 ? "You're not a member of this trip" : "Couldn't group photos"}
                   subtitle={
                     groupedError.status === 403
@@ -642,7 +644,8 @@ export default function Gallery() {
                 />
               ) : groupedData.length === 0 ? (
                 <EmptyState
-                  icon="📸"
+                  icon={<CameraSmile />}
+                  tone="celebrate"
                   title="No groups yet"
                   subtitle="Photos cluster into stops once a few are shared. Add some to see them grouped."
                   action={{ label: "Share Photo", onClick: () => setShowUpload(true) }}
@@ -705,7 +708,8 @@ export default function Gallery() {
               </div>
             ) : photosError ? (
               <EmptyState
-                icon={photosForbidden ? "🔒" : "⚠️"}
+                icon={photosForbidden ? <LockHeart /> : <AlertSpark />}
+                tone={photosForbidden ? "lock" : "warning"}
                 title={photosForbidden ? "You're not a member of this trip" : "Couldn't load photos"}
                 subtitle={
                   photosForbidden
@@ -720,7 +724,8 @@ export default function Gallery() {
               />
             ) : photos.length === 0 ? (
               <EmptyState
-                icon="📸"
+                icon={<CameraSmile />}
+                tone="celebrate"
                 title="Nothing here yet — go make memories"
                 subtitle="When you or anyone in this trip shares a photo, it lands here. Be the first."
                 action={{ label: "Share your first photo", onClick: () => setShowUpload(true) }}
