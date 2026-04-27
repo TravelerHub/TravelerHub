@@ -3,6 +3,7 @@ from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
 from utils import oauth2
+from utils.trip_access import require_trip_member_sync, is_trip_leader_sync
 from supabase_client import supabase, safe_single
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -12,67 +13,9 @@ limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/routes", tags=["Routes"])
 
 
-def _ensure_trip_member(trip_id: str, user_id: str) -> None:
-    try:
-        member = safe_single(
-            supabase.table("group_member")
-            .select("id")
-            .eq("group_id", trip_id)
-            .eq("user_id", user_id)
-            .is_("left_datetime", None)
-        )
-        if member and member.data:
-            return
-    except Exception:
-        pass
-
-    try:
-        tm = safe_single(
-            supabase.table("trip_members")
-            .select("id")
-            .eq("trip_id", trip_id)
-            .eq("user_id", user_id)
-            .is_("left_at", None)
-        )
-        if tm and tm.data:
-            return
-    except Exception:
-        pass
-
-    try:
-        owner = safe_single(
-            supabase.table("trips")
-            .select("id")
-            .eq("id", trip_id)
-            .eq("owner_id", user_id)
-        )
-        if owner and owner.data:
-            return
-    except Exception:
-        pass
-
-    raise HTTPException(status_code=403, detail="Not a member of this group")
-
-
-def _is_trip_leader(trip_id: str, user_id: str) -> bool:
-    member = safe_single(
-        supabase.table("group_member")
-        .select("id")
-        .eq("group_id", trip_id)
-        .eq("user_id", user_id)
-        .eq("role", "leader")
-        .is_("left_datetime", None)
-    )
-    if member.data:
-        return True
-
-    owner = safe_single(
-        supabase.table("trips")
-        .select("id")
-        .eq("id", trip_id)
-        .eq("owner_id", user_id)
-    )
-    return bool(owner.data)
+# Local aliases preserve the original call sites; logic lives in `trip_access`.
+_ensure_trip_member = require_trip_member_sync
+_is_trip_leader = is_trip_leader_sync
 
 class LocationPoint(BaseModel):
     name: str
