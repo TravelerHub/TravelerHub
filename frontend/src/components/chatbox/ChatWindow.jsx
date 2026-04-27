@@ -236,7 +236,13 @@ export default function ChatWindow({
       clearInterval(pingInterval);
 
       const wsBase = API_BASE.replace(/^http/, "ws");
-      const ws = new WebSocket(`${wsBase}/api/ws/conversations/${conversationID}`);
+      // Browsers can't send custom Authorization headers on a WS handshake,
+      // so we pass the JWT as ?token=... The server validates it + the
+      // conversation membership BEFORE accepting the connection.
+      const token = localStorage.getItem("token") || sessionStorage.getItem("token") || "";
+      const ws = new WebSocket(
+        `${wsBase}/api/ws/conversations/${conversationID}?token=${encodeURIComponent(token)}`
+      );
       wsRef.current = ws;
 
       ws.onopen = () => {

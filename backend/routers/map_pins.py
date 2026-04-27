@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Depends, status, Request
 from pydantic import BaseModel
 from typing import Optional
 from utils import oauth2
+from utils.trip_access import require_trip_member
 from supabase_client import supabase
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -67,6 +68,7 @@ async def get_pins(
     current_user: dict = Depends(oauth2.get_current_user),
 ):
     """Return all shared pins for a trip, newest first."""
+    await require_trip_member(trip_id, _user_id(current_user))
     result = (
         supabase.table(TABLE)
         .select("*")
@@ -85,6 +87,7 @@ async def create_pin(
     current_user: dict = Depends(oauth2.get_current_user),
 ):
     """Drop a new pin on the shared group map."""
+    await require_trip_member(pin.trip_id, _user_id(current_user))
     row = {
         "trip_id": pin.trip_id,
         "user_id": _user_id(current_user),
@@ -113,10 +116,11 @@ async def update_pin(
 ):
     """Edit a pin's title, note, emoji, or color (own pins only)."""
     user_id = _user_id(current_user)
-    # Verify ownership
-    existing = supabase.table(TABLE).select("user_id").eq("id", pin_id).execute()
+    # Load both the owner_id and the trip_id so we can enforce both checks.
+    existing = supabase.table(TABLE).select("user_id, trip_id").eq("id", pin_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Pin not found")
+    await require_trip_member(existing.data[0]["trip_id"], user_id)
     if existing.data[0]["user_id"] != user_id:
         raise HTTPException(status_code=403, detail="Cannot edit another member's pin")
 
@@ -136,9 +140,10 @@ async def delete_pin(
 ):
     """Remove a pin from the shared map (own pins only)."""
     user_id = _user_id(current_user)
-    existing = supabase.table(TABLE).select("user_id").eq("id", pin_id).execute()
+    existing = supabase.table(TABLE).select("user_id, trip_id").eq("id", pin_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Pin not found")
+    await require_trip_member(existing.data[0]["trip_id"], user_id)
     if existing.data[0]["user_id"] != user_id:
         raise HTTPException(status_code=403, detail="Cannot delete another member's pin")
     supabase.table(TABLE).delete().eq("id", pin_id).execute()
@@ -153,9 +158,12 @@ async def upvote_pin(
 ):
     """Toggle upvote on a pin. Returns updated upvoter list."""
     user_id = _user_id(current_user)
-    existing = supabase.table(TABLE).select("upvoters").eq("id", pin_id).execute()
+    existing = supabase.table(TABLE).select("upvoters, trip_id").eq("id", pin_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Pin not found")
+
+    # Only members of the trip the pin belongs to can upvote.
+    await require_trip_member(existing.data[0]["trip_id"], user_id)
 
     upvoters: list = existing.data[0].get("upvoters") or []
     if user_id in upvoters:
