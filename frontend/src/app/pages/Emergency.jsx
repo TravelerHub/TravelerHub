@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import AppSidebar from "../../components/navbar/AppSidebar.jsx";
+import { haptic } from "../../utils/haptic.js";
 
 // ── Color palette (matches Dashboard / Booking)
 // #000000  sidebar bg
@@ -113,6 +114,10 @@ export default function Emergency() {
 
   // ── SOS flash ──────────────────────────────────────────────────────────────
   const triggerSOS = () => {
+    // Strongest haptic available so the press feels acknowledged on phones —
+    // critical for an emergency action where the screen flash alone might
+    // not register if the user is panicking.
+    haptic("heavy");
     setSosFlash(true);
     setTimeout(() => setSosFlash(false), 600);
   };
