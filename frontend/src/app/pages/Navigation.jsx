@@ -6,7 +6,7 @@ import { API_BASE } from '../../config';
 import { haversineDistance } from '../../utils/haversine';
 import Map from '../../components/Map';
 import { searchPlaces, getPlaceName } from '../../services/geocodingService';
-import { getOptimizedRoute, getMultiModalRoute } from '../../services/routeService';
+import { getOptimizedRoute, getMultiModalRoute, loadPolyline } from '../../services/routeService';
 import { ensureActiveGroupId, getActiveGroupId, getMyGroups, setActiveGroupId } from '../../services/groupService';
 import { planSmartRoute, syncMyPosition } from '../../services/smartRouteService';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -796,7 +796,7 @@ function Navigation() {
       // Use the base directions data to build the same route format
       if (result.directions_data?.routes?.[0]) {
         const gRoute = result.directions_data.routes[0];
-        const { default: polyline } = await import('@mapbox/polyline');
+        const polyline = await loadPolyline();
         const decodedPoints = polyline.decode(gRoute.overview_polyline.points);
         const coordinates = decodedPoints.map(([lat, lng]) => [lng, lat]);
         const geometry = { type: 'LineString', coordinates };

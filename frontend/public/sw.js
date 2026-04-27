@@ -15,7 +15,7 @@
  * To update the cache version, bump CACHE_VERSION below and re-deploy.
  */
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const SHELL_CACHE   = `travelerhub-shell-${CACHE_VERSION}`;
 const API_CACHE     = `travelerhub-api-${CACHE_VERSION}`;
 const ASSET_CACHE   = `travelerhub-assets-${CACHE_VERSION}`;

@@ -3,8 +3,10 @@ import { API_BASE } from '../config';
 // @mapbox/polyline is only needed when we actually decode a route. Importing it
 // dynamically lets Rollup put it in the mapbox vendor chunk instead of the
 // initial bundle. Cache the module promise so repeated calls share one fetch.
+// Exported so callers (e.g. Navigation.jsx) reuse the same cached, interop-safe
+// module instead of doing their own ad-hoc dynamic import.
 let polylinePromise;
-function loadPolyline() {
+export function loadPolyline() {
   if (!polylinePromise) {
     polylinePromise = import('@mapbox/polyline').then(m => m.default ?? m);
   }
