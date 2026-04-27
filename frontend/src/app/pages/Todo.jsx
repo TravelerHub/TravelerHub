@@ -4,6 +4,7 @@ import AppSidebar from "../../components/navbar/AppSidebar.jsx";
 import MiniCalendar from "../../components/dashboard/MiniCalendar.jsx";
 import { API_BASE } from "../../config";
 import { logActivity } from "../../components/ActivityFeed.jsx";
+import { ChecklistSpark, PartyWelcome } from "../../components/icons/StateIcons.jsx";
 
 // ── Color palette (matches Dashboard / Booking)
 // #000000  sidebar bg
@@ -693,9 +694,18 @@ export default function Todo() {
               >
                 {filtered.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 gap-3">
-                    <span className="text-4xl">
-                      {activeFilter === "Completed" ? "🎉" : "📋"}
-                    </span>
+                    <div
+                      className="w-20 h-20 rounded-full flex items-center justify-center"
+                      style={{
+                        background: activeFilter === "Completed"
+                          ? "rgba(200,169,110,0.18)"
+                          : "rgba(24,58,55,0.10)",
+                      }}
+                    >
+                      {activeFilter === "Completed"
+                        ? <PartyWelcome size={44} />
+                        : <ChecklistSpark size={44} />}
+                    </div>
                     <p className="font-semibold text-sm" style={{ color: "#374151" }}>
                       {activeFilter === "Completed"
                         ? "No completed tasks yet"

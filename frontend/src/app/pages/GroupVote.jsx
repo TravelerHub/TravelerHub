@@ -6,6 +6,7 @@ import { pollService } from "../../services/pollService";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import AppSidebar from "../../components/navbar/AppSidebar.jsx";
 import { logActivity } from "../../components/ActivityFeed.jsx";
+import { BallotSpark } from "../../components/icons/StateIcons.jsx";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -399,7 +400,12 @@ export default function GroupVote() {
                 <p className="text-sm text-center py-8" style={{ color: "#9ca3af" }}>Loading…</p>
               ) : polls.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 gap-3">
-                  <span className="text-3xl">🗳️</span>
+                  <div
+                    className="w-16 h-16 rounded-full flex items-center justify-center"
+                    style={{ background: "rgba(24,58,55,0.10)" }}
+                  >
+                    <BallotSpark size={36} />
+                  </div>
                   <p className="text-sm text-center" style={{ color: "#9ca3af" }}>
                     No polls yet.<br />Create one to get started.
                   </p>

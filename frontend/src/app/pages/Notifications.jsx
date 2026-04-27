@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../services/api';
 import Navbar_Dashboard from '../../components/navbar/Navbar_dashboard.jsx';
 import AppSidebar from '../../components/navbar/AppSidebar.jsx';
+import { BellQuiet } from '../../components/icons/StateIcons.jsx';
 
 const TYPE_ICONS = {
   vote: '🗳️',
@@ -71,9 +72,15 @@ export default function Notifications() {
             )}
 
             {!loading && notifications.length === 0 && (
-              <div className="text-center py-20">
-                <div className="text-5xl mb-4">🔔</div>
-                <p className="text-white/50">No notifications yet</p>
+              <div className="flex flex-col items-center justify-center text-center py-20">
+                <div
+                  className="w-20 h-20 rounded-full flex items-center justify-center mb-4"
+                  style={{ background: "rgba(200,169,110,0.15)" }}
+                >
+                  <BellQuiet size={44} color="#c8a96e" accent="#fbfbf2" />
+                </div>
+                <p className="text-white/70 font-semibold">All caught up</p>
+                <p className="text-white/40 text-sm mt-1">New activity will land here.</p>
               </div>
             )}
 
