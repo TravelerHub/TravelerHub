@@ -15,7 +15,7 @@
  * To update the cache version, bump CACHE_VERSION below and re-deploy.
  */
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const SHELL_CACHE   = `travelerhub-shell-${CACHE_VERSION}`;
 const API_CACHE     = `travelerhub-api-${CACHE_VERSION}`;
 const ASSET_CACHE   = `travelerhub-assets-${CACHE_VERSION}`;
@@ -23,6 +23,7 @@ const TILE_CACHE    = `travelerhub-tiles-${CACHE_VERSION}`;
 
 const TILE_CACHE_MAX = 500;   // max cached map tiles
 const API_CACHE_MAX  = 100;   // max cached API responses
+const TILE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 // Hosts whose responses we tile-cache (Mapbox CDN pattern)
 const TILE_HOSTS = ['api.mapbox.com', 'tiles.mapbox.com', 'events.mapbox.com'];
@@ -48,9 +49,46 @@ self.addEventListener('activate', (event) => {
             .map((k) => caches.delete(k))
         )
       )
+      .then(() => pruneStaleTiles())
       .then(() => self.clients.claim())
   );
 });
+
+// Drop tile entries older than TILE_MAX_AGE_MS. We stamp `sw-cached-at` when
+// putting tiles into the cache below; entries without the header (created
+// before this SW version) are left alone — LRU will evict them eventually.
+async function pruneStaleTiles() {
+  try {
+    const cache = await caches.open(TILE_CACHE);
+    const reqs = await cache.keys();
+    const now = Date.now();
+    await Promise.all(reqs.map(async (req) => {
+      const res = await cache.match(req);
+      if (!res) return;
+      const stamped = res.headers.get('sw-cached-at');
+      if (!stamped) return;
+      const age = now - parseInt(stamped, 10);
+      if (Number.isFinite(age) && age > TILE_MAX_AGE_MS) {
+        await cache.delete(req);
+      }
+    }));
+  } catch (e) {
+    // Cache iteration is best-effort; never block activation on failure.
+  }
+}
+
+// Wrap a fetched Response so the cached copy carries the time it was stored.
+async function stampCachedAt(response) {
+  const clone = response.clone();
+  const buf = await clone.arrayBuffer();
+  const headers = new Headers(clone.headers);
+  headers.set('sw-cached-at', String(Date.now()));
+  return new Response(buf, {
+    status: clone.status,
+    statusText: clone.statusText,
+    headers,
+  });
+}
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -111,8 +149,11 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       caches.open(TILE_CACHE).then(async (cache) => {
         const cached = await cache.match(event.request);
-        const networkFetch = fetch(event.request).then((response) => {
-          cache.put(event.request, response.clone());
+        const networkFetch = fetch(event.request).then(async (response) => {
+          // Store with a `sw-cached-at` header so pruneStaleTiles() can drop
+          // entries older than TILE_MAX_AGE_MS on the next SW activation.
+          const stamped = await stampCachedAt(response);
+          cache.put(event.request, stamped.clone());
           limitCacheSize(TILE_CACHE, TILE_CACHE_MAX);
           return response;
         }).catch(() => null);
