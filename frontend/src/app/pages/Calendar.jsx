@@ -258,20 +258,20 @@ function CalendarPage() {
 
         <main className="flex-1 overflow-y-auto md:overflow-hidden p-3 sm:p-4 pb-24 md:pb-4 flex flex-col gap-3" style={{ background: "#f3f4f6" }}>
 
-          {/* ── Top controls bar ────────────────────────────────────────── */}
+          {/* ── Top controls bar — stacks on mobile, single row on md+ ─── */}
           <div
-            className="shrink-0 flex items-center justify-between gap-4 px-4 py-3 rounded-2xl"
+            className="shrink-0 flex flex-col md:flex-row md:items-center md:justify-between gap-3 px-4 py-3 rounded-2xl"
             style={{ background: '#ffffff', border: '1px solid #ebebeb' }}
           >
             {/* Page title */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <div
-                className="w-8 h-8 rounded-xl flex items-center justify-center"
+                className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
                 style={{ background: '#000000' }}
               >
                 <CalendarDaysIcon className="w-4 h-4 text-white" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm font-bold leading-tight" style={{ color: '#160f29' }}>
                   Trip Calendar
                 </p>
@@ -281,28 +281,28 @@ function CalendarPage() {
               </div>
             </div>
 
-            {/* Center: view tabs */}
-            <div
-              className="flex items-center gap-0.5 rounded-xl p-1"
-              style={{ background: '#f3f4f6' }}
-            >
-              {VIEW_TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setView(tab.id)}
-                  className="px-4 py-1.5 rounded-lg text-xs font-semibold transition"
-                  style={{
-                    background: view === tab.id ? '#000000' : 'transparent',
-                    color:      view === tab.id ? '#ffffff' : '#6b7280',
-                  }}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+            {/* Center: view tabs + trip selector. On mobile both go on one row. */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div
+                className="flex items-center gap-0.5 rounded-xl p-1"
+                style={{ background: '#f3f4f6' }}
+              >
+                {VIEW_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setView(tab.id)}
+                    className="px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition"
+                    style={{
+                      background: view === tab.id ? '#000000' : 'transparent',
+                      color:      view === tab.id ? '#ffffff' : '#6b7280',
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
 
-            {/* Right: legend + trip selector */}
-            <div className="flex items-center gap-4">
+              {/* Legend visible on lg+ only — too noisy on mobile */}
               <div className="hidden lg:flex items-center gap-3">
                 {Object.values(TYPE_CONFIG).map((t) => (
                   <span key={t.label} className="flex items-center gap-1.5 text-[11px]" style={{ color: '#6b7280' }}>
@@ -311,10 +311,11 @@ function CalendarPage() {
                   </span>
                 ))}
               </div>
+
               <select
                 value={selectedTripId || ''}
                 onChange={(e) => setSelectedTripId(e.target.value || null)}
-                className="text-xs px-3 py-2 rounded-xl outline-none"
+                className="text-xs px-3 py-2 rounded-xl outline-none min-w-0 max-w-[140px] sm:max-w-none truncate"
                 style={{
                   background: '#f3f4f6',
                   border: '1px solid #e5e7eb',
@@ -340,11 +341,11 @@ function CalendarPage() {
               />
             </div>
           ) : (
-            <div className="flex-1 min-h-0 flex gap-3">
+            <div className="flex-1 min-h-0 flex flex-col-reverse lg:flex-row gap-3">
 
               {/* ── Main calendar panel ──────────────────────────────────── */}
               <div
-                className="th-fc flex-1 min-w-0 rounded-2xl overflow-hidden flex flex-col p-5"
+                className="th-fc flex-1 min-w-0 rounded-2xl overflow-hidden flex flex-col p-3 sm:p-5"
                 style={{ background: '#ffffff', border: '1px solid #ebebeb' }}
               >
                 <FullCalendar
@@ -368,8 +369,8 @@ function CalendarPage() {
                 />
               </div>
 
-              {/* ── Right side panel ─────────────────────────────────────── */}
-              <div className="w-64 shrink-0 flex flex-col gap-3">
+              {/* ── Right side panel — full-width above the calendar on mobile ── */}
+              <div className="w-full lg:w-64 shrink-0 flex flex-col gap-3">
 
                 {/* Today card */}
                 <div
