@@ -191,11 +191,11 @@ function Expenses() {
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 pb-24 md:pb-6">
           {/* Page header */}
           <div className="mb-6">
-            <h1 className="text-2xl font-bold mb-1" style={{ color: "#160f29" }}>
+            <h1 className="text-2xl font-bold" style={{ color: "#160f29" }}>
               Smart Scanner
             </h1>
-            <p className="text-sm" style={{ color: "#5c6b73" }}>
-              Snap or upload a receipt or travel document — AI extracts the key details instantly.
+            <p className="text-sm mt-1" style={{ color: "#5c6b73" }}>
+              Snap a receipt — AI fills in the rest.
             </p>
           </div>
 

@@ -123,7 +123,7 @@ function Modal({ open, title, onClose, children }) {
     >
       <div
         className="w-full max-h-[90vh] overflow-y-auto rounded-2xl p-4 sm:p-6"
-        style={{ maxWidth: 740, background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
+        style={{ maxWidth: 740, background: "#fff", boxShadow: "var(--shadow-lg)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">
@@ -563,13 +563,12 @@ export default function Booking({ tripId: tripIdProp }) {
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-5 pb-24 md:pb-5 flex flex-col gap-4">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 pb-24 md:pb-6 flex flex-col gap-4">
 
           {/* ── Header row ── */}
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
               <h1 className="text-xl font-bold" style={{ color: "#160f29" }}>Bookings</h1>
-              <p className="text-sm mt-0.5" style={{ color: "#5c6b73" }}>Manage your hotels, flights, cars, and activities</p>
             </div>
             <div className="flex gap-2 flex-wrap">
               <button onClick={() => setHotelOpen(true)}

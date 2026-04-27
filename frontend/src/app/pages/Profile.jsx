@@ -864,7 +864,7 @@ function Profile() {
       {/* ── Delete Account Modal (two-step confirmation) ─────────────────────── */}
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
-          <div className="w-full rounded-2xl overflow-y-auto" style={{ maxWidth: 440, maxHeight: "90vh", background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.25)" }}>
+          <div className="w-full rounded-2xl overflow-y-auto" style={{ maxWidth: 440, maxHeight: "90vh", background: "#fff", boxShadow: "var(--shadow-lg)" }}>
             <div className="px-6 pt-6 pb-4">
               <div className="w-10 h-10 rounded-full flex items-center justify-center mb-4" style={{ background: "#fef2f2" }}>
                 <span style={{ color: "#dc2626", fontSize: 18 }}>&#9888;</span>

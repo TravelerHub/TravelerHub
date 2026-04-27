@@ -197,7 +197,7 @@ function PaymentHandlesModal({ userId, onClose }) {
       <div
         ref={modalRef}
         className="w-full rounded-2xl overflow-y-auto"
-        style={{ maxWidth: 420, maxHeight: "90vh", background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
+        style={{ maxWidth: 420, maxHeight: "90vh", background: "#fff", boxShadow: "var(--shadow-lg)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #f3f4f6" }}>
@@ -1322,7 +1322,7 @@ function Finance() {
           <div
             ref={splitModalRef}
             className="w-full rounded-2xl overflow-y-auto"
-            style={{ maxWidth: 420, maxHeight: "90vh", background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
+            style={{ maxWidth: 420, maxHeight: "90vh", background: "#fff", boxShadow: "var(--shadow-lg)" }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #f3f4f6" }}>
@@ -1383,7 +1383,7 @@ function Finance() {
               maxWidth: 520,
               maxHeight: "90vh",
               background: "#fff",
-              boxShadow: "0 24px 64px rgba(0,0,0,0.2)",
+              boxShadow: "var(--shadow-lg)",
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -1580,7 +1580,7 @@ function Finance() {
           <div
             ref={chargeCardModalRef}
             className="w-full rounded-2xl overflow-y-auto"
-            style={{ maxWidth: 520, maxHeight: "90vh", background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}
+            style={{ maxWidth: 520, maxHeight: "90vh", background: "#fff", boxShadow: "var(--shadow-lg)" }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #f3f4f6" }}>
