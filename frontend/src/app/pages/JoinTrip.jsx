@@ -66,7 +66,18 @@ export default function JoinTrip() {
       const data = await res.json();
 
       if (res.status === 409) {
-        setError("You are already a member of this trip.");
+        // Already a member — make sure that trip is the active one and skip
+        // the error UI; just route to the dashboard. Telegram does the same:
+        // tapping a join link for a chat you're already in just opens it.
+        const groupId =
+          data?.group_id || data?.trip_id || preview?.group_id || preview?.trip_id;
+        if (groupId) {
+          try {
+            localStorage.setItem("active_group_id", String(groupId));
+            localStorage.setItem("activeGroupId", String(groupId));
+          } catch { /* storage unavailable */ }
+        }
+        navigate("/dashboard", { replace: true });
         return;
       }
       if (res.status === 404) {

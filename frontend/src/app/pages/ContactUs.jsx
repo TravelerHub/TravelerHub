@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar_Landing from "../../components/navbar/Navbar_landing";
 import Footer from "../../components/Footer";
+import { API_BASE } from "../../config";
 
 // ── Scroll-reveal hook ────────────────────────────────────────────────────────
 function useScrollReveal(threshold = 0.12) {
@@ -113,10 +114,27 @@ export default function ContactUs() {
     if (!message.trim()) { setError("Please write your message."); return; }
     setError("");
     setLoading(true);
-    // Simulate async submit — wire to your backend endpoint here
-    await new Promise((r) => setTimeout(r, 900));
-    setLoading(false);
-    setSubmitted(true);
+    try {
+      const res = await fetch(`${API_BASE}/contact`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          subject,
+          message: message.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.detail || `Could not send (${res.status}).`);
+      }
+      setSubmitted(true);
+    } catch (err) {
+      setError(err.message || "Couldn't reach the server. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleReset = () => {
