@@ -293,9 +293,33 @@ async def upload_trip_media(
         public_url = supabase_admin.storage.from_(BUCKET_NAME).get_public_url(file_path)
     except Exception as e:
         logger.error("[upload_trip_media] storage upload failed trip=%s: %s", trip_id, e, exc_info=True)
+        # Translate the most common Supabase-side failures into messages that
+        # tell the operator what to fix, instead of bubbling raw vendor JSON
+        # to the user.
+        raw = str(e)
+        lowered = raw.lower()
+        if "jws protected header is invalid" in lowered or "jwt" in lowered and "invalid" in lowered:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Storage credentials look malformed (server-side). "
+                    "Ask an admin to verify SUPABASE_SERVICE_ROLE_KEY has no "
+                    "stray whitespace or surrounding quotes and is the current "
+                    "key from the Supabase dashboard."
+                ),
+            )
+        if "row-level security" in lowered or "rls" in lowered:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Storage rejected the upload because of row-level security. "
+                    "Either SUPABASE_SERVICE_ROLE_KEY isn't set on the server, "
+                    "or the trip-media bucket policy needs review."
+                ),
+            )
         # Surface enough detail for the client error toast to be useful, but
         # keep it short and free of credentials.
-        msg = str(e)[:160] or type(e).__name__
+        msg = raw[:160] or type(e).__name__
         raise HTTPException(status_code=502, detail=f"Storage upload failed: {msg}")
 
     # Step 2: DB insert — separate so we can tell storage vs metadata failures
