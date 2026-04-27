@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { API_BASE } from "../../config";
@@ -7,6 +7,8 @@ import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import { logActivity } from "../../components/ActivityFeed.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import { useFocusTrap } from "../../hooks/useFocusTrap.js";
+import ContributorStrip from "../../components/gallery/ContributorStrip.jsx";
+import { CameraSmile, LockHeart, AlertSpark } from "../../components/icons/StateIcons.jsx";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -74,6 +76,13 @@ export default function Gallery() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
 
+  // Filter the grid to one contributor (Stories ribbon). null = everyone.
+  const [contributorFilter, setContributorFilter] = useState(null);
+
+  // Tracks the photo id currently animating a double-tap heart (Instagram-style)
+  const [heartingId, setHeartingId] = useState(null);
+  const tapMapRef = useRef(new Map());
+
   // Comments for lightbox
   const [comments, setComments]       = useState([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -126,6 +135,15 @@ export default function Gallery() {
   });
   const photos = photosInfiniteData?.pages.flatMap((p) => p.photos) ?? [];
   const photosForbidden = photosError && photosErrorObj?.status === 403;
+
+  // Filtered grid view (per the active Stories-strip selection)
+  const visiblePhotos = useMemo(() => {
+    if (!contributorFilter) return photos;
+    return photos.filter((p) => {
+      const id = p.uploaded_by || p.uploaded_by_id || p.uploader_id || p.uploaded_by_name;
+      return id === contributorFilter;
+    });
+  }, [photos, contributorFilter]);
 
   // ── useMutation: upload photo ─────────────────────────────────────────────
 
@@ -195,14 +213,21 @@ export default function Gallery() {
 
   // ── Grouped photos fetch ──────────────────────────────────────────────────
 
+  const [groupedError, setGroupedError] = useState(null);
+
   const fetchGroupedPhotos = useCallback(async () => {
     if (!activeTrip) { setGroupedData([]); return; }
     setGroupedLoading(true);
+    setGroupedError(null);
     try {
       const data = await apiFetch(`/trips/${activeTrip}/media/grouped`);
       setGroupedData(data.groups || []);
-    } catch { setGroupedData([]); }
-    finally { setGroupedLoading(false); }
+    } catch (err) {
+      setGroupedData([]);
+      setGroupedError(err);
+    } finally {
+      setGroupedLoading(false);
+    }
   }, [activeTrip]);
 
   useEffect(() => {
@@ -288,6 +313,25 @@ export default function Gallery() {
     if (e) e.stopPropagation();
     setLikingId(mediaId);
     likeMutation.mutate({ mediaId });
+  };
+
+  // Double-tap a tile to like (Instagram-style). On the second tap within
+  // 280 ms we trigger like + the floating-heart animation, then suppress the
+  // open-lightbox click that this gesture would normally have caused.
+  const handleTilePointer = (photo) => {
+    if (selectMode) return false; // selectMode owns taps
+    const now = Date.now();
+    const map = tapMapRef.current;
+    const last = map.get(photo.id) || 0;
+    if (now - last < 280) {
+      map.delete(photo.id);
+      if (!photo.liked_by_me) handleLike(photo.id);
+      setHeartingId(photo.id);
+      setTimeout(() => setHeartingId((cur) => (cur === photo.id ? null : cur)), 700);
+      return true; // suppress single-tap action
+    }
+    map.set(photo.id, now);
+    return false;
   };
 
   // ── Save/bookmark toggle ──────────────────────────────────────────────────
@@ -451,14 +495,31 @@ export default function Gallery() {
                 >
                   <span>&larr;</span> Dashboard
                 </button>
-                <h1 className="text-3xl font-bold tracking-tight" style={{ color: "#fbfbf2" }}>
-                  Trip Gallery
-                </h1>
-                <p className="text-sm mt-1 opacity-60" style={{ color: "#fbfbf2" }}>
-                  {activeAlbum
-                    ? `${activeAlbum.trip_name} \u00B7 ${activeAlbum.photo_count} photo${activeAlbum.photo_count !== 1 ? "s" : ""}`
-                    : "Share memories with your group"}
+                <p
+                  className="text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5"
+                  style={{ color: "#c8a96e" }}
+                >
+                  {activeAlbum?.trip_name || "Trip memories"}
                 </p>
+                <h1
+                  className="font-display text-3xl sm:text-4xl leading-tight"
+                  style={{ color: "#fbfbf2" }}
+                >
+                  Memories &amp; moments
+                </h1>
+                <div className="flex items-center gap-3 mt-2 text-xs" style={{ color: "rgba(251,251,242,0.7)" }}>
+                  <span>
+                    <strong style={{ color: "#fbfbf2" }}>{activeAlbum?.photo_count ?? photos.length}</strong>{" "}
+                    photo{(activeAlbum?.photo_count ?? photos.length) === 1 ? "" : "s"}
+                  </span>
+                  <span aria-hidden="true">{"·"}</span>
+                  <span>
+                    <strong style={{ color: "#fbfbf2" }}>
+                      {new Set(photos.map((p) => p.uploaded_by || p.uploaded_by_id || p.uploader_id || p.uploaded_by_name).filter(Boolean)).size}
+                    </strong>{" "}
+                    contributor{new Set(photos.map((p) => p.uploaded_by || p.uploaded_by_id || p.uploader_id || p.uploaded_by_name).filter(Boolean)).size === 1 ? "" : "s"}
+                  </span>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 {selectMode ? (
@@ -551,6 +612,15 @@ export default function Gallery() {
                 ))}
               </div>
             )}
+
+            {/* ── Stories ribbon: contributors ──────────────────────────────── */}
+            {viewMode === 'grid' && photos.length > 0 && (
+              <ContributorStrip
+                photos={photos}
+                selectedContributorId={contributorFilter}
+                onSelect={setContributorFilter}
+              />
+            )}
           </div>
 
           {/* ── Grouped view ─────────────────────────────────────────────── */}
@@ -560,12 +630,25 @@ export default function Gallery() {
                 <div className="flex justify-center items-center h-64">
                   <div className="w-8 h-8 border-3 border-gray-300 border-t-gray-800 rounded-full animate-spin" />
                 </div>
+              ) : groupedError ? (
+                <EmptyState
+                  icon={groupedError.status === 403 ? <LockHeart /> : <AlertSpark />}
+                  tone={groupedError.status === 403 ? "lock" : "warning"}
+                  title={groupedError.status === 403 ? "You're not a member of this trip" : "Couldn't group photos"}
+                  subtitle={
+                    groupedError.status === 403
+                      ? "Pick another album from the bar above, or ask the trip creator to add you."
+                      : (groupedError.message || "Try the Grid view instead — grouping needs at least a few photos with location data.")
+                  }
+                  action={{ label: "Switch to Grid", onClick: () => setViewMode('grid') }}
+                />
               ) : groupedData.length === 0 ? (
                 <EmptyState
-                  icon="📸"
-                  title="No photos yet"
-                  subtitle="Upload your first memory from this trip."
-                  action={{ label: "Upload Photo", onClick: () => setShowUpload(true) }}
+                  icon={<CameraSmile />}
+                  tone="celebrate"
+                  title="No groups yet"
+                  subtitle="Photos cluster into stops once a few are shared. Add some to see them grouped."
+                  action={{ label: "Share Photo", onClick: () => setShowUpload(true) }}
                 />
               ) : (
                 <div className="space-y-8">
@@ -625,7 +708,8 @@ export default function Gallery() {
               </div>
             ) : photosError ? (
               <EmptyState
-                icon={photosForbidden ? "🔒" : "⚠️"}
+                icon={photosForbidden ? <LockHeart /> : <AlertSpark />}
+                tone={photosForbidden ? "lock" : "warning"}
                 title={photosForbidden ? "You're not a member of this trip" : "Couldn't load photos"}
                 subtitle={
                   photosForbidden
@@ -640,31 +724,63 @@ export default function Gallery() {
               />
             ) : photos.length === 0 ? (
               <EmptyState
-                icon="📸"
-                title="No photos yet"
-                subtitle="Upload your first memory from this trip."
-                action={{ label: "Upload Photo", onClick: () => setShowUpload(true) }}
+                icon={<CameraSmile />}
+                tone="celebrate"
+                title="Nothing here yet — go make memories"
+                subtitle="When you or anyone in this trip shares a photo, it lands here. Be the first."
+                action={{ label: "Share your first photo", onClick: () => setShowUpload(true) }}
               />
             ) : (
               <>
-              <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4" style={{ columnGap: "1rem" }}>
-                {photos.map((photo, idx) => {
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1 sm:gap-1.5">
+                {visiblePhotos.map((photo) => {
+                  const idx = photos.indexOf(photo);
                   const bgColor = avatarColor(photo.uploaded_by_name);
                   const isSelected = selectedIds.has(photo.id);
+                  // "NEW" badge if uploaded within the last 24 h
+                  const ageMs = Date.now() - new Date(photo.created_at).getTime();
+                  const isNew = !Number.isNaN(ageMs) && ageMs >= 0 && ageMs < 24 * 60 * 60 * 1000;
+                  const isHearting = heartingId === photo.id;
                   return (
                     <div
                       key={photo.id}
-                      className="group relative break-inside-avoid rounded-2xl overflow-hidden cursor-pointer"
-                      style={{ background: "#e5e7eb", outline: isSelected ? "3px solid #183a37" : "none", outlineOffset: -3 }}
-                      onClick={() => selectMode ? toggleSelect(photo.id) : setLightboxIdx(idx)}
+                      className="group relative aspect-square overflow-hidden cursor-pointer rounded-md sm:rounded-lg"
+                      style={{ background: "#e5e7eb", outline: isSelected ? "3px solid #c8a96e" : "none", outlineOffset: -3 }}
+                      onClick={() => {
+                        if (selectMode) { toggleSelect(photo.id); return; }
+                        const consumed = handleTilePointer(photo);
+                        if (!consumed) setLightboxIdx(idx);
+                      }}
                     >
                       <img
                         src={photo.thumbnail_url || photo.public_url}
                         alt={photo.caption || "Trip photo"}
-                        className="w-full block transition-transform duration-500 group-hover:scale-105"
+                        className="w-full h-full object-cover block transition-transform duration-500 group-hover:scale-105"
                         loading="lazy"
                         decoding="async"
                       />
+
+                      {/* "NEW" badge — fresh upload */}
+                      {isNew && !selectMode && (
+                        <span
+                          className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider"
+                          style={{ background: "#c8a96e", color: "#160f29", boxShadow: "0 2px 8px rgba(0,0,0,0.3)" }}
+                        >
+                          New
+                        </span>
+                      )}
+
+                      {/* Floating heart on double-tap (Instagram-style) */}
+                      {isHearting && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                        >
+                          <svg width="64" height="64" viewBox="0 0 24 24" fill="#ef4444" className="heart-anim drop-shadow-lg">
+                            <path d="M12 21s-7-4.5-7-11a4.5 4.5 0 018-2 4.5 4.5 0 018 2c0 6.5-7 11-7 11h-2z" />
+                          </svg>
+                        </span>
+                      )}
 
                       {/* Select checkbox */}
                       {selectMode && (
@@ -723,35 +839,59 @@ export default function Gallery() {
                         </div>
                       )}
 
-                      {/* Gradient overlay on hover */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                      {/* Persistent gradient + counts at the bottom (visible on
+                          touch where there's no hover). Like count is always
+                          shown if > 0; avatar + name slide up on hover. */}
+                      <div
+                        className="absolute inset-x-0 bottom-0 pointer-events-none"
+                        style={{
+                          background:
+                            "linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.0) 75%)",
+                          paddingTop: 24,
+                        }}
+                      >
+                        {/* Always-visible counts row */}
+                        {((photo.like_count || 0) > 0 || (photo.comment_count || 0) > 0) && (
+                          <div className="flex items-center gap-3 px-2 pb-1.5 text-white/95 text-[11px] font-semibold drop-shadow">
+                            {(photo.like_count || 0) > 0 && (
+                              <span className="flex items-center gap-1">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill={photo.liked_by_me ? "#ef4444" : "currentColor"} aria-hidden="true">
+                                  <path d="M12 21s-7-4.5-7-11a4.5 4.5 0 018-2 4.5 4.5 0 018 2c0 6.5-7 11-7 11h-2z" />
+                                </svg>
+                                {photo.like_count}
+                              </span>
+                            )}
+                            {(photo.comment_count || 0) > 0 && (
+                              <span className="flex items-center gap-1">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                  <path d="M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-5.5A8 8 0 1 1 21 12z" />
+                                </svg>
+                                {photo.comment_count}
+                              </span>
+                            )}
+                          </div>
+                        )}
 
-                      {/* Bottom info bar on hover */}
-                      <div className="absolute bottom-0 left-0 right-0 p-3 translate-y-full group-hover:translate-y-0 transition-transform duration-300 pointer-events-none">
-                        <div className="flex items-center justify-between">
+                        {/* Hover-revealed uploader strip */}
+                        <div className="px-2 pb-2 translate-y-full group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-300">
                           <div className="flex items-center gap-2 min-w-0">
                             <div
-                              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                              className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
                               style={{ background: bgColor, color: "#fbfbf2" }}
                             >
                               {(photo.uploaded_by_name || "?")[0].toUpperCase()}
                             </div>
                             <div className="min-w-0">
-                              <p className="text-xs font-semibold text-white truncate">
+                              <p className="text-[11px] font-semibold text-white truncate leading-tight">
                                 {photo.uploaded_by_name || "Group Member"}
                               </p>
-                              <p className="text-[10px] text-white/50">{timeAgo(photo.created_at)}</p>
+                              <p className="text-[9px] text-white/55 leading-tight">{timeAgo(photo.created_at)}</p>
                             </div>
                           </div>
-                          {(photo.like_count || 0) > 0 && (
-                            <span className="text-[10px] text-white/60 shrink-0">
-                              {photo.like_count} {photo.like_count === 1 ? "like" : "likes"}
-                            </span>
+                          {photo.caption && (
+                            <p className="text-[10px] text-white/85 mt-1 line-clamp-1">{photo.caption}</p>
                           )}
                         </div>
-                        {photo.caption && (
-                          <p className="text-xs text-white/80 mt-1.5 line-clamp-2">{photo.caption}</p>
-                        )}
                       </div>
                     </div>
                   );
