@@ -11,6 +11,29 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 })
 
+// Global session-expiry handler. Authenticated requests dispatch
+// `auth:expired` from the API wrappers when the server returns 401, so we
+// clear credentials and route to /login instead of rendering broken pages.
+// Debounced via a flag so a burst of parallel 401s only triggers one redirect.
+if (typeof window !== "undefined") {
+  let redirecting = false
+  window.addEventListener("auth:expired", () => {
+    if (redirecting) return
+    redirecting = true
+    try {
+      localStorage.removeItem("token")
+      sessionStorage.removeItem("token")
+      localStorage.removeItem("user")
+    } catch { /* storage unavailable */ }
+    queryClient.clear()
+    if (window.location.pathname !== "/login") {
+      window.location.assign("/login")
+    } else {
+      redirecting = false
+    }
+  })
+}
+
 // Register service worker for offline support + PWA install
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

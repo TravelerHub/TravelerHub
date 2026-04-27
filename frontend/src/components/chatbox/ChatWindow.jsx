@@ -144,7 +144,16 @@ export default function ChatWindow({
     setSending(true);
     try {
       setEncryptionError(null);
-      const sent = await chatApi.sendMessage(conversationID, trimmed);
+      // Retry once on transient failures (network blip / 502 / 503) before
+      // rolling back the optimistic message — feels much smoother on
+      // flaky mobile connections.
+      let sent;
+      try {
+        sent = await chatApi.sendMessage(conversationID, trimmed);
+      } catch (firstErr) {
+        await new Promise((r) => setTimeout(r, 200));
+        sent = await chatApi.sendMessage(conversationID, trimmed);
+      }
       // Replace the optimistic placeholder with the server's canonical row
       // so it carries the real message_id (needed for read receipts) and
       // sent_datetime. We keep showing the user's plaintext locally rather
@@ -240,7 +249,7 @@ export default function ChatWindow({
           console.warn("Session key mismatch — rotating keypair, waiting for peer redistribution");
           try {
             await chatApi.rotateKeypair(conversationID);
-            setEncryptionError("Waiting for key — ask another member to open the chat");
+            setEncryptionError("Setting up secure chat — one of your trip-mates will need to open this conversation once.");
 
             let attempts = 0;
             if (retryRef.current) clearInterval(retryRef.current);
@@ -374,8 +383,11 @@ export default function ChatWindow({
         if (!isActive) return;
         clearInterval(pingInterval);
         wsRef.current = null;
-        // Exponential backoff: 1s → 2s → 4s → 8s → 16s → 30s max
-        const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+        // Exponential backoff: 1s → 2s → 4s → 8s → 16s → 30s max, plus a
+        // ±15% jitter so a whole group of clients doesn't reconnect in
+        // lockstep when the backend restarts.
+        const base = Math.min(1000 * Math.pow(2, retryCount), 30000);
+        const delay = Math.round(base * (0.85 + Math.random() * 0.3));
         retryCount = Math.min(retryCount + 1, 5);
         reconnectTimer = setTimeout(connect, delay);
       };
@@ -413,10 +425,23 @@ export default function ChatWindow({
   }, [lastMessageId, currentUserId, conversationID, sendWsEvent]);
 
   // ── Scroll to bottom on new messages ──────────────────────────────────────
-
+  // Only auto-scroll when the user is already near the bottom (within ~120 px)
+  // or when the conversation just opened. Prevents the list from yanking the
+  // viewport away while the user is reading older messages, and avoids the
+  // flicker that happened on slow networks during initial paginated load.
+  const justOpenedRef = useRef(true);
   useEffect(() => {
-    if (!listRef.current) return;
-    listRef.current.scrollTop = listRef.current.scrollHeight;
+    justOpenedRef.current = true;
+  }, [conversationID]);
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const isNearBottom = distanceFromBottom < 120;
+    if (justOpenedRef.current || isNearBottom) {
+      el.scrollTop = el.scrollHeight;
+      justOpenedRef.current = false;
+    }
   }, [localMessages?.length]);
 
   // ── Keyboard awareness — keep the composer pinned above the on-screen
@@ -494,6 +519,29 @@ export default function ChatWindow({
             </svg>
           </span>
         </div>
+
+        {/* Inline encryption-setup banner — friendlier than relying on the
+            lock-icon tooltip alone. Shown only when `encryptionError` is
+            set; the small spinner reads as "still working" instead of
+            "stuck". */}
+        {encryptionError && !loading && !error && (
+          <div
+            className="shrink-0 flex items-center gap-2 px-4 py-2 text-xs"
+            style={{
+              background: "rgba(200,169,110,0.10)",
+              borderBottom: "1px solid rgba(200,169,110,0.25)",
+              color: "#7c5e1a",
+            }}
+            role="status"
+          >
+            <span
+              aria-hidden="true"
+              className="inline-block w-3 h-3 rounded-full border-2 border-t-transparent animate-spin"
+              style={{ borderColor: "#c8a96e", borderTopColor: "transparent" }}
+            />
+            <span className="leading-snug">{encryptionError}</span>
+          </div>
+        )}
 
         {/* ── Message body ─────────────────────────────────────────────── */}
         <div

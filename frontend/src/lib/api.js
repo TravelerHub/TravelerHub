@@ -1,5 +1,13 @@
 import { API_BASE } from "../config.js";
+import { notifyAuthExpired } from "../services/api.js";
 const BASE_URL = API_BASE;
+
+// If an authenticated request comes back 401 we ask the app shell to redirect
+// to /login. `hadToken` guards against firing on /login itself, where a 401
+// just means "wrong password".
+function maybeNotifyExpired(status, hadToken) {
+  if (status === 401 && hadToken) notifyAuthExpired();
+}
 
 // Create an axios-like API object
 export const api = {
@@ -14,7 +22,10 @@ export const api = {
       },
     });
     const data = await response.json().catch(() => null);
-    if (!response.ok) throw { response: { data, status: response.status } };
+    if (!response.ok) {
+      maybeNotifyExpired(response.status, !!token);
+      throw { response: { data, status: response.status } };
+    }
     return { data, status: response.status };
   },
 
@@ -30,7 +41,10 @@ export const api = {
       body: JSON.stringify(body),
     });
     const data = await response.json().catch(() => null);
-    if (!response.ok) throw { response: { data, status: response.status } };
+    if (!response.ok) {
+      maybeNotifyExpired(response.status, !!token);
+      throw { response: { data, status: response.status } };
+    }
     return { data, status: response.status };
   },
 
@@ -46,7 +60,10 @@ export const api = {
       body: JSON.stringify(body),
     });
     const data = await response.json().catch(() => null);
-    if (!response.ok) throw { response: { data, status: response.status } };
+    if (!response.ok) {
+      maybeNotifyExpired(response.status, !!token);
+      throw { response: { data, status: response.status } };
+    }
     return { data, status: response.status };
   },
 
@@ -61,7 +78,10 @@ export const api = {
       },
     });
     const data = await response.json().catch(() => null);
-    if (!response.ok) throw { response: { data, status: response.status } };
+    if (!response.ok) {
+      maybeNotifyExpired(response.status, !!token);
+      throw { response: { data, status: response.status } };
+    }
     return { data, status: response.status };
   },
 };
@@ -104,6 +124,7 @@ async function request(path, { method = "GET", body, auth = true, headers = {} }
   try { data = text ? JSON.parse(text) : null; } catch { data = text || null; }
 
   if (!res.ok) {
+    if (auth) maybeNotifyExpired(res.status, !!token);
     const detail = (data && data.detail) ? data.detail : data;
     throw new Error(`${method} ${path} ${res.status}: ${typeof detail === "string" ? detail : JSON.stringify(detail)}`);
   }
