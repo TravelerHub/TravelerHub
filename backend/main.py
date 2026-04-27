@@ -53,7 +53,12 @@ from routers import currency
 from routers import trip_wrapup
 
 limiter = Limiter(key_func=get_remote_address)
-app = FastAPI()
+# redirect_slashes=False prevents FastAPI from issuing 307 redirects when a
+# client posts to "/trips/{id}/upload/" (or any other trailing-slash variant).
+# Browsers re-issue cross-origin POSTs after a 307 WITHOUT the body for
+# multipart requests — which surfaces in the UI as "Failed to fetch". Pin
+# the routes to exactly the registered paths instead.
+app = FastAPI(redirect_slashes=False)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
