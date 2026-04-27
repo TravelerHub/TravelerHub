@@ -75,8 +75,13 @@ async def get_unread_count(request: Request, current_user=Depends(get_current_us
 @router.post("/{notification_id}/read")
 @limiter.limit("60/minute")
 async def mark_read(request: Request, notification_id: str, current_user=Depends(get_current_user)):
+    user_id = current_user["id"]
     await asyncio.to_thread(
-        lambda: supabase.table("notifications").update({"read": True}).eq("id", notification_id).execute()
+        lambda: supabase.table("notifications")
+        .update({"read": True})
+        .eq("id", notification_id)
+        .eq("user_id", user_id)  # scoped to caller — prevents marking other users' notifications
+        .execute()
     )
     return {"ok": True}
 
