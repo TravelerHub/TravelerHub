@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
 from utils import oauth2
+from utils.trip_access import require_trip_member_sync
+from utils.logger import get_logger
 from supabase_client import supabase
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.requests import Request
 
+logger = get_logger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(
@@ -26,6 +29,8 @@ def get_calendar_events(
     into a unified calendar event list.
     """
     user_id = current_user["id"]
+    if trip_id:
+        require_trip_member_sync(trip_id, user_id)
     events = []
 
     # 1. Bookings → calendar events
@@ -55,7 +60,7 @@ def get_calendar_events(
                 },
             })
     except Exception as e:
-        print(f"Calendar: booking query error: {e}")
+        logger.warning("Calendar: booking query error: %s", e, exc_info=True)
 
     # 2. Saved routes → calendar events (use created_at as event date)
     try:
@@ -79,7 +84,7 @@ def get_calendar_events(
                 },
             })
     except Exception as e:
-        print(f"Calendar: routes query error: {e}")
+        logger.warning("Calendar: routes query error: %s", e, exc_info=True)
 
     # 3. Document checklists → calendar events
     try:
@@ -116,6 +121,6 @@ def get_calendar_events(
                 },
             })
     except Exception as e:
-        print(f"Calendar: checklists query error: {e}")
+        logger.warning("Calendar: checklists query error: %s", e, exc_info=True)
 
     return events

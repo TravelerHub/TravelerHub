@@ -34,10 +34,14 @@ All responses: { "data": ..., "error": ... }
 """
 
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from utils import oauth2
+from utils.trip_access import require_trip_member
+from supabase_client import supabase, async_safe_single
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -54,6 +58,13 @@ from services.booking.booking_orchestrator import (
 from services.booking.booking_repository import update_booking_status, create_booking, add_participants
 
 router = APIRouter(prefix="/api/bookings", tags=["bookings-search"])
+
+
+def _user_id(current_user) -> str:
+    uid = current_user.get("id") or current_user.get("user_id")
+    if not uid:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+    return uid
 
 
 # ── City lookup (Google Geocoding) ─────────────────────────────────────────────
@@ -131,10 +142,15 @@ class HotelSaveBody(BaseModel):
 
 
 @router.post("/hotels/save")
-async def hotels_save(body: HotelSaveBody):
+async def hotels_save(
+    body: HotelSaveBody,
+    current_user=Depends(oauth2.get_current_user),
+):
+    uid = _user_id(current_user)
+    await require_trip_member(body.trip_id, uid)
     return await save_hotel_booking(
         trip_id=body.trip_id,
-        created_by=body.created_by,
+        created_by=uid,
         hotel_data=body.hotel_data,
         checkin=body.checkin,
         checkout=body.checkout,
@@ -159,10 +175,15 @@ class CarSaveBody(BaseModel):
 
 
 @router.post("/cars/save")
-async def cars_save(body: CarSaveBody):
+async def cars_save(
+    body: CarSaveBody,
+    current_user=Depends(oauth2.get_current_user),
+):
+    uid = _user_id(current_user)
+    await require_trip_member(body.trip_id, uid)
     return await save_car_booking(
         trip_id=body.trip_id,
-        created_by=body.created_by,
+        created_by=uid,
         car_data=body.car_data,
         pickup_datetime=body.pickup_datetime,
         dropoff_datetime=body.dropoff_datetime,
@@ -186,10 +207,15 @@ class AttractionSaveBody(BaseModel):
 
 
 @router.post("/attractions/save")
-async def attractions_save(body: AttractionSaveBody):
+async def attractions_save(
+    body: AttractionSaveBody,
+    current_user=Depends(oauth2.get_current_user),
+):
+    uid = _user_id(current_user)
+    await require_trip_member(body.trip_id, uid)
     return await save_attraction_booking(
         trip_id=body.trip_id,
-        created_by=body.created_by,
+        created_by=uid,
         attraction_data=body.attraction_data,
         visit_date=body.visit_date,
         visitor_count=body.visitor_count,
@@ -240,7 +266,12 @@ class FlightSaveBody(BaseModel):
 
 
 @router.post("/flights/save")
-async def flights_save(body: FlightSaveBody):
+async def flights_save(
+    body: FlightSaveBody,
+    current_user=Depends(oauth2.get_current_user),
+):
+    uid = _user_id(current_user)
+    await require_trip_member(body.trip_id, uid)
     flight = body.flight_data
     title = (
         f"{flight.get('airline', '')} {flight.get('origin', '')} → {flight.get('destination', '')}"
@@ -262,7 +293,7 @@ async def flights_save(body: FlightSaveBody):
 
     result = await create_booking(
         trip_id=body.trip_id,
-        created_by=body.created_by,
+        created_by=uid,
         type="flight",
         title=title,
         vendor=flight.get("airline") or None,
@@ -282,7 +313,12 @@ async def flights_save(body: FlightSaveBody):
 # ── Trip summary ───────────────────────────────────────────────────────────────
 
 @router.get("/trips/{trip_id}/summary")
-async def trip_bookings_summary(trip_id: str):
+async def trip_bookings_summary(
+    trip_id: str,
+    current_user=Depends(oauth2.get_current_user),
+):
+    uid = _user_id(current_user)
+    await require_trip_member(trip_id, uid)
     return await get_trip_bookings_summary(trip_id)
 
 
@@ -293,5 +329,16 @@ class StatusBody(BaseModel):
 
 
 @router.patch("/{booking_id}/status")
-async def booking_status_update(booking_id: str, body: StatusBody):
+async def booking_status_update(
+    booking_id: str,
+    body: StatusBody,
+    current_user=Depends(oauth2.get_current_user),
+):
+    uid = _user_id(current_user)
+    booking = await async_safe_single(
+        supabase.table("booking").select("trip_id").eq("id", booking_id)
+    )
+    if not booking or not booking.data:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    await require_trip_member(booking.data["trip_id"], uid)
     return await update_booking_status(booking_id, body.status)

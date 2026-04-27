@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from supabase_client import supabase, async_safe_single
 from utils import oauth2
 from utils.logger import get_logger
+from utils.trip_access import require_trip_member, is_trip_leader
 from services.anomaly_detection import ExpenseAnomalyDetector
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -21,79 +22,10 @@ router = APIRouter(
 )
 
 
-async def _ensure_trip_member(trip_id: str, user_id: str) -> None:
-    try:
-        member = await async_safe_single(
-            supabase.table("trip_members")
-            .select("id")
-            .eq("trip_id", trip_id)
-            .eq("user_id", user_id)
-            .is_("left_at", None)
-        )
-        if member.data:
-            return
-    except Exception as e:
-        logger.warning("[_ensure_trip_member] trip_members query failed for trip=%s, user=%s: %s", trip_id, user_id, e, exc_info=True)
-
-    try:
-        member = await async_safe_single(
-            supabase.table("group_member")
-            .select("id")
-            .eq("group_id", trip_id)
-            .eq("user_id", user_id)
-            .is_("left_datetime", None)
-        )
-        if member.data:
-            return
-    except Exception as e:
-        logger.warning("[_ensure_trip_member] group_member fallback failed for trip=%s, user=%s: %s", trip_id, user_id, e, exc_info=True)
-
-    owner = await async_safe_single(
-        supabase.table("trips")
-        .select("id")
-        .eq("id", trip_id)
-        .eq("owner_id", user_id)
-    )
-    if not owner.data:
-        raise HTTPException(status_code=403, detail="Not a member of this group")
-
-
-async def _is_trip_leader(trip_id: str, user_id: str) -> bool:
-    try:
-        member = await async_safe_single(
-            supabase.table("trip_members")
-            .select("id")
-            .eq("trip_id", trip_id)
-            .eq("user_id", user_id)
-            .eq("role", "leader")
-            .is_("left_at", None)
-        )
-        if member.data:
-            return True
-    except Exception as e:
-        logger.warning("[_is_trip_leader] trip_members query failed for trip=%s, user=%s: %s", trip_id, user_id, e, exc_info=True)
-
-    try:
-        member = await async_safe_single(
-            supabase.table("group_member")
-            .select("id")
-            .eq("group_id", trip_id)
-            .eq("user_id", user_id)
-            .eq("role", "leader")
-            .is_("left_datetime", None)
-        )
-        if member.data:
-            return True
-    except Exception as e:
-        logger.warning("[_is_trip_leader] group_member fallback failed for trip=%s, user=%s: %s", trip_id, user_id, e, exc_info=True)
-
-    owner = await async_safe_single(
-        supabase.table("trips")
-        .select("id")
-        .eq("id", trip_id)
-        .eq("owner_id", user_id)
-    )
-    return bool(owner.data)
+# Local aliases preserve the original call sites without forcing a router-wide
+# rename. They delegate to the shared helpers in `utils/trip_access.py`.
+_ensure_trip_member = require_trip_member
+_is_trip_leader = is_trip_leader
 
 
 class CreateTransactionPayload(BaseModel):

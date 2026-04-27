@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel, Field
 from supabase_client import supabase, safe_single
 from utils import oauth2
+from utils.trip_access import require_trip_member_sync
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.requests import Request
@@ -43,30 +44,10 @@ class CancelBody(BaseModel):
 
 
 # --- Helpers (membership check) ---
-
-def ensure_trip_member(trip_id: str, user_id: str) -> None:
-    """
-    Rename tables/columns to match your schema.
-    Option A: you have trip_member table (trip_id, user_id)
-    Option B: trip -> group_id, and group_member table (group_id, user_id)
-    """
-    # Example assumes: trips table has id, group_id
-    trip = safe_single(supabase.table("trips").select("id,group_id").eq("id", trip_id))
-    if not trip.data:
-        raise HTTPException(status_code=404, detail="Trip not found")
-
-    group_id = trip.data["group_id"]
-
-    membership = (
-        supabase.table("group_member")
-        .select("id")
-        .eq("group_id", group_id)
-        .eq("user_id", user_id)
-        .limit(1)
-        .execute()
-    )
-    if not membership.data:
-        raise HTTPException(status_code=403, detail="Not a trip member")
+# Delegate to the shared guard in `utils/trip_access.py`, which handles both
+# the current `trip_members` table and the legacy `group_member` fallback,
+# plus the `trips.owner_id` short-circuit.
+ensure_trip_member = require_trip_member_sync
 
 
 # --- Routes ---
