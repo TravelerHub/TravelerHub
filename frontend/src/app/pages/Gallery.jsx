@@ -521,23 +521,23 @@ export default function Gallery() {
                   </span>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap shrink-0 max-w-full">
                 {selectMode ? (
                   <>
-                    <span className="text-xs font-medium" style={{ color: "rgba(251,251,242,0.6)" }}>
+                    <span className="text-xs font-medium whitespace-nowrap" style={{ color: "rgba(251,251,242,0.6)" }}>
                       {selectedIds.size} selected
                     </span>
                     <button
                       onClick={handleBatchShare}
                       disabled={selectedIds.size === 0}
-                      className="px-5 py-2.5 rounded-xl text-sm font-semibold transition active:scale-95 disabled:opacity-40"
+                      className="px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition active:scale-95 disabled:opacity-40"
                       style={{ background: "#fbfbf2", color: "#160f29" }}
                     >
                       Share {selectedIds.size > 0 ? `(${selectedIds.size})` : ""}
                     </button>
                     <button
                       onClick={() => { setSelectMode(false); setSelectedIds(new Set()); }}
-                      className="px-4 py-2.5 rounded-xl text-sm font-medium transition"
+                      className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition"
                       style={{ color: "rgba(251,251,242,0.7)", border: "1px solid rgba(251,251,242,0.2)" }}
                     >
                       Cancel
@@ -545,11 +545,11 @@ export default function Gallery() {
                   </>
                 ) : (
                   <>
-                    {/* View mode toggle */}
-                    <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid rgba(251,251,242,0.2)" }}>
+                    {/* View mode toggle — tighter on mobile */}
+                    <div className="flex rounded-xl overflow-hidden shrink-0" style={{ border: "1px solid rgba(251,251,242,0.2)" }}>
                       <button
                         onClick={() => setViewMode('grid')}
-                        className="px-4 py-2.5 text-sm font-medium transition"
+                        className="px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-medium whitespace-nowrap transition"
                         style={{
                           background: viewMode === 'grid' ? "#183a37" : "transparent",
                           color: viewMode === 'grid' ? "#fbfbf2" : "rgba(251,251,242,0.6)",
@@ -559,30 +559,36 @@ export default function Gallery() {
                       </button>
                       <button
                         onClick={() => setViewMode('grouped')}
-                        className="px-4 py-2.5 text-sm font-medium transition"
+                        className="px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-medium whitespace-nowrap transition"
                         style={{
                           background: viewMode === 'grouped' ? "#183a37" : "transparent",
                           color: viewMode === 'grouped' ? "#fbfbf2" : "rgba(251,251,242,0.6)",
                         }}
                       >
-                        Grouped
+                        Group
                       </button>
                     </div>
+                    {/* Select button — desktop only; on mobile, long-press a tile if you want batch select */}
                     {photos.length > 0 && (
                       <button
                         onClick={() => setSelectMode(true)}
-                        className="px-4 py-2.5 rounded-xl text-sm font-medium transition"
+                        className="hidden sm:inline-flex px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition"
                         style={{ color: "rgba(251,251,242,0.7)", border: "1px solid rgba(251,251,242,0.2)" }}
                       >
                         Select
                       </button>
                     )}
+                    {/* Share photo — gold accent, single-line, plus icon. Renders icon-only on the smallest screens. */}
                     <button
                       onClick={() => setShowUpload(true)}
-                      className="px-6 py-3 rounded-2xl text-sm font-semibold transition active:scale-95"
-                      style={{ background: "#fbfbf2", color: "#160f29", boxShadow: "0 4px 20px rgba(0,0,0,0.2)" }}
+                      aria-label="Share photo"
+                      className="inline-flex items-center gap-1.5 px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition active:scale-95"
+                      style={{ background: "#c8a96e", color: "#160f29", boxShadow: "0 4px 16px rgba(200,169,110,0.25)" }}
                     >
-                      + Share Photo
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M12 5v14M5 12h14" />
+                      </svg>
+                      <span className="hidden xs:inline sm:inline">Share Photo</span>
                     </button>
                   </>
                 )}

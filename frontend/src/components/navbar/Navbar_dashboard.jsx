@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { apiFetch } from "../../services/api";
 import { getMyGroups, getActiveGroupId, setActiveGroupId } from "../../services/groupService";
+import { BellIcon } from "../icons/NavIcons.jsx";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 
@@ -678,10 +679,18 @@ function Navbar_Dashboard({ onMenuClick }) {
         </button>
 
         {/* Notifications bell */}
-        <Link to="/notifications" aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"} className="relative text-white/70 hover:text-white w-8 h-8 flex items-center justify-center rounded-lg hover:bg-black/5 transition">
-          <span aria-hidden="true" className="text-xl">🔔</span>
+        <Link
+          to="/notifications"
+          aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
+          className="relative w-9 h-9 flex items-center justify-center rounded-lg hover:bg-black/5 transition"
+          style={{ color: "#5c6b73" }}
+        >
+          <BellIcon size={20} />
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold">
+            <span
+              className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-[3px] rounded-full text-[9px] font-bold flex items-center justify-center"
+              style={{ background: "#dc2626", color: "#ffffff", boxShadow: "0 0 0 2px #fbfbf2" }}
+            >
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           )}
