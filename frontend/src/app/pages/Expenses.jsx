@@ -1,9 +1,14 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE } from '../../config';
 import { haptic } from '../../utils/haptic';
 import { analyzeReceipt, analyzeDocument } from "../../services/visionService.js";
 import { saveChecklist } from "../../services/checklistService.js";
+import {
+  getExchangeRates,
+  convertAmount,
+  CURRENCY_SYMBOLS,
+} from "../../services/currencyService";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import AppSidebar from "../../components/navbar/AppSidebar.jsx";
 import { capturePhoto } from '../../utils/nativeCamera';
@@ -57,6 +62,42 @@ function Expenses() {
   const [savingChecklist, setSavingChecklist] = useState(false);
   const [checklistSaved, setChecklistSaved] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState("");
+
+  // Exchange-rate state. We always show the receipt's native currency
+  // and, if the user picked a different display currency, the converted
+  // amount in parens. Without this, every amount on the page rendered as
+  // a hard-coded `$X.XX` even when the receipt was clearly in EUR/JPY/etc.
+  const [rates, setRates] = useState(null);
+  const [displayCurrency, setDisplayCurrency] = useState(
+    localStorage.getItem("expenses_display_currency") || ""
+  );
+  useEffect(() => {
+    getExchangeRates("USD").then(setRates).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (displayCurrency) {
+      localStorage.setItem("expenses_display_currency", displayCurrency);
+    }
+  }, [displayCurrency]);
+
+  // Format a single amount in the receipt's native currency, with an
+  // optional converted equivalent appended in parens when the user has
+  // picked a different display currency. Everywhere the page used to do
+  // `$${amount.toFixed(2)}` should call this instead.
+  const fmtAmount = useCallback((amount, fromCurrency) => {
+    if (amount == null) return "";
+    const native = (fromCurrency || result?.currency || "USD").toUpperCase();
+    const sym = CURRENCY_SYMBOLS[native] || "";
+    const nativeStr = `${sym}${Number(amount).toFixed(2)}${sym ? "" : ` ${native}`}`;
+    if (!displayCurrency || displayCurrency === native || !rates) return nativeStr;
+    try {
+      const converted = convertAmount(Number(amount), native, displayCurrency, rates);
+      const dispSym = CURRENCY_SYMBOLS[displayCurrency] || "";
+      return `${nativeStr} (${dispSym}${converted.toFixed(2)})`;
+    } catch {
+      return nativeStr;
+    }
+  }, [rates, displayCurrency, result?.currency]);
 
   // Handle file selection (from gallery)
   const handleFileSelect = (e) => {
@@ -399,27 +440,41 @@ function Expenses() {
                   style={{ background: "#fff", border: "1px solid #e5e7eb" }}
                 >
                   <div
-                    className="px-6 py-4 flex items-center justify-between"
+                    className="px-6 py-4 flex items-center justify-between gap-3 flex-wrap"
                     style={{ borderBottom: "1px solid #f3f4f6" }}
                   >
                     <h2 className="text-sm font-semibold" style={{ color: "#160f29" }}>
                       Extracted Receipt Data
                     </h2>
-                    <button
-                      onClick={() => {
-                        setIsEditing(!isEditing);
-                        if (!isEditing) setEditData({ ...result });
-                      }}
-                      className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition"
-                      style={
-                        isEditing
-                          ? { background: "#fee2e2", color: "#991b1b" }
-                          : { background: "#f3f4f6", color: "#5c6b73" }
-                      }
-                    >
-                      <PencilIcon className="w-3.5 h-3.5" />
-                      {isEditing ? "Cancel" : "Edit"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={displayCurrency || ""}
+                        onChange={(e) => setDisplayCurrency(e.target.value)}
+                        className="px-2 py-1 rounded-lg text-xs font-medium"
+                        style={{ border: "1px solid #d1d5db", background: "#fff", color: "#374151" }}
+                        title="Show converted equivalent in this currency"
+                      >
+                        <option value="">native only</option>
+                        {["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "SGD", "THB", "MXN"].map((c) => (
+                          <option key={c} value={c}>{CURRENCY_SYMBOLS[c] || ""} {c}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => {
+                          setIsEditing(!isEditing);
+                          if (!isEditing) setEditData({ ...result });
+                        }}
+                        className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition"
+                        style={
+                          isEditing
+                            ? { background: "#fee2e2", color: "#991b1b" }
+                            : { background: "#f3f4f6", color: "#5c6b73" }
+                        }
+                      >
+                        <PencilIcon className="w-3.5 h-3.5" />
+                        {isEditing ? "Cancel" : "Edit"}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="p-6 space-y-5">
@@ -508,7 +563,7 @@ function Expenses() {
                             >
                               <span style={{ color: "#374151" }}>{item.name}</span>
                               <span className="font-semibold" style={{ color: "#160f29" }}>
-                                ${item.price?.toFixed(2)}
+                                {fmtAmount(item.price)}
                               </span>
                             </div>
                           ))}
@@ -524,19 +579,19 @@ function Expenses() {
                       {result.subtotal != null && (
                         <div className="flex justify-between text-sm">
                           <span style={{ color: "#5c6b73" }}>Subtotal</span>
-                          <span style={{ color: "#374151" }}>${result.subtotal?.toFixed(2)}</span>
+                          <span style={{ color: "#374151" }}>{fmtAmount(result.subtotal)}</span>
                         </div>
                       )}
                       {result.tax != null && (
                         <div className="flex justify-between text-sm">
                           <span style={{ color: "#5c6b73" }}>Tax</span>
-                          <span style={{ color: "#374151" }}>${result.tax?.toFixed(2)}</span>
+                          <span style={{ color: "#374151" }}>{fmtAmount(result.tax)}</span>
                         </div>
                       )}
                       {result.tip != null && (
                         <div className="flex justify-between text-sm">
                           <span style={{ color: "#5c6b73" }}>Tip</span>
-                          <span style={{ color: "#374151" }}>${result.tip?.toFixed(2)}</span>
+                          <span style={{ color: "#374151" }}>{fmtAmount(result.tip)}</span>
                         </div>
                       )}
                       <div
@@ -555,7 +610,7 @@ function Expenses() {
                           />
                         ) : (
                           <span className="text-base font-bold" style={{ color: "#160f29" }}>
-                            ${result.total?.toFixed(2)}
+                            {fmtAmount(result.total)}
                           </span>
                         )}
                       </div>
@@ -654,7 +709,7 @@ function Expenses() {
                           <div className="px-4 py-3">
                             <p className="text-xs mb-0.5" style={{ color: "#5c6b73" }}>Amount</p>
                             <p className="text-sm font-bold" style={{ color: "#160f29" }}>
-                              ${result.details.amount?.toFixed(2)} {result.details.currency}
+                              {fmtAmount(result.details.amount, result.details.currency)}
                             </p>
                           </div>
                         )}
