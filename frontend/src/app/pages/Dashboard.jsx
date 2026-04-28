@@ -25,6 +25,7 @@ import TodoWidget          from "../../components/dashboard/TodoWidget.jsx";
 import MiniCalendar        from "../../components/dashboard/MiniCalendar.jsx";
 import LocalInfoWidget     from "../../components/dashboard/LocalInfoWidget.jsx";
 import BookingSummaryWidget from "../../components/dashboard/BookingSummaryWidget.jsx";
+import LiveTripWidget      from "../../components/dashboard/LiveTripWidget.jsx";
 import GalleryWidget       from "../../components/dashboard/GalleryWidget.jsx";
 import ActivityFeed        from "../../components/ActivityFeed.jsx";
 import EmptyState          from "../../components/EmptyState.jsx";
@@ -516,6 +517,22 @@ export default function Dashboard() {
           {/* Mobile: single column. lg+: 3-column bento with the existing
               1fr / 1.4fr / 1fr ratios. col-span overrides only kick in on lg. */}
           <div className="grid gap-4 grid-cols-1 lg:grid-cols-[1fr_1.4fr_1fr]">
+
+            {/* ── ROW 0 · Live trip (only renders when today is between
+                 the active trip's start/end dates) ────────────────────── */}
+            {(() => {
+              const list = Array.isArray(myGroupsData) ? myGroupsData : [];
+              const active =
+                list.find(
+                  (g) => String(g.group_id || g.id) === String(activeTripId)
+                ) || list[0];
+              if (!active) return null;
+              return (
+                <div className="lg:col-span-3">
+                  <LiveTripWidget activeTrip={active} />
+                </div>
+              );
+            })()}
 
             {/* ── ROW 1 · Weather (col 1-2) + Map Snapshot (col 3) ────────── */}
             <Widget title="Weather" className="lg:col-span-2" style={{ minHeight: "88px" }}>
