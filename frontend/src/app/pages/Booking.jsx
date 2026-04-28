@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import AppSidebar from "../../components/navbar/AppSidebar.jsx";
+import { recognizeText } from "../../services/localOcr.js";
 
 // ── Color palette (matches Dashboard)
 // #160f29  deep dark   (sidebar bg)
@@ -401,6 +402,175 @@ function BookingCard({ b, onEdit, onCancel, onDelete, onCopyCode, loading }) {
   );
 }
 
+// ── Import Booking modal ─────────────────────────────────────────────────────
+// Replaces the cloud-AI vision endpoint with on-device OCR + deterministic
+// vendor-aware regex parsing on the backend. Two modes:
+//   "Paste"  — user pastes the confirmation email text. POSTs straight to
+//              /vision/parse-booking-text.
+//   "Image"  — user picks a photo / screenshot. We OCR it locally
+//              (Tesseract.js on web, ML Kit on Capacitor native), then POST
+//              the recognized text. The image never leaves the device.
+//
+// The returned structured payload prefills the same Save modal you'd use
+// when adding a booking manually, so the user can review/edit before
+// committing.
+function ImportBookingModal({ open, onClose, onPrefill }) {
+  const [tab, setTab] = useState("paste");          // "paste" | "image"
+  const [pasteText, setPasteText] = useState("");
+  const [imageFile, setImageFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [err, setErr] = useState("");
+  const fileRef = useRef(null);
+
+  if (!open) return null;
+
+  const reset = () => {
+    setPasteText(""); setImageFile(null); setProgress(0); setErr(""); setBusy(false);
+  };
+
+  const close = () => { reset(); onClose(); };
+
+  const handleSubmit = async () => {
+    setErr("");
+    setBusy(true);
+    try {
+      let text = pasteText.trim();
+      if (tab === "image") {
+        if (!imageFile) { setErr("Pick an image first."); return; }
+        setProgress(0);
+        const result = await recognizeText(imageFile, { onProgress: setProgress });
+        text = (result.text || "").trim();
+        if (!text) {
+          setErr("Couldn't read any text from that image. Try a clearer photo, or paste the text instead.");
+          return;
+        }
+      }
+      if (!text) { setErr("Paste your confirmation text first."); return; }
+
+      // The local `apiFetch` in this file is GET-only — POST inline.
+      const token = localStorage.getItem("token") || localStorage.getItem("access_token");
+      const resp = await fetch(`${API_BASE}/vision/parse-booking-text`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ text }),
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body?.detail || `Parse failed (${resp.status})`);
+      }
+      const parsed = await resp.json();
+
+      // Map parser shape → form prefill shape used by openCreate().
+      const prefill = {};
+      if (parsed.title)             prefill.title = parsed.title;
+      if (parsed.vendor)            prefill.vendor = parsed.vendor;
+      if (parsed.type)              prefill.type = parsed.type;
+      if (parsed.confirmation_code) prefill.confirmation_code = parsed.confirmation_code;
+      if (parsed.start_time)        prefill.start_time = toInputDateTime(parsed.start_time);
+      if (parsed.end_time)          prefill.end_time = toInputDateTime(parsed.end_time);
+      if (parsed.cost != null)      prefill.cost = String(parsed.cost);
+      if (parsed.currency)          prefill.currency = parsed.currency;
+      if (parsed.parser && parsed.parser !== "generic") {
+        prefill.notes = `Imported from ${parsed.vendor || parsed.parser}`;
+      }
+
+      onPrefill(prefill);
+      close();
+    } catch (e) {
+      setErr(e?.message || "Could not parse that. Try the other tab.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open={open} title="📥 Import a booking" onClose={close}>
+      <p className="text-sm mb-4" style={{ color: "#5c6b73" }}>
+        Paste a confirmation email or upload a screenshot. We'll fill in
+        the details locally — your text and photos never leave your device
+        for AI analysis.
+      </p>
+
+      {/* Tabs */}
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setTab("paste")}
+          className="flex-1 py-2 rounded-xl text-sm font-semibold transition"
+          style={tab === "paste"
+            ? { background: "#160f29", color: "#fbfbf2" }
+            : { background: "#f3f4f6", color: "#5c6b73" }}>
+          Paste text
+        </button>
+        <button
+          onClick={() => setTab("image")}
+          className="flex-1 py-2 rounded-xl text-sm font-semibold transition"
+          style={tab === "image"
+            ? { background: "#160f29", color: "#fbfbf2" }
+            : { background: "#f3f4f6", color: "#5c6b73" }}>
+          Upload image
+        </button>
+      </div>
+
+      {tab === "paste" && (
+        <textarea
+          value={pasteText}
+          onChange={(e) => setPasteText(e.target.value)}
+          placeholder="Paste the full confirmation text here…"
+          rows={10}
+          className="w-full rounded-xl border p-3 text-sm outline-none transition focus:ring-2"
+          style={{ borderColor: "#e5e7eb", color: "#160f29", "--tw-ring-color": "#183a37", resize: "vertical", minHeight: 200 }}
+        />
+      )}
+
+      {tab === "image" && (
+        <div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="w-full py-8 rounded-xl text-sm font-semibold transition border-2 border-dashed"
+            style={{ borderColor: "#d1d1c7", color: "#5c6b73", background: "#fafafa" }}>
+            {imageFile ? `📎 ${imageFile.name}` : "📷 Tap to choose a screenshot"}
+          </button>
+          {busy && progress > 0 && (
+            <p className="text-xs mt-2 text-center" style={{ color: "#5c6b73" }}>
+              Reading text… {progress}%
+            </p>
+          )}
+        </div>
+      )}
+
+      {err && <p className="text-sm mt-3" style={{ color: "#dc2626" }}>{err}</p>}
+
+      <div className="flex gap-2 mt-5">
+        <button
+          onClick={close}
+          disabled={busy}
+          className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-50"
+          style={{ background: "#f3f4f6", color: "#160f29", border: "1px solid #e5e7eb" }}>
+          Cancel
+        </button>
+        <button
+          onClick={handleSubmit}
+          disabled={busy}
+          className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-50"
+          style={{ background: "#160f29", color: "#fbfbf2" }}>
+          {busy ? "Reading…" : "Import"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function Booking({ tripId: tripIdProp }) {
   const navigate = useNavigate();
@@ -447,6 +617,7 @@ export default function Booking({ tripId: tripIdProp }) {
   const [hotelOpen, setHotelOpen]         = useState(false);
   const [carOpen, setCarOpen]             = useState(false);
   const [toursOpen, setToursOpen]         = useState(false);
+  const [importOpen, setImportOpen]       = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -604,6 +775,12 @@ export default function Booking({ tripId: tripIdProp }) {
               <h1 className="text-xl font-bold" style={{ color: "#160f29" }}>Bookings</h1>
             </div>
             <div className="flex gap-2 flex-wrap">
+              <button onClick={() => setImportOpen(true)}
+                className="px-4 py-2 rounded-xl text-sm font-semibold transition hover:opacity-90"
+                style={{ background: "#fbfbf2", color: "#160f29", border: "1px solid #d1d1c7" }}
+                title="Paste a confirmation email or upload a screenshot">
+                📥 Import
+              </button>
               <button onClick={() => setHotelOpen(true)}
                 className="px-4 py-2 rounded-xl text-sm font-semibold transition hover:opacity-90"
                 style={{ background: "#1e3a5f", color: "#fff" }}>
@@ -787,6 +964,11 @@ export default function Booking({ tripId: tripIdProp }) {
       <HotelSearchModal open={hotelOpen} onClose={() => setHotelOpen(false)} onSave={handleSearchSave} />
       <CarSearchModal   open={carOpen}   onClose={() => setCarOpen(false)}   onAddManually={openCreate} />
       <ToursSearchModal open={toursOpen} onClose={() => setToursOpen(false)} onSave={handleSearchSave} />
+      <ImportBookingModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onPrefill={(prefill) => { setImportOpen(false); openCreate(prefill); }}
+      />
     </div>
   );
 }
