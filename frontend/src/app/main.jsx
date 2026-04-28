@@ -6,6 +6,11 @@ import { RouterProvider } from "react-router-dom"
 import router from "../router.jsx"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { Capacitor } from "@capacitor/core"
+// Side-effect import: installs a global fetch wrapper that fires
+// `auth:expired` for any 401 from our API, so the ~130 raw fetch() callers
+// across the app benefit from the same redirect-to-login behavior as
+// apiFetch. Must be imported before any other module makes an API call.
+import "../services/api"
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
