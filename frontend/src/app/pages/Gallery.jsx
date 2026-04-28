@@ -4,6 +4,7 @@ import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tansta
 import { API_BASE } from "../../config";
 import { apiFetch, getToken, authHeaders } from "../../services/api.js";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
+import AppSidebar from "../../components/navbar/AppSidebar.jsx";
 import { logActivity } from "../../components/ActivityFeed.jsx";
 import EmptyState from "../../components/EmptyState.jsx";
 import { useFocusTrap } from "../../hooks/useFocusTrap.js";
@@ -38,6 +39,15 @@ function avatarColor(name) {
 export default function Gallery() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // Mobile side-nav drawer toggle. Without this hooked up, Gallery's
+  // navbar lost its hamburger button and mobile users had no way to
+  // reach the rest of the app from this page.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const _userBlob = (() => {
+    try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
+  })();
+  const displayName = _userBlob?.username || _userBlob?.name || "Traveler";
 
   // Active trip selection
   const [activeTrip, setActiveTrip] = useState(localStorage.getItem("active_group_id") || localStorage.getItem("activeGroupId") || "");
@@ -535,8 +545,22 @@ export default function Gallery() {
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "#f3f4f6" }}>
+      <AppSidebar
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        displayName={displayName}
+        footer={
+          <button
+            onClick={() => { navigate("/dashboard"); setMenuOpen(false); }}
+            className="w-full py-2.5 rounded-lg text-sm font-semibold transition hover:bg-gray-700 active:scale-95"
+            style={{ background: "#374151", color: "#f9fafb" }}
+          >
+            + New Trip
+          </button>
+        }
+      />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Navbar_Dashboard />
+        <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
         <main className="flex-1 overflow-y-auto pb-24 md:pb-0">
 

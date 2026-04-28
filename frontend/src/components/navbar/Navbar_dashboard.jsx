@@ -676,14 +676,20 @@ function Navbar_Dashboard({ onMenuClick }) {
           </svg>
         </button>
 
-        {/* Event notifications — hidden on small */}
+        {/* Calendar shortcut — hidden on small. Was a bell-shape SVG which
+            was visually indistinguishable from the notifications bell next
+            to it; swapped for a real calendar grid. */}
         <button
           onClick={() => navigate("/calendar")}
-          aria-label="Events calendar"
+          aria-label="Calendar"
           className="hidden sm:flex relative w-8 h-8 items-center justify-center rounded-lg hover:bg-black/5 transition"
         >
           <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="#5c6b73" strokeWidth={1.8}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            <rect x="3" y="5" width="18" height="16" rx="2" />
+            <path strokeLinecap="round" d="M3 10h18M8 3v4M16 3v4" />
+            <circle cx="8" cy="14" r="0.6" fill="#5c6b73" stroke="none" />
+            <circle cx="12" cy="14" r="0.6" fill="#5c6b73" stroke="none" />
+            <circle cx="16" cy="14" r="0.6" fill="#5c6b73" stroke="none" />
           </svg>
         </button>
 
