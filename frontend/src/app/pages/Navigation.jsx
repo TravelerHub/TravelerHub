@@ -601,6 +601,12 @@ function Navigation() {
     }]);
     setMapSearchQuery('');
     setMapSearchResults([]);
+    // Fly to the new pin even when there are existing markers — fitBounds
+    // would zoom out to include all of them, which is the wrong behavior
+    // when the user just searched for a specific place. Use a slightly
+    // longer transition than the default flyTo so it feels like the map
+    // is "going there" rather than snapping.
+    mapRef.current?.flyTo({ center: coords, zoom: 15, duration: 1000 });
   };
 
   useEffect(() => {

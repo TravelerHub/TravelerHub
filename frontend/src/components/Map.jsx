@@ -268,15 +268,31 @@ const Map = forwardRef(function Map({
       markersRef.current.push(mapboxMarker);
     });
 
-    // Fit bounds to show all markers
+    // Fly the camera to the marker(s). The previous behavior used
+    // fitBounds(padding: 100) for every marker change — that's correct
+    // for a route with multiple stops, but on a single new search result
+    // it produced a wide bbox of one point with 100px padding, which
+    // collapsed to a low default zoom and made the map appear to "zoom
+    // out" every time the user picked a place. Single-marker case now
+    // does a simple flyTo at street zoom; multi-marker case keeps the
+    // fitBounds behavior with a tighter `maxZoom` so a route never
+    // ends up at world-view either.
     if (markers.length > 0 && !navigationMode) {
-      const bounds = new mapboxgl.LngLatBounds();
-      markers.forEach(marker => bounds.extend(marker.coordinates));
-      mapRef.current.fitBounds(bounds, {
-        padding: 100,
-        maxZoom: 15,
-        duration: 1000,
-      });
+      if (markers.length === 1) {
+        mapRef.current.flyTo({
+          center: markers[0].coordinates,
+          zoom: 15,
+          duration: 900,
+        });
+      } else {
+        const bounds = new mapboxgl.LngLatBounds();
+        markers.forEach(marker => bounds.extend(marker.coordinates));
+        mapRef.current.fitBounds(bounds, {
+          padding: 80,
+          maxZoom: 15,
+          duration: 1000,
+        });
+      }
     }
   }, [markers, onMarkerDragEnd, navigationMode]);
 
