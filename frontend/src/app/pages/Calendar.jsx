@@ -7,6 +7,7 @@ import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { getCalendarEvents } from '../../services/calendarService';
 import { useActiveTrip } from '../../hooks/useActiveTrip';
+import { readTripCache, writeTripCache } from '../../services/tripCache';
 import Navbar_Dashboard from '../../components/navbar/Navbar_dashboard.jsx';
 import AppSidebar from '../../components/navbar/AppSidebar.jsx';
 import {
@@ -191,24 +192,44 @@ function CalendarPage() {
     return result;
   };
 
+  // Convert the deduped backend payload into the FullCalendar event shape
+  // we render. Pulled out of fetchEvents() so we can also use it on the
+  // cached-data path without duplicating the mapping logic.
+  const toFcEvents = (rows) =>
+    rows.map((evt) => ({
+      id:    evt.id,
+      title: evt.title,
+      start: evt.start,
+      end:   evt.end || undefined,
+      backgroundColor: evt.color,
+      borderColor:     evt.color,
+      extendedProps: { type: evt.type, metadata: evt.metadata },
+    }));
+
   const fetchEvents = async () => {
-    setLoading(true);
+    // Show whatever we cached for this trip immediately so the calendar
+    // isn't empty during the network round-trip — and so it works
+    // without a connection at all.
+    const cached = readTripCache('calendar', selectedTripId);
+    if (Array.isArray(cached) && cached.length) {
+      setEvents(toFcEvents(dedupeEvents(cached)));
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
     try {
       const data = await getCalendarEvents(selectedTripId);
       const deduped = dedupeEvents(data);
-      setEvents(
-        deduped.map((evt) => ({
-          id:    evt.id,
-          title: evt.title,
-          start: evt.start,
-          end:   evt.end || undefined,
-          backgroundColor: evt.color,
-          borderColor:     evt.color,
-          extendedProps: { type: evt.type, metadata: evt.metadata },
-        }))
-      );
+      setEvents(toFcEvents(deduped));
+      // Cache the un-deduped raw data so the next read stays compatible
+      // with future dedupe rule changes — dedup is cheap and runs again
+      // on every read.
+      writeTripCache('calendar', selectedTripId, data);
     } catch (err) {
       console.error('Failed to load events:', err);
+      // If the network failed but we already painted from cache, keep
+      // showing that — better than wiping the UI.
     } finally {
       setLoading(false);
     }
