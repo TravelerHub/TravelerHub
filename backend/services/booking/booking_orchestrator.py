@@ -1,7 +1,7 @@
 """
 booking_orchestrator.py
-Combines Amadeus API search results with Supabase persistence
-via booking_repository.
+Combines POI search results (Google Places + OSM Overpass fallback) with
+Supabase persistence via booking_repository.
 """
 
 from services.booking.booking_repository import (
@@ -108,7 +108,9 @@ async def save_attraction_booking(
     currency: str = "USD",
     participants: list = [],
 ) -> dict:
-    # Amadeus normalized shape: id, name, description, price, currency, pictures, booking_link
+    # Normalized shape from search_activities: id, name, description, price,
+    # currency, pictures, booking_link — same regardless of whether the
+    # source was Google Places or OSM Overpass fallback.
     title = attraction_data.get("name") or attraction_data.get("title") or "Attraction"
     details = {
         "activity_id": attraction_data.get("id"),
