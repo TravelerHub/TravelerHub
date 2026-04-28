@@ -41,6 +41,8 @@ const StoryMode = lazy(() => import("./components/StoryMode.jsx"));
 const PublicStory = lazy(() => import("./app/pages/PublicStory.jsx"));
 const JoinTrip = lazy(() => import("./app/pages/JoinTrip.jsx"));
 const Notifications = lazy(() => import("./app/pages/Notifications"));
+const Privacy = lazy(() => import("./app/pages/Privacy.jsx"));
+const Terms = lazy(() => import("./app/pages/Terms.jsx"));
 
 
 // Layout that injects the floating AI chat widget and network status on authenticated pages.
@@ -83,6 +85,8 @@ const router = createBrowserRouter([
         { path: "/contactus", element: <LazyRoute><ContactUs /></LazyRoute> },
         { path: "/service", element: <LazyRoute><Service /></LazyRoute> },
         { path: "/feedback", element: <LazyRoute><Feedback /></LazyRoute> },
+        { path: "/privacy", element: <LazyRoute><Privacy /></LazyRoute> },
+        { path: "/terms", element: <LazyRoute><Terms /></LazyRoute> },
         { path: "/login", element: <Login /> },
         { path: "/signup", element: <SignUp /> },
         { path: "/resetpassword", element: <LazyRoute><ResetPassword /></LazyRoute> },

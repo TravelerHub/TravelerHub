@@ -57,7 +57,9 @@ Go to **Database → Replication → Supabase Realtime** and enable these tables
 2. The gallery upload endpoint expects this bucket name
 
 ### 2e. Row Level Security (RLS)
-The migrations include basic RLS policies. For the demo/testing phase you can also disable RLS on individual tables via the dashboard (Table Editor → RLS toggle). **Re-enable before going to production.**
+The migrations include basic RLS policies. For the demo/testing phase you can disable RLS on individual tables via the dashboard (Table Editor → RLS toggle).
+
+**Before going to production, run `025_enable_rls.sql`** — it loops over every public table and re-enables RLS as a safety net. Tables you intentionally want to keep open (currency lookups, etc.) are exempted via the `skip_tables` array at the top of the file.
 
 ---
 
@@ -162,6 +164,15 @@ MAPBOX_TOKEN=pk.eyJ...
 CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 # Production (set in Render dashboard):
 # CORS_ORIGINS=https://your-app.vercel.app
+
+# ── Public URLs (used to build invite + story links) ──────────────────
+# Production must set these. Local dev defaults to http://localhost:5173.
+FRONTEND_URL=http://localhost:5173
+INVITE_BASE_URL=http://localhost:5173/join
+
+# ── API docs ──────────────────────────────────────────────────────────
+# /docs, /redoc, /openapi.json. Off by default in production.
+ENABLE_API_DOCS=true   # set to "false" before going public
 
 # ── Stripe (optional — for billing features) ──────────────────────────
 STRIPE_SECRET_KEY=sk_test_...
