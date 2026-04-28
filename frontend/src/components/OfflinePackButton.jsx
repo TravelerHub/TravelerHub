@@ -20,6 +20,7 @@ import {
   getTripCacheStatus,
   TRIP_NAMESPACES,
 } from "../services/tripCache";
+import { prefetchMapTilesForTrip } from "../services/tilePreFetch";
 
 function _formatAge(iso) {
   if (!iso) return null;
@@ -51,6 +52,16 @@ export default function OfflinePackButton({ tripId, tripName }) {
     try {
       const result = await warmTripCache(tripId);
       setStatus(getTripCacheStatus(tripId));
+
+      // Best-effort: pre-fetch a handful of static map snapshots for the
+      // trip's center so the Dashboard MapSnapshot still renders offline.
+      // Runs after warmTripCache so the bookings cache exists to derive
+      // coords from. Failures here are silent — they're not critical and
+      // the user already has all the data.
+      try {
+        await prefetchMapTilesForTrip(tripId);
+      } catch { /* never block the cache report on tile failure */ }
+
       if (!result.ok && result.failed?.length) {
         // Don't crash the UI — list what failed so the user knows what's
         // still online-only.
