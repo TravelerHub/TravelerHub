@@ -50,6 +50,29 @@ def _looks_like_jwt(token: str | None) -> bool:
     return all(seg and all(c in base64url for c in seg) for seg in parts)
 
 
+def _jwt_role(token: str | None) -> str | None:
+    """Decode the JWT payload (no signature verification) and return the
+    `role` claim. Used to detect the most common deploy mistake — pasting
+    the anon key into the SUPABASE_SERVICE_ROLE_KEY env var. Both keys
+    are valid JWTs so `_looks_like_jwt` passes for both, but only the
+    real service-role key has `role: service_role`.
+    """
+    if not _looks_like_jwt(token):
+        return None
+    try:
+        import base64
+        import json
+        payload = token.split(".")[1]
+        # JWT base64url payloads omit padding. Restore it before decoding.
+        padded = payload + "=" * (-len(payload) % 4)
+        decoded = base64.urlsafe_b64decode(padded).decode("utf-8")
+        data = json.loads(decoded)
+        role = data.get("role")
+        return role if isinstance(role, str) else None
+    except Exception:
+        return None
+
+
 SUPABASE_URL = _clean_env("VITE_SUPABASE_URL") or _clean_env("SUPABASE_URL")
 SUPABASE_ANON_KEY = _clean_env("VITE_SUPABASE_ANON_KEY") or _clean_env("SUPABASE_ANON_KEY")
 SUPABASE_SERVICE_ROLE_KEY = _clean_env("SUPABASE_SERVICE_ROLE_KEY")
@@ -75,6 +98,22 @@ if SUPABASE_SERVICE_ROLE_KEY and not _looks_like_jwt(SUPABASE_SERVICE_ROLE_KEY):
         "'JWS Protected Header is invalid'. Re-paste the key from the "
         "Supabase dashboard, with no surrounding whitespace."
     )
+elif SUPABASE_SERVICE_ROLE_KEY:
+    # Common deploy mistake: pasting the anon key into the service-role
+    # slot. Both are valid JWTs so the shape check above passes — but RLS
+    # still blocks every server-side upload because the role claim is
+    # `anon` rather than `service_role`. Detect that here so the
+    # operator gets a clear message instead of a runtime 503.
+    role = _jwt_role(SUPABASE_SERVICE_ROLE_KEY)
+    if role and role != "service_role":
+        logger.error(
+            "SUPABASE_SERVICE_ROLE_KEY is a valid JWT but its `role` claim is "
+            "%r, not 'service_role'. This is almost certainly the anon key "
+            "pasted into the wrong slot. Photo uploads will fail with RLS "
+            "errors. Copy the *service_role* key from "
+            "Supabase dashboard → Settings → API → Project API keys.",
+            role,
+        )
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
