@@ -107,3 +107,43 @@ def test_add_image_variants_leaves_clean_url_alone():
     out = _add_image_variants(photo)
     assert out["public_url"] == "https://example.supabase.co/storage/v1/object/public/trip-media/a.jpg"
     assert out["thumbnail_url"].endswith("?width=300&quality=60&resize=cover")
+
+
+def test_add_image_variants_repairs_old_media_bucket_row():
+    """Rows uploaded back when gallery.py used the 'Media' bucket should
+    repair to point at /Media/, not the current /trip-media/."""
+    photo = {
+        "public_url": (
+            '{"data":{"publicUrl":'
+            '"https://example.supabase.co/storage/v1/object/public/Media/old-trip/x.jpg"}}'
+        ),
+        "storage_path": "old-trip/x.jpg",
+    }
+    out = _add_image_variants(photo)
+    assert "/public/Media/old-trip/x.jpg" in out["public_url"]
+    assert "/public/trip-media/" not in out["public_url"]
+
+
+def test_add_image_variants_unknown_blob_falls_back_to_default():
+    """Malformed string with no recognizable bucket falls back to
+    the currently-configured default bucket."""
+    photo = {
+        "public_url": '{"weird": "shape"}',
+        "storage_path": "trip-1/b.jpg",
+    }
+    out = _add_image_variants(photo)
+    assert "/public/trip-media/trip-1/b.jpg" in out["public_url"]
+
+
+def test_add_image_variants_rejects_junk_bucket_name():
+    """If the malformed blob has something that smells like a bucket
+    name but contains junk characters, fall back to the default."""
+    photo = {
+        "public_url": (
+            '{"publicUrl":'
+            '"https://x/storage/v1/object/public/some bucket with spaces!/file"}'
+        ),
+        "storage_path": "trip-1/c.jpg",
+    }
+    out = _add_image_variants(photo)
+    assert "/public/trip-media/trip-1/c.jpg" in out["public_url"]
