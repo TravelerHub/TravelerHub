@@ -2,6 +2,9 @@ import os
 import httpx
 from dotenv import load_dotenv
 
+from services.discovery_overpass import search_hotels_osm
+from services.discovery_wikipedia import enrich_with_wikipedia
+
 load_dotenv()
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
@@ -16,6 +19,20 @@ _PRICE_LABEL = {
     3: "Expensive",
     4: "Very Expensive",
 }
+
+
+async def _osm_fallback(lat: float, lng: float, limit: int = 30) -> dict:
+    """OSM-backed hotel search, used as a fallback when Google is unavailable
+    or returns nothing. Wikipedia enrichment is best-effort — failures don't
+    block the response."""
+    osm = await search_hotels_osm(lat=lat, lng=lng, radius_m=10_000, limit=limit)
+    if osm.get("data"):
+        try:
+            await enrich_with_wikipedia(osm["data"], title_key="name")
+        except Exception:
+            # Enrichment is bonus content — never block on it.
+            pass
+    return osm
 
 
 async def search_city(city_name: str) -> dict:
@@ -67,13 +84,25 @@ async def search_hotels(
     rooms: int = 1,
 ) -> dict:
     """
-    Google Places Nearby Search (type=lodging).
-    Returns up to 15 hotels near the given coordinates.
+    Google Places Nearby Search (type=lodging) with OSM Overpass fallback.
+
+    Tries Google first when configured, falls back to OSM Overpass on quota
+    errors, network failures, zero results, or a missing API key. OSM is
+    free and unlimited, so it's both a backstop for Google's $200/month
+    free quota and the *only* source for self-hosted deploys without a
+    Google key.
+
     Note: Google Places does not return actual nightly prices —
-    price_level (1–4 scale) is shown instead.
-    checkin/checkout/adults/rooms are accepted for API compatibility
-    but are not sent to Google (use them to prefill the save form).
+    price_level (1–4 scale) is shown instead. OSM has no price data either,
+    but ships richer name + address + contact info.
+
+    checkin/checkout/adults/rooms are accepted for API compatibility but
+    are not sent to either source (use them to prefill the save form).
     """
+    # If we don't have a Google key configured, skip straight to OSM.
+    if not GOOGLE_API_KEY:
+        return await _osm_fallback(lat, lng)
+
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
@@ -88,8 +117,11 @@ async def search_hotels(
             resp.raise_for_status()
             data = resp.json()
 
-        if data.get("status") not in ("OK", "ZERO_RESULTS"):
-            return {"data": None, "error": data.get("status", "Places API error")}
+        # OVER_QUERY_LIMIT / REQUEST_DENIED → fall back to OSM rather than
+        # surface a vendor-specific error message to the user.
+        google_status = data.get("status")
+        if google_status not in ("OK", "ZERO_RESULTS"):
+            return await _osm_fallback(lat, lng)
 
         hotels = []
         for p in data.get("results", [])[:15]:
@@ -109,12 +141,19 @@ async def search_hotels(
                 "currency": "USD",
                 "room_type": None,
                 "beds": None,
+                "source": "google_places",
             })
+
+        # Google found nothing in this area — Overpass usually has more
+        # coverage in smaller cities, so try it before giving up.
+        if not hotels:
+            return await _osm_fallback(lat, lng)
+
         return {"data": hotels, "error": None}
-    except httpx.HTTPError as e:
-        return {"data": None, "error": str(e)}
-    except Exception as e:
-        return {"data": None, "error": str(e)}
+    except httpx.HTTPError:
+        return await _osm_fallback(lat, lng)
+    except Exception:
+        return await _osm_fallback(lat, lng)
 
 
 async def get_hotel_offer(place_id: str) -> dict:
