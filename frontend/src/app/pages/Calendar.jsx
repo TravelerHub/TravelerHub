@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE } from '../../config';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { getCalendarEvents } from '../../services/calendarService';
 import { useActiveTrip } from '../../hooks/useActiveTrip';
+import { useUserTrips } from '../../hooks/useUserTrips';
 import { readTripCache, writeTripCache } from '../../services/tripCache';
 import Navbar_Dashboard from '../../components/navbar/Navbar_dashboard.jsx';
 import AppSidebar from '../../components/navbar/AppSidebar.jsx';
@@ -134,7 +134,7 @@ function CalendarPage() {
   const [events,         setEvents]         = useState([]);
   const [loading,        setLoading]        = useState(true);
   const [selectedEvent,  setSelectedEvent]  = useState(null);
-  const [trips,          setTrips]          = useState([]);
+  const { data: trips = [] } = useUserTrips();
   // Default to whichever trip the navbar dropdown has marked as active.
   // The `useActiveTrip` hook keeps this in sync if the user switches trips
   // from the navbar without leaving this page.
@@ -146,23 +146,6 @@ function CalendarPage() {
   useEffect(() => {
     if (activeTripId) setSelectedTripId(activeTripId);
   }, [activeTripId]);
-
-  // ── Fetch trips ────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const fetchTrips = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-        const res = await fetch(`${API_BASE}/groups/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) setTrips(await res.json());
-      } catch (err) {
-        console.error('Failed to load trips:', err);
-      }
-    };
-    fetchTrips();
-  }, []);
 
   // ── Fetch calendar events ──────────────────────────────────────────────────
   // The backend can return overlapping rows for the same activity (e.g. a

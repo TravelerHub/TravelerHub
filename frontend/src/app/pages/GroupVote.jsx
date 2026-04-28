@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { HandRaisedIcon } from "@heroicons/react/24/outline";
-import { API_BASE } from "../../config";
 import { pollService } from "../../services/pollService";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import AppSidebar from "../../components/navbar/AppSidebar.jsx";
 import { logActivity } from "../../components/ActivityFeed.jsx";
 import { BallotSpark } from "../../components/icons/StateIcons.jsx";
 import { useActiveTrip } from "../../hooks/useActiveTrip";
+import { useUserTrips } from "../../hooks/useUserTrips";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -89,7 +89,7 @@ export default function GroupVote() {
 
   // ── State: trips ───────────────────────────────────────────────────────────
   const [menuOpen, setMenuOpen]         = useState(false);
-  const [trips, setTrips]               = useState([]);
+  const { data: trips = [] } = useUserTrips({ enabled: !!user });
   const [selectedTrip, setSelectedTrip] = useState(null);
   // Single source of truth for which trip is active. Lets us default the
   // initial poll list to the trip the user picked in the navbar instead of
@@ -129,27 +129,18 @@ export default function GroupVote() {
   // ── State: misc ────────────────────────────────────────────────────────────
   const [actionError, setActionError]       = useState("");
 
-  // ── Fetch trips ────────────────────────────────────────────────────────────
+  // ── Default-select trip once the list loads ────────────────────────────────
   useEffect(() => {
-    if (!user) return;
-    const token = localStorage.getItem("token");
-    fetch(`${API_BASE}/groups/me`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) => {
-        const list = Array.isArray(data) ? data : [];
-        setTrips(list);
-        if (list.length === 0) return;
-        // Prefer the navbar's active trip if it's in our list; otherwise
-        // fall back to the first one. Avoids the surprise where the navbar
-        // says "Paris 2025" but this page lists polls for some other trip.
-        const preferred = activeTripId
-          ? list.find((g) => String(g.group_id || g.id) === String(activeTripId))
-          : null;
-        setSelectedTrip(preferred || list[0]);
-      })
-      .catch(() => {});
+    if (selectedTrip || trips.length === 0) return;
+    // Prefer the navbar's active trip if it's in our list; otherwise fall
+    // back to the first one. Avoids the surprise where the navbar says
+    // "Paris 2025" but this page lists polls for some other trip.
+    const preferred = activeTripId
+      ? trips.find((g) => String(g.group_id || g.id) === String(activeTripId))
+      : null;
+    setSelectedTrip(preferred || trips[0]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [trips]);
 
   // When the navbar switches active trip mid-page, re-scope this page too.
   useEffect(() => {

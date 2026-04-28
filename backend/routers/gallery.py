@@ -485,33 +485,32 @@ async def get_my_albums(
     )
     trip_map = {t["id"]: t.get("name", "Untitled Trip") for t in (trips_res.data or [])}
 
-    # Get photo counts and latest photo per trip
+    all_photos_res = (
+        supabase.table("trip_media")
+        .select("id, trip_id, public_url, created_at")
+        .in_("trip_id", trip_list)
+        .order("created_at", desc=True)
+        .execute()
+    )
+
+    photos_by_trip: dict[str, list[dict]] = {tid: [] for tid in trip_list}
+    counts_by_trip: dict[str, int] = {tid: 0 for tid in trip_list}
+    for p in (all_photos_res.data or []):
+        tid = p.get("trip_id")
+        if tid not in photos_by_trip:
+            continue
+        counts_by_trip[tid] += 1
+        if len(photos_by_trip[tid]) < 4:
+            photos_by_trip[tid].append(p)
+
     albums = []
     for tid in trip_list:
-        media_res = (
-            supabase.table("trip_media")
-            .select("id, public_url, created_at")
-            .eq("trip_id", tid)
-            .order("created_at", desc=True)
-            .limit(4)
-            .execute()
-        )
-        photos = media_res.data or []
-
-        # Get total count
-        all_res = (
-            supabase.table("trip_media")
-            .select("id")
-            .eq("trip_id", tid)
-            .execute()
-        )
-        total = len(all_res.data or [])
-
-        preview_photos = [_add_image_variants(dict(p)) for p in photos[:4]]
+        photos = photos_by_trip[tid]
+        preview_photos = [_add_image_variants(dict(p)) for p in photos]
         albums.append({
             "trip_id": tid,
             "trip_name": trip_map.get(tid, "Untitled Trip"),
-            "photo_count": total,
+            "photo_count": counts_by_trip[tid],
             "preview_urls": [p["public_url"] for p in preview_photos],
             "preview_thumbnail_urls": [p["thumbnail_url"] for p in preview_photos],
             "latest_at": photos[0]["created_at"] if photos else None,
