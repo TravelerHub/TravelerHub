@@ -130,6 +130,7 @@ def global_search(
                     merchant = row.get("merchant_name") or "Unknown"
                     category = row.get("category") or "Other"
                     date_val = row.get("date") or ""
+                    expense_trip = row.get("trip_id")
 
                     # Format date as "Mar 15" style if possible
                     date_label = ""
@@ -145,12 +146,21 @@ def global_search(
                     if date_label:
                         subtitle_parts.append(date_label)
 
+                    # URL carries trip_id + expense id so /expenses can scope
+                    # to the right trip and highlight the matching row instead
+                    # of dumping the user into whatever trip happens to be
+                    # selected in localStorage.
+                    expense_url = "/expenses"
+                    if expense_trip:
+                        expense_url += f"?trip={expense_trip}&id={row.get('id')}"
+
                     results.append({
                         "type": "expense",
                         "id": row.get("id"),
+                        "trip_id": expense_trip,
                         "title": f"${amount:.0f} at {merchant}",
                         "subtitle": " · ".join(subtitle_parts),
-                        "url": "/expenses",
+                        "url": expense_url,
                     })
         except Exception as e:
             logger.warning("[search] expenses query error: %s", e, exc_info=True)
@@ -169,13 +179,24 @@ def global_search(
                 for row in (photos_res.data or []):
                     caption = row.get("caption") or "Photo"
                     uploader = row.get("uploaded_by_name") or "Member"
+                    photo_trip = row.get("trip_id")
+
+                    # URL carries the trip_id so Gallery scopes to the right
+                    # album on landing instead of falling back to localStorage
+                    # active_group_id (which might be a totally different
+                    # trip from the matched photo).
+                    photo_url = "/gallery"
+                    if photo_trip:
+                        photo_url += f"?trip={photo_trip}&photo={row.get('id')}"
+
                     results.append({
                         "type": "photo",
                         "id": row.get("id"),
+                        "trip_id": photo_trip,
                         "title": caption,
                         "subtitle": f"by {uploader}",
                         "thumbnail": row.get("public_url"),
-                        "url": "/gallery",
+                        "url": photo_url,
                     })
         except Exception as e:
             logger.warning("[search] photos query error: %s", e, exc_info=True)

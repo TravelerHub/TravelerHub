@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { API_BASE } from "../../config";
 import { apiFetch, getToken, authHeaders } from "../../services/api.js";
@@ -39,6 +39,7 @@ function avatarColor(name) {
 export default function Gallery() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Mobile side-nav drawer toggle. Without this hooked up, Gallery's
   // navbar lost its hamburger button and mobile users had no way to
@@ -49,8 +50,15 @@ export default function Gallery() {
   })();
   const displayName = _userBlob?.username || _userBlob?.name || "Traveler";
 
-  // Active trip selection
-  const [activeTrip, setActiveTrip] = useState(localStorage.getItem("active_group_id") || localStorage.getItem("activeGroupId") || "");
+  // Active trip selection — URL `?trip=` wins over localStorage so deep
+  // links from the navbar search land in the right album instead of
+  // whatever trip the user last had selected.
+  const [activeTrip, setActiveTrip] = useState(
+    searchParams.get("trip")
+      || localStorage.getItem("active_group_id")
+      || localStorage.getItem("activeGroupId")
+      || ""
+  );
 
   // Upload
   const [showUpload, setShowUpload] = useState(false);
@@ -176,6 +184,27 @@ export default function Gallery() {
   });
   const photos = photosInfiniteData?.pages.flatMap((p) => p.photos) ?? [];
   const photosForbidden = photosError && photosErrorObj?.status === 403;
+
+  // When the user lands here from a search result with `?photo=<id>`,
+  // scroll the matching tile into view and open the lightbox so the
+  // result they tapped is actually visible. Runs once per `photo` param
+  // value — we strip the param after handling so refresh / back-nav
+  // don't keep re-opening the lightbox.
+  useEffect(() => {
+    const targetId = searchParams.get("photo");
+    if (!targetId || photos.length === 0) return;
+    const idx = photos.findIndex((p) => String(p.id) === String(targetId));
+    if (idx < 0) return;
+    setLightboxIdx(idx);
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-photo-id="${CSS.escape(targetId)}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    const next = new URLSearchParams(searchParams);
+    next.delete("photo");
+    setSearchParams(next, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photos, searchParams.get("photo")]);
 
   // Filtered grid view (per the active Stories-strip selection)
   const visiblePhotos = useMemo(() => {
@@ -824,6 +853,7 @@ export default function Gallery() {
                   return (
                     <div
                       key={photo.id}
+                      data-photo-id={photo.id}
                       className="group relative aspect-square overflow-hidden cursor-pointer rounded-md sm:rounded-lg"
                       style={{ background: "#e5e7eb", outline: isSelected ? "3px solid #c8a96e" : "none", outlineOffset: -3 }}
                       onClick={() => {
