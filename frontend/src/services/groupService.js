@@ -41,6 +41,22 @@ export function clearMyGroupsCache() {
   _groupsInflight = null;
 }
 
+// If the cached active_group_id refers to a trip the user is no longer a
+// member of (left/removed/deleted), every trip-scoped fetch on the page
+// returns 403 and the UI shows nothing. Reconcile it against the live
+// groups list and fall back to the first available trip — or clear it if
+// the user has none.
+function reconcileActiveAgainst(groups) {
+  const active = getActiveGroupId();
+  if (!active) return;
+  const validIds = new Set(
+    groups.map((g) => String(g.group_id || g.id)).filter(Boolean)
+  );
+  if (validIds.has(active)) return;
+  const firstId = groups[0]?.group_id || groups[0]?.id || '';
+  setActiveGroupId(firstId);
+}
+
 export async function getMyGroups() {
   const now = Date.now();
   if (_groupsCache && now - _groupsCacheTime < GROUPS_TTL) {
@@ -58,6 +74,7 @@ export async function getMyGroups() {
       }
       const groups = await response.json();
       const list = Array.isArray(groups) ? groups : [];
+      reconcileActiveAgainst(list);
       _groupsCache = list;
       _groupsCacheTime = Date.now();
       return list;
