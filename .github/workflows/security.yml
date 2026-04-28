@@ -26,13 +26,31 @@ jobs:
       # .gitleaks.toml from the repo root.
       - name: Install gitleaks
         run: |
+          set -euo pipefail
           GL_VERSION="8.18.4"
-          curl -sL "https://github.com/gitleaks/gitleaks/releases/download/v${GL_VERSION}/gitleaks_${GL_VERSION}_linux_x64.tar.gz" \
-            | tar -xz -C /usr/local/bin gitleaks
+          TMPDIR="$(mktemp -d)"
+          curl -fsSL -o "$TMPDIR/gl.tgz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GL_VERSION}/gitleaks_${GL_VERSION}_linux_x64.tar.gz"
+          tar -xzf "$TMPDIR/gl.tgz" -C "$TMPDIR"
+          sudo mv "$TMPDIR/gitleaks" /usr/local/bin/gitleaks
+          sudo chmod +x /usr/local/bin/gitleaks
           gitleaks version
 
+      - name: Show config
+        run: |
+          ls -la .gitleaks.toml
+          echo "---"
+          cat .gitleaks.toml
+
       - name: Scan
-        run: gitleaks detect --source . --redact --no-banner --exit-code 1
+        run: |
+          gitleaks detect \
+            --source . \
+            --config .gitleaks.toml \
+            --redact \
+            --no-banner \
+            --verbose \
+            --exit-code 1
 
   npm-audit:
     name: npm audit (frontend)
