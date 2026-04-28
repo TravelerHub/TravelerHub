@@ -14,6 +14,7 @@ import {
   INTEREST_OPTIONS,
 } from "../../services/preferencesService.js";
 import { addFavorite } from "../../services/favoritesService.js";
+import PlanDayModal from "../../components/PlanDayModal.jsx";
 
 // ── Color palette (matches Dashboard / Booking / Finance)
 // #160f29  deep dark   (sidebar bg, headings)
@@ -205,6 +206,8 @@ export default function TravelSuggestion() {
   const [hasSearched, setHasSearched] = useState(false);
   const [activeTab,   setActiveTab]   = useState("all"); // "all" | "gems"
   const [resolvedDest,setResolvedDest]= useState("");
+  const [resolvedCoords, setResolvedCoords] = useState(null); // { lat, lng }
+  const [planOpen, setPlanOpen] = useState(false);
 
   // ── Favorites state ─────────────────────────────────────────────────────────
   const [savedIds,    setSavedIds]    = useState(new Set());
@@ -248,6 +251,7 @@ export default function TravelSuggestion() {
       }
       const [lng, lat] = geoResults[0].coordinates;
       setResolvedDest(geoResults[0].name || destination.trim());
+      setResolvedCoords({ lat, lng });
 
       // 2. Build search query from interests + categories
       const interestLabels = selectedInterests.map(
@@ -562,12 +566,24 @@ export default function TravelSuggestion() {
           {/* ── Results ─────────────────────────────────────────────────────── */}
           {!loading && hasSearched && (
             <>
-              {/* Resolved destination label */}
+              {/* Resolved destination label + Plan-a-day CTA */}
               {resolvedDest && (
-                <p className="text-xs mb-4 font-medium" style={{ color: "#5c6b73" }}>
-                  Showing results near{" "}
-                  <span style={{ color: "#160f29", fontWeight: 700 }}>{resolvedDest}</span>
-                </p>
+                <div className="flex flex-wrap items-center gap-3 mb-4">
+                  <p className="text-xs font-medium" style={{ color: "#5c6b73", margin: 0 }}>
+                    Showing results near{" "}
+                    <span style={{ color: "#160f29", fontWeight: 700 }}>{resolvedDest}</span>
+                  </p>
+                  {resolvedCoords && (
+                    <button
+                      type="button"
+                      onClick={() => setPlanOpen(true)}
+                      className="text-xs font-semibold rounded-full px-3 py-1 transition"
+                      style={{ background: "#183a37", color: "#fbfbf2", border: "none", cursor: "pointer" }}
+                    >
+                      📅 Plan a day here
+                    </button>
+                  )}
+                </div>
               )}
 
               {/* Tabs */}
@@ -688,6 +704,14 @@ export default function TravelSuggestion() {
 
         </main>
       </div>
+
+      <PlanDayModal
+        open={planOpen}
+        onClose={() => setPlanOpen(false)}
+        lat={resolvedCoords?.lat}
+        lng={resolvedCoords?.lng}
+        locationLabel={resolvedDest}
+      />
     </div>
   );
 }
