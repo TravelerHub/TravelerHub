@@ -37,6 +37,35 @@ router = APIRouter(
 
 BUCKET_NAME = "trip-media"
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB — matches nginx client_max_body_size
+
+
+def _coerce_public_url(raw, file_path: str) -> str:
+    """Always return a clean string URL for a stored object.
+
+    Different supabase-py / storage3 versions have returned `get_public_url`
+    as either a plain string OR a dict shape like `{"publicURL": "..."}`,
+    `{"signedURL": "..."}`, or `{"data": {"publicUrl": "..."}}`. Storing
+    the raw return value as-is means the dict gets JSON-serialized into
+    the `public_url` column, the frontend renders an `<img>` with that
+    JSON blob as src, and you get blank tiles in production with no
+    helpful error. We normalize here.
+    """
+    if isinstance(raw, str) and raw:
+        return raw.rstrip("?")  # newer clients append a trailing "?" sometimes
+    if isinstance(raw, dict):
+        for k in ("publicUrl", "publicURL", "signedURL", "signed_url", "url"):
+            v = raw.get(k)
+            if isinstance(v, str) and v:
+                return v.rstrip("?")
+        nested = raw.get("data")
+        if isinstance(nested, dict):
+            return _coerce_public_url(nested, file_path)
+    # Fallback: build the canonical Supabase public URL ourselves. This
+    # matches what `get_public_url` returns under the hood and keeps every
+    # row's URL well-formed regardless of client-version drift.
+    from supabase_client import SUPABASE_URL  # late import to avoid cycle
+    base = (SUPABASE_URL or "").rstrip("/")
+    return f"{base}/storage/v1/object/public/{BUCKET_NAME}/{file_path}"
 ALLOWED_CONTENT_TYPES = {
     "image/jpeg",
     "image/png",
@@ -50,6 +79,29 @@ ALLOWED_CONTENT_TYPES = {
 def _add_image_variants(photo: dict) -> dict:
     """Add optimized URL variants to a photo record."""
     base_url = photo.get("public_url", "")
+
+    # Repair rows that were stored before _coerce_public_url existed: the old
+    # path serialized the storage client's dict response into the column, so
+    # the field looks like '{"data":{"publicUrl":...}}' or has a trailing
+    # '?'. Rebuild the canonical URL from storage_path when we can detect
+    # this so the <img> tags actually resolve.
+    storage_path = photo.get("storage_path")
+    looks_malformed = (
+        not isinstance(base_url, str)
+        or not base_url
+        or base_url.startswith("{")
+        or "publicUrl" in base_url
+        or "signedURL" in base_url
+    )
+    if looks_malformed and storage_path:
+        from supabase_client import SUPABASE_URL  # late import to avoid cycle
+        base = (SUPABASE_URL or "").rstrip("/")
+        base_url = f"{base}/storage/v1/object/public/{BUCKET_NAME}/{storage_path}"
+        photo["public_url"] = base_url
+    elif isinstance(base_url, str) and base_url.endswith("?"):
+        base_url = base_url.rstrip("?")
+        photo["public_url"] = base_url
+
     if not base_url or "supabase" not in base_url:
         photo["thumbnail_url"] = base_url
         photo["display_url"] = base_url
@@ -290,7 +342,10 @@ async def upload_trip_media(
             file=file_content,
             file_options={"content-type": file.content_type},
         )
-        public_url = supabase_admin.storage.from_(BUCKET_NAME).get_public_url(file_path)
+        public_url = _coerce_public_url(
+            supabase_admin.storage.from_(BUCKET_NAME).get_public_url(file_path),
+            file_path,
+        )
     except Exception as e:
         logger.error("[upload_trip_media] storage upload failed trip=%s: %s", trip_id, e, exc_info=True)
         # Translate the most common Supabase-side failures into messages that
