@@ -1,6 +1,27 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { XMarkIcon } from "@heroicons/react/24/outline";
-import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
+import {
+  XMarkIcon,
+  HomeIcon,
+  ChatBubbleLeftRightIcon,
+  CalendarDaysIcon,
+  MapIcon as HeroMapIcon,
+  PaperAirplaneIcon,
+  WalletIcon as HeroWalletIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+} from "@heroicons/react/24/outline";
+import { SIDEBAR_SECTIONS } from "../../constants/sidebarItems.js";
+
+const ICON_FOR = {
+  home:      HomeIcon,
+  chat:      ChatBubbleLeftRightIcon,
+  calendar:  CalendarDaysIcon,
+  map:       HeroMapIcon,
+  plane:     PaperAirplaneIcon,
+  wallet:    HeroWalletIcon,
+  checklist: CheckCircleIcon,
+  sos:       ExclamationTriangleIcon,
+};
 
 /**
  * Shared app sidebar.
@@ -81,38 +102,57 @@ export default function AppSidebar({
           </button>
         </div>
 
-        {/* Nav list */}
-        <nav className="flex flex-col gap-1 px-3 py-4 flex-1 overflow-y-auto min-h-0">
-          {SIDEBAR_ITEMS.map((item) => {
-            const isActive = item.path && pathname.startsWith(item.path);
-            const isDisabled = !item.path;
-            return (
-              <button
-                key={item.label}
-                onClick={() => {
-                  if (item.path) {
-                    navigate(item.path);
-                    close();
-                  }
-                }}
-                disabled={isDisabled}
-                className={`
-                  w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition
-                  ${isActive ? "font-bold" : isDisabled ? "cursor-not-allowed" : "hover:bg-white/10"}
-                `}
-                style={{
-                  background: isActive ? "#ffffff" : "transparent",
-                  color: isActive
-                    ? "#000000"
-                    : isDisabled
-                    ? "#4b5563"
-                    : "#9ca3af",
-                }}
+        {/* Nav list — grouped into sections with icons so 8 destinations
+            don't all read as one long undifferentiated stack. */}
+        <nav className="flex flex-col gap-3 px-3 py-4 flex-1 overflow-y-auto min-h-0">
+          {SIDEBAR_SECTIONS.map((section) => (
+            <div key={section.title} className="flex flex-col gap-0.5">
+              <p
+                className="px-4 pb-1 text-[10px] font-bold uppercase tracking-widest"
+                style={{ color: "#4b5563" }}
               >
-                {item.label}
-              </button>
-            );
-          })}
+                {section.title}
+              </p>
+              {section.items.map((item) => {
+                const isActive = item.path && pathname.startsWith(item.path);
+                const isDisabled = !item.path;
+                const Icon = ICON_FOR[item.icon];
+                return (
+                  <button
+                    key={item.label}
+                    onClick={() => {
+                      if (item.path) {
+                        navigate(item.path);
+                        close();
+                      }
+                    }}
+                    disabled={isDisabled}
+                    className={`
+                      w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition
+                      flex items-center gap-3
+                      ${isActive ? "font-bold" : isDisabled ? "cursor-not-allowed" : "hover:bg-white/10"}
+                    `}
+                    style={{
+                      background: isActive ? "#ffffff" : "transparent",
+                      color: isActive
+                        ? "#000000"
+                        : isDisabled
+                        ? "#4b5563"
+                        : "#9ca3af",
+                    }}
+                  >
+                    {Icon && (
+                      <Icon
+                        className="w-4 h-4 shrink-0"
+                        style={{ color: "currentColor" }}
+                      />
+                    )}
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
 
           {topExtras && <div className="mt-2">{topExtras}</div>}
         </nav>
