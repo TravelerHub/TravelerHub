@@ -40,7 +40,10 @@ router = APIRouter(
     tags=["Invites"],
 )
 
-INVITE_BASE_URL = os.getenv("INVITE_BASE_URL", "https://travelhub.fozhan.dev/join")
+# INVITE_BASE_URL is the public URL of the frontend's /join route. Operators
+# must set this in production (or set FRONTEND_URL and we'll derive it).
+_FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+INVITE_BASE_URL = os.getenv("INVITE_BASE_URL", f"{_FRONTEND_URL}/join")
 
 
 # ---------------------------------------------------------------------------

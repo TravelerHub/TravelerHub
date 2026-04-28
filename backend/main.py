@@ -70,12 +70,22 @@ from routers import feedback as feedback_router
 from routers import itinerary
 
 limiter = Limiter(key_func=get_remote_address)
+
+# /docs and /redoc leak the entire route surface and request schemas. Keep
+# them on in dev, off in prod unless an operator opts in via env.
+_enable_docs = os.getenv("ENABLE_API_DOCS", "false").lower() in ("1", "true", "yes")
+
 # redirect_slashes=False prevents FastAPI from issuing 307 redirects when a
 # client posts to "/trips/{id}/upload/" (or any other trailing-slash variant).
 # Browsers re-issue cross-origin POSTs after a 307 WITHOUT the body for
 # multipart requests — which surfaces in the UI as "Failed to fetch". Pin
 # the routes to exactly the registered paths instead.
-app = FastAPI(redirect_slashes=False)
+app = FastAPI(
+    redirect_slashes=False,
+    docs_url="/docs" if _enable_docs else None,
+    redoc_url="/redoc" if _enable_docs else None,
+    openapi_url="/openapi.json" if _enable_docs else None,
+)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -125,7 +135,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 _cors_env = os.getenv(
     "CORS_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173,https://travelhub.fozhan.dev",
+    "http://localhost:5173,http://127.0.0.1:5173",
 )
 _allowed_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
 

@@ -45,12 +45,23 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker
       .register('/sw.js', { scope: '/' })
       .then((reg) => {
+        // Tell the SW which API host(s) belong to this deploy so it can
+        // recognise our backend without hardcoding a domain in public/sw.js.
+        const apiHosts = [];
+        try {
+          const apiUrl = import.meta.env.VITE_API_URL;
+          if (apiUrl) apiHosts.push(new URL(apiUrl).hostname);
+        } catch { /* malformed URL — ignore */ }
+        const target = reg.active || reg.waiting || reg.installing;
+        target?.postMessage({ type: 'SET_API_HOSTNAMES', hosts: apiHosts });
+
         // When a new SW is waiting, activate it immediately
         reg.addEventListener('updatefound', () => {
           const newWorker = reg.installing;
           newWorker?.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
               newWorker.postMessage({ type: 'SKIP_WAITING' });
+              newWorker.postMessage({ type: 'SET_API_HOSTNAMES', hosts: apiHosts });
             }
           });
         });

@@ -277,7 +277,7 @@ public_router = APIRouter(
 
 
 def _public_story_base_url() -> str:
-    frontend = os.getenv("FRONTEND_URL", "https://travelhub.fozhan.dev")
+    frontend = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
     return f"{frontend}/story/public"
 
 

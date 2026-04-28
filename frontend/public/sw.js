@@ -100,12 +100,22 @@ async function limitCacheSize(cacheName, maxItems) {
   }
 }
 
+// Allowed API hostnames are passed in by the page via `postMessage` at SW
+// boot time so the same-deploy file works for any `VITE_API_URL` without
+// requiring a build-time substitution in `public/`.
+const API_HOSTNAMES = new Set();
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SET_API_HOSTNAMES' && Array.isArray(event.data.hosts)) {
+    event.data.hosts.forEach((h) => h && API_HOSTNAMES.add(h));
+  }
+});
+
 function isApiRequest(url) {
-  // Requests to our own FastAPI backend (dev or production)
   return (
     url.hostname === 'localhost' ||
     url.hostname === '127.0.0.1' ||
-    url.hostname === 'travelhub-api.fozhan.dev' ||
+    API_HOSTNAMES.has(url.hostname) ||
     url.pathname.startsWith('/api/')
   );
 }

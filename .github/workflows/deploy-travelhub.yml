@@ -49,7 +49,7 @@ jobs:
         run: |
           rsync -avz --delete \
             frontend/dist/ \
-            root@${{ secrets.SERVER_IP }}:/var/www/travelhub.fozhan.dev/
+            root@${{ secrets.SERVER_IP }}:/var/www/${{ secrets.FRONTEND_DOMAIN }}/
 
       # ── 5. Deploy backend source code ─────────────────────────────────────────
       - name: Deploy backend to server
