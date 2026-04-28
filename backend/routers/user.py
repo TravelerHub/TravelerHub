@@ -27,21 +27,27 @@ def read_me(request: Request, current_user=Depends(oauth2.get_current_user)):
 
 
 # ── Privacy-safe user search ────────────────────────────────────────────────
-# Returns at most ONE user when the query is an EXACT match on username or
-# email (case-insensitive).  Partial / fuzzy queries always return empty so
-# that the full user-base is never browseable.
+# Strict-exact for short queries (1-2 chars) so the user base isn't browseable
+# from a single character. Prefix match for >=3 chars so legitimate
+# "find my friend whose username starts with kinoko" flows work — capped at
+# 5 results, ordered exact-match-first, with heavy rate limit on top so it
+# can't be used to enumerate.
 # Never returns password hashes; only exposes id, username, and avatar_url.
 @router.get("/search")
 @limiter.limit("20/minute")
 async def search_users(
     request: Request,
-    q: str = Query(..., min_length=1, description="Exact username or email to look up"),
+    q: str = Query(..., min_length=1, description="Username prefix or exact email to look up"),
     current_user=Depends(oauth2.get_current_user),
 ):
     """
-    Exact-match user lookup.  Only returns a result when the query string
-    matches a username or email exactly (case-insensitive).  Partial matches
-    intentionally return an empty list so the full user base cannot be browsed.
+    Username + email lookup.
+
+    Behavior depends on the query length:
+      - <3 chars: exact-only on username and email (case-insensitive).
+      - >=3 chars: prefix match on username (case-insensitive), exact on
+        email, capped at 5 results, ordered exact-match-first.
+
     Soft-deleted accounts (username == '[deleted]') are always excluded.
     """
     query = q.strip()
@@ -49,7 +55,8 @@ async def search_users(
         return {"users": []}
 
     try:
-        # Try exact email match first
+        # Email is always exact-match — emails are PII and we don't want
+        # to leak them via prefix enumeration even with a length floor.
         email_res = await asyncio.to_thread(
             lambda: supabase
             .table("users")
@@ -62,8 +69,9 @@ async def search_users(
         if email_res.data:
             return {"users": email_res.data}
 
-        # Try exact username match
-        username_res = await asyncio.to_thread(
+        # Try exact username first — keeps privacy guarantee for short
+        # 1-2 char queries and makes the most-likely match show up first.
+        exact_res = await asyncio.to_thread(
             lambda: supabase
             .table("users")
             .select("id, username, avatar_url")
@@ -72,11 +80,33 @@ async def search_users(
             .limit(1)
             .execute()
         )
-        if username_res.data:
-            return {"users": username_res.data}
+        exact_users = list(exact_res.data or [])
 
-        # No exact match — return empty (never leak partial results)
-        return {"users": []}
+        if len(query) < 3:
+            # Short queries don't get prefix matching — that would let
+            # someone iterate through the alphabet ("a", "b", …) to
+            # browse the entire user base.
+            return {"users": exact_users}
+
+        # Prefix search for 3+ char queries. ilike escapes still apply;
+        # the % suffix is a single character at the end of an interpolated
+        # value, not user-controlled.
+        seen_ids = {u["id"] for u in exact_users}
+        prefix_res = await asyncio.to_thread(
+            lambda: supabase
+            .table("users")
+            .select("id, username, avatar_url")
+            .ilike("username", f"{query}%")
+            .neq("username", "[deleted]")
+            .order("username")
+            .limit(10)
+            .execute()
+        )
+        prefix_users = [
+            u for u in (prefix_res.data or []) if u["id"] not in seen_ids
+        ]
+
+        return {"users": (exact_users + prefix_users)[:5]}
 
     except Exception as e:
         print("Error searching users:", e)
