@@ -30,6 +30,19 @@ function SignUp() {
       return;
     }
 
+    // Match the backend Pydantic constraints so the user gets a
+    // friendly inline message instead of staring at a generic
+    // "Error creating account" toast that came from a 422 with a
+    // detail array we couldn't render. The server enforces these too.
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (!/^[A-Za-z0-9_.-]{3,32}$/.test(username)) {
+      setError("Username must be 3–32 characters and use only letters, numbers, '_', '-' or '.'.");
+      return;
+    }
+
     const response = await fetch(`${API_BASE}/signup`, {
         method: "POST",
         headers: {
@@ -72,7 +85,24 @@ function SignUp() {
         navigate("/dashboard");
       }
       else {
-        setError(data.detail || "Error creating account. Please try again!");
+        // Pydantic 422 returns `detail` as an *array* of error objects:
+        // [{ type, loc: ["body", "password"], msg: "...", ... }, ...]
+        // Stuffing that into setError used to render either
+        // "[object Object]" or crash the page silently — leaving the
+        // user with no idea why signup failed. Format the first error
+        // into a single readable line; fall back to the string detail
+        // for handler-raised HTTPException (e.g. "Email already exists").
+        let msg = "Error creating account. Please try again!";
+        if (Array.isArray(data?.detail) && data.detail.length > 0) {
+          const first = data.detail[0];
+          const field = Array.isArray(first?.loc)
+            ? first.loc.filter((p) => p !== "body").join(".")
+            : "";
+          msg = field ? `${field}: ${first.msg}` : (first.msg || msg);
+        } else if (typeof data?.detail === "string") {
+          msg = data.detail;
+        }
+        setError(msg);
         return;
       }
 
