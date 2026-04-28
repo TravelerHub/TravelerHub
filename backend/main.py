@@ -1,8 +1,11 @@
 import os
+import secrets
 import time
 import logging
 import traceback
+from contextvars import ContextVar
 from fastapi import FastAPI, Request
+from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -10,6 +13,18 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 logger = logging.getLogger("travelhub")
+
+# Per-request ID stamped by the request_id middleware below and surfaced
+# back to clients in both the X-Request-ID response header and the body of
+# any error envelope. Lets a user paste a short ID into a bug report and
+# us grep the matching log line out of the structured logger.
+request_id_var: ContextVar[str] = ContextVar("request_id", default="")
+
+
+def _new_request_id() -> str:
+    # 8 url-safe chars (~48 bits) is plenty to uniquely identify a request
+    # within a few hours of logs and short enough for a human to copy-paste.
+    return f"req_{secrets.token_urlsafe(6)}"
 
 from routers import auth
 from routers import user
@@ -68,9 +83,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Catch-all handler: log every unhandled exception with structured context."""
+    rid = request_id_var.get() or _new_request_id()
     logger.error(
         "Unhandled exception",
         extra={
+            "request_id": rid,
             "method": request.method,
             "path": request.url.path,
             "error": str(exc),
@@ -79,8 +96,32 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error"},
+        content={
+            "detail": "Internal server error",
+            "request_id": rid,
+            "code": "internal_error",
+        },
+        headers={"X-Request-ID": rid},
     )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Mirror FastAPI's default handler but tack the request ID onto the
+    body and headers so 4xx responses are also traceable. We don't
+    inflate the body when the original detail is already a structured
+    object — only when it's a plain string."""
+    rid = request_id_var.get() or _new_request_id()
+    detail = exc.detail
+    if isinstance(detail, dict):
+        body = dict(detail)
+        body.setdefault("request_id", rid)
+    else:
+        body = {"detail": detail, "request_id": rid}
+    headers = dict(exc.headers or {})
+    headers.setdefault("X-Request-ID", rid)
+    return JSONResponse(status_code=exc.status_code, content=body, headers=headers)
+
 
 _cors_env = os.getenv(
     "CORS_ORIGINS",
@@ -88,12 +129,31 @@ _cors_env = os.getenv(
 )
 _allowed_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
 
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    """Stamp every request with a short ID, propagate it via contextvar so
+    handlers and the exception handler can pick it up, and echo it back
+    in the X-Request-ID response header for the frontend to surface in
+    error toasts."""
+    incoming = request.headers.get("x-request-id")
+    rid = incoming if incoming and len(incoming) <= 64 else _new_request_id()
+    token = request_id_var.set(rid)
+    try:
+        response = await call_next(request)
+    finally:
+        request_id_var.reset(token)
+    response.headers.setdefault("X-Request-ID", rid)
+    return response
+
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start = time.time()
     response = await call_next(request)
     ms = round((time.time() - start) * 1000)
-    print(f"{request.method} {request.url.path} → {response.status_code} ({ms}ms)")
+    rid = request_id_var.get() or "-"
+    print(f"[{rid}] {request.method} {request.url.path} → {response.status_code} ({ms}ms)")
     return response
 
 
@@ -103,6 +163,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
 
 
