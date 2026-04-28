@@ -1,0 +1,52 @@
+name: Bug report
+description: Something is broken or behaving unexpectedly
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! For security issues please
+        do **not** open a public issue — see [SECURITY.md](../SECURITY.md).
+  - type: input
+    id: summary
+    attributes:
+      label: One-line summary
+      placeholder: "Photo upload fails with 503 on iOS Safari"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Numbered steps. Include the URL, role, and any data setup.
+      placeholder: |
+        1. Sign in as a trip member
+        2. Open `/gallery`
+        3. Upload a 15 MB JPEG
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+    validations:
+      required: true
+  - type: input
+    id: request-id
+    attributes:
+      label: Request ID (if shown in error toast)
+      placeholder: "req_aBc123"
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      placeholder: |
+        - Browser/OS:
+        - Hosted vs self-hosted:
+        - Backend version / commit:
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Logs, screenshots, anything else
