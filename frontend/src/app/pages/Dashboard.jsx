@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import LoadingSpinner from "../../components/LoadingSpinner.jsx";
 import { API_BASE } from "../../config";
 import { apiFetch } from "../../services/api.js";
+import { useUserTrips } from "../../hooks/useUserTrips";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
 import AppSidebar from "../../components/navbar/AppSidebar.jsx";
 import {
@@ -118,11 +119,7 @@ export default function Dashboard() {
     : [];
 
   // ── React Query: upcoming bookings (depends on my groups first) ───────────
-  const { data: myGroupsData } = useQuery({
-    queryKey: ["my-groups"],
-    queryFn: () => apiFetch("/groups/me"),
-    enabled: !!user,
-  });
+  const { data: myGroupsData } = useUserTrips({ enabled: !!user });
 
   // Derive activeTripId from groups query result and keep it in sync
   useEffect(() => {

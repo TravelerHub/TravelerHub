@@ -30,19 +30,42 @@ export function setActiveGroupId(groupId) {
   }
 }
 
+let _groupsCache = null;
+let _groupsCacheTime = 0;
+let _groupsInflight = null;
+const GROUPS_TTL = 60 * 1000; // 1 minute — long enough to dedupe burst calls on page load
+
+export function clearMyGroupsCache() {
+  _groupsCache = null;
+  _groupsCacheTime = 0;
+  _groupsInflight = null;
+}
+
 export async function getMyGroups() {
-  const response = await fetch(`${API_BASE}/groups/me`, {
-    headers: {
-      Authorization: `Bearer ${getToken()}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to load groups');
+  const now = Date.now();
+  if (_groupsCache && now - _groupsCacheTime < GROUPS_TTL) {
+    return _groupsCache;
   }
+  if (_groupsInflight) return _groupsInflight;
 
-  const groups = await response.json();
-  return Array.isArray(groups) ? groups : [];
+  _groupsInflight = (async () => {
+    try {
+      const response = await fetch(`${API_BASE}/groups/me`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!response.ok) {
+        throw new Error('Failed to load groups');
+      }
+      const groups = await response.json();
+      const list = Array.isArray(groups) ? groups : [];
+      _groupsCache = list;
+      _groupsCacheTime = Date.now();
+      return list;
+    } finally {
+      _groupsInflight = null;
+    }
+  })();
+  return _groupsInflight;
 }
 
 export async function ensureActiveGroupId() {
