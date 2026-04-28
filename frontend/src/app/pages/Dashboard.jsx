@@ -15,6 +15,7 @@ import {
   SparkleIcon,
 } from "../../components/icons/NavIcons.jsx";
 import { ACTIVE_TRIP_EVENT, setActiveGroupId } from "../../services/groupService";
+import OfflinePackButton from "../../components/OfflinePackButton.jsx";
 
 // ── Dashboard widgets ─────────────────────────────────────────────────────────
 import Widget              from "../../components/dashboard/Widget.jsx";
@@ -394,20 +395,33 @@ export default function Dashboard() {
         <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
         <main className="flex-1 overflow-y-auto p-4 pb-24 md:pb-4" style={{ background: "#f3f4f6" }}>
-          <div className="flex items-center justify-between mb-4 px-1">
+          <div className="flex items-center justify-between mb-4 px-1 gap-3 flex-wrap">
             <div>
               <h2 className="text-xl font-bold" style={{ color: "#160f29" }}>Your Trip Groups</h2>
               <p className="text-xs mt-0.5" style={{ color: "#6b7280" }}>
                 Create and manage groups to share chat, finance, and navigation.
               </p>
             </div>
-            <button
-              onClick={() => { setShowCreateModal(true); setCreateError(""); }}
-              className="px-4 py-2.5 rounded-xl text-sm font-semibold transition hover:bg-gray-700 active:scale-95"
-              style={{ background: "#000000", color: "#f9fafb" }}
-            >
-              + Create Group
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Offline pack — preloads bookings / calendar / members /
+                  contacts into localStorage so the trip survives a
+                  signal-free flight or remote area. */}
+              <OfflinePackButton
+                tripId={activeTripId}
+                tripName={
+                  Array.isArray(myGroupsData)
+                    ? (myGroupsData.find((g) => String(g.group_id || g.id) === String(activeTripId))?.name || null)
+                    : null
+                }
+              />
+              <button
+                onClick={() => { setShowCreateModal(true); setCreateError(""); }}
+                className="px-4 py-2.5 rounded-xl text-sm font-semibold transition hover:bg-gray-700 active:scale-95"
+                style={{ background: "#000000", color: "#f9fafb" }}
+              >
+                + Create Group
+              </button>
+            </div>
           </div>
 
           {/* Empty state for users with no trips */}
