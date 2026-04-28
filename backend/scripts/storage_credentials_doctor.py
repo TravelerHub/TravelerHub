@@ -25,6 +25,27 @@ import textwrap
 # and as a script (`python scripts/storage_credentials_doctor.py`).
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+# Pick up env vars the same way supabase_client.py does (which calls
+# load_dotenv at import time). Without this, running the doctor in a
+# fresh shell over SSH would report "not set" for keys that the FastAPI
+# app picks up just fine from the project's .env file. Best-effort:
+# python-dotenv is a transitive dep of every backend deploy we've seen,
+# but if it's somehow missing we fall back to whatever's already in os.environ.
+try:
+    from dotenv import load_dotenv
+    # Walk up from this file: backend/scripts/ → backend/ → project root.
+    here = os.path.dirname(os.path.abspath(__file__))
+    for candidate in (
+        os.path.join(here, "..", ".env"),         # backend/.env
+        os.path.join(here, "..", "..", ".env"),   # repo-root/.env
+    ):
+        if os.path.exists(candidate):
+            load_dotenv(candidate, override=False)
+    # Also try CWD just in case the operator's shell has its own .env.
+    load_dotenv(override=False)
+except Exception:
+    pass
+
 OK = "✓"
 FAIL = "✗"
 WARN = "!"
