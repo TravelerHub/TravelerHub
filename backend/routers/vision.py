@@ -239,3 +239,59 @@ async def save_expense(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to save expense"
         )
+
+
+# ── Booking confirmation parser (deterministic, no AI) ────────────────────────
+# Frontend OCRs the user's confirmation email / screenshot client-side
+# (Tesseract.js for web, Capacitor MLKit for native) and posts the resulting
+# *text* here. We dispatch to the right vendor-aware regex parser in
+# `services.booking_parsers` and return a structured payload the Booking
+# Save modal can prefill. No external LLM, works offline if the OCR ran on
+# the device.
+
+from services.booking_parsers import parse as parse_booking_text
+
+
+class BookingTextRequest(BaseModel):
+    text: str
+
+
+@router.post("/parse-booking-text")
+@limiter.limit("30/minute")
+def parse_booking_text_endpoint(
+    request: Request,
+    body: BookingTextRequest,
+    current_user: dict = Depends(oauth2.get_current_user),
+):
+    """
+    Take raw text from a booking confirmation (paste or OCR output) and
+    return a structured booking payload.
+
+    Returns:
+      {
+        "type":              "hotel" | "flight" | "car" | "activity" | "other",
+        "title":             "Marriott Downtown SF",
+        "vendor":            "Marriott",
+        "confirmation_code": "MARR-29384",
+        "start_time":        "2026-08-01T15:00:00",
+        "end_time":          "2026-08-04T11:00:00",
+        "cost":              645.50,
+        "currency":          "USD",
+        "parser":            "marriott",       # which parser handled it
+        "raw_text_excerpt":  "Booking confirmation for ..."  # first 240 chars
+      }
+
+    Any field the parser couldn't extract is omitted; the frontend asks the
+    user to fill the rest. The endpoint never raises on bad text — it
+    falls through to the generic regex parser, which always returns
+    *something* even if it's just the type guess.
+    """
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+
+    # Cap at 32 KB so a giant pasted email doesn't OOM the parser.
+    if len(text) > 32_000:
+        text = text[:32_000]
+
+    return parse_booking_text(text)
