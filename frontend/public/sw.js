@@ -15,7 +15,7 @@
  * To update the cache version, bump CACHE_VERSION below and re-deploy.
  */
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const SHELL_CACHE   = `travelerhub-shell-${CACHE_VERSION}`;
 const API_CACHE     = `travelerhub-api-${CACHE_VERSION}`;
 const ASSET_CACHE   = `travelerhub-assets-${CACHE_VERSION}`;
@@ -152,13 +152,25 @@ self.addEventListener('fetch', (event) => {
         const networkFetch = fetch(event.request).then(async (response) => {
           // Store with a `sw-cached-at` header so pruneStaleTiles() can drop
           // entries older than TILE_MAX_AGE_MS on the next SW activation.
-          const stamped = await stampCachedAt(response);
-          cache.put(event.request, stamped.clone());
-          limitCacheSize(TILE_CACHE, TILE_CACHE_MAX);
+          if (response && response.ok) {
+            try {
+              const stamped = await stampCachedAt(response);
+              cache.put(event.request, stamped.clone());
+              limitCacheSize(TILE_CACHE, TILE_CACHE_MAX);
+            } catch (_) {
+              // Caching is best-effort; opaque responses can throw on read.
+            }
+          }
           return response;
         }).catch(() => null);
 
-        return cached || networkFetch;
+        // Never resolve respondWith to null — that triggers
+        // "Failed to convert value to 'Response'" in the SW. When the cache
+        // misses *and* the network fetch fails (offline, ERR_FAILED, CORS),
+        // hand back an explicit network error Response so the page sees a
+        // normal failed image rather than an SW-level exception.
+        const result = cached || (await networkFetch);
+        return result || Response.error();
       })
     );
     return;
@@ -201,7 +213,7 @@ self.addEventListener('fetch', (event) => {
           caches.open(ASSET_CACHE).then((c) => c.put(event.request, clone));
         }
         return response;
-      });
+      }).catch(() => Response.error());
     })
   );
 });
