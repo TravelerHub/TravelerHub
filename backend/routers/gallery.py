@@ -85,6 +85,14 @@ def _add_image_variants(photo: dict) -> dict:
     # the field looks like '{"data":{"publicUrl":...}}' or has a trailing
     # '?'. Rebuild the canonical URL from storage_path when we can detect
     # this so the <img> tags actually resolve.
+    #
+    # Bucket selection: gallery.py used to upload to "Media" before being
+    # changed to "trip-media". Old rows in trip_media point to objects that
+    # still live in "Media", so we can't unconditionally rebuild against
+    # BUCKET_NAME — that would 404 every old photo. Try to extract the
+    # bucket from the malformed string itself first (the dict-stringified
+    # blob still contains the original `/storage/v1/object/public/<bucket>/`
+    # substring), and only fall back to BUCKET_NAME when extraction fails.
     storage_path = photo.get("storage_path")
     looks_malformed = (
         not isinstance(base_url, str)
@@ -96,7 +104,23 @@ def _add_image_variants(photo: dict) -> dict:
     if looks_malformed and storage_path:
         from supabase_client import SUPABASE_URL  # late import to avoid cycle
         base = (SUPABASE_URL or "").rstrip("/")
-        base_url = f"{base}/storage/v1/object/public/{BUCKET_NAME}/{storage_path}"
+        # Detect the original bucket from the malformed blob if we can.
+        bucket = BUCKET_NAME
+        if isinstance(base_url, str):
+            marker = "/storage/v1/object/public/"
+            idx = base_url.find(marker)
+            if idx >= 0:
+                tail = base_url[idx + len(marker) :]
+                slash = tail.find("/")
+                candidate = tail[:slash] if slash >= 0 else tail
+                # Only trust short, alnum/hyphen bucket names — defends
+                # against picking up junk if the blob is unexpectedly
+                # shaped.
+                if 1 <= len(candidate) <= 40 and all(
+                    c.isalnum() or c in "-_" for c in candidate
+                ):
+                    bucket = candidate
+        base_url = f"{base}/storage/v1/object/public/{bucket}/{storage_path}"
         photo["public_url"] = base_url
     elif isinstance(base_url, str) and base_url.endswith("?"):
         base_url = base_url.rstrip("?")
