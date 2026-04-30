@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'https://travelhub-api.fozhan.dev';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 // In-memory cache for the current page session.
 let _cachedRates = null;

@@ -19,6 +19,8 @@ function Footer() {
             { to: "/service",   label: "Services"   },
             { to: "/feedback",  label: "Feedback"   },
             { to: "/contactus", label: "Contact"    },
+            { to: "/privacy",   label: "Privacy"    },
+            { to: "/terms",     label: "Terms"      },
           ].map(({ to, label }) => (
             <Link
               key={to}

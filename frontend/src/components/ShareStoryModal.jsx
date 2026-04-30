@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 
 // ── Trip card generator (Canvas) ──────────────────────────────────────────────
 
-export function generateTripCard(tripName, stats) {
+export function generateTripCard(tripName, stats, storyUrl) {
   const canvas = document.createElement('canvas');
   canvas.width = 1080;   // Instagram Story width
   canvas.height = 1920;  // Instagram Story height
@@ -82,10 +82,15 @@ export function generateTripCard(tripName, stats) {
   ctx.fillStyle = 'rgba(200,169,110,0.8)';
   ctx.fillText('memories for life', 540, statsY + 130);
 
-  // TravelerHub watermark
+  // TravelerHub watermark — host derived from the public story URL so each
+  // deploy stamps its own domain instead of hardcoding ours.
+  let watermark = 'TravelerHub';
+  try {
+    if (storyUrl) watermark = new URL(storyUrl).hostname;
+  } catch { /* leave default */ }
   ctx.font = '36px system-ui, -apple-system, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.fillText('travelhub.fozhan.dev', 540, 1820);
+  ctx.fillText(watermark, 540, 1820);
 
   return canvas.toDataURL('image/png');
 }
@@ -147,7 +152,7 @@ export default function ShareStoryModal({ storyUrl, tripName, stats, onClose }) 
 
   function handleDownloadCard() {
     try {
-      const dataUrl = generateTripCard(tripName, stats);
+      const dataUrl = generateTripCard(tripName, stats, storyUrl);
       const a = document.createElement('a');
       a.href = dataUrl;
       a.download = `${tripName.replace(/\s+/g, '_')}_trip_card.png`;

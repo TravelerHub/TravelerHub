@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security disclosure
+    url: https://github.com/TravelerHub/TravelerHub/security/advisories/new
+    about: Report a vulnerability privately. Please don't file a public issue.
+  - name: Setup help
+    url: https://github.com/TravelerHub/TravelerHub/blob/main/SETUP.md
+    about: Self-hosting and deployment instructions.

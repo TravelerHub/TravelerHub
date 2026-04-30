@@ -1,0 +1,29 @@
+# Gitleaks config for TravelerHub.
+#
+# We extend the default ruleset and add a narrow allowlist for files that
+# contain documented placeholder strings (env templates, setup docs).
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allow obvious placeholder/example strings in template files"
+paths = [
+  '''^\.env(\..+)?\.example$''',
+  '''^\.env\.example$''',
+  '''^backend/\.env\.example$''',
+  '''^frontend/\.env\.example$''',
+  '''^SETUP\.md$''',
+  '''^README\.md$''',
+  '''^CONTRIBUTING\.md$''',
+]
+
+# Common doc placeholder strings — keyed off literal suffixes so a real
+# leak that happens to start with the same prefix isn't allowlisted.
+regexes = [
+  '''eyJ[A-Za-z0-9_\-\.]*\.\.\.''',                # truncated JWT prefix in docs
+  '''AIzaSy[A-Za-z0-9_\-]*\.\.\.''',               # truncated Google API key
+  '''pk\.eyJ[A-Za-z0-9_\-\.]*\.\.\.''',            # truncated Mapbox public token
+  '''sk_(test|live)_[A-Za-z0-9_\-]*\.\.\.''',      # truncated Stripe key
+  '''<[a-z_]+_(jwt|key|token|secret)[a-z_]*>''',   # angle-bracket placeholders
+]
