@@ -1,4 +1,10 @@
 @import "tailwindcss";
+@import "./tokens.css";
+
+/* Brand fonts — Instrument Serif for display italics, JetBrains Mono for
+   labels/coordinates, Geist for body. Loaded async with display:swap so
+   first paint never waits on Google Fonts. */
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Geist:wght@300;400;500;600&display=swap');
 
 :root {
   --sat: env(safe-area-inset-top);
@@ -14,17 +20,13 @@
   --shadow-md: 0 4px 16px rgba(22, 15, 41, 0.08), 0 2px 6px rgba(22, 15, 41, 0.04);
   --shadow-lg: 0 16px 40px rgba(22, 15, 41, 0.14), 0 4px 12px rgba(22, 15, 41, 0.06);
 
-  /* Display heading family — falls back gracefully if the Google Font is
-     blocked (e.g. on a Capacitor build with no network). */
-  --font-display: "Playfair Display", "Iowan Old Style", Georgia, serif;
-
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: var(--font-body, system-ui), Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
   color-scheme: light dark;
-  color: rgba(0, 0, 0, 0.87);
-  background-color: #ffffff;
+  color: var(--ink);
+  background-color: var(--paper);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -88,20 +90,46 @@ button:focus-visible {
 .landing-header {
   font-family: var(--font-display);
   font-size: clamp(2.5rem, 6vw, 4.5rem);
-  font-weight: 600;
+  font-weight: 400;
   font-style: italic;
   line-height: 1.05;
-  letter-spacing: 0.5px;
-  text-shadow: 0px 4px 18px rgba(0, 0, 0, 0.55);
+  letter-spacing: -0.01em;
 }
 
-/* Display heading utility — Playfair italic, falls back to system serif */
+/* Display heading utility — Instrument Serif italic, falls back gracefully */
 .font-display {
   font-family: var(--font-display);
   font-style: italic;
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: -0.01em;
 }
+
+/* Direct-use helper classes mirroring the marketing site so any page
+   can drop in matching type without importing a component. */
+.serif        { font-family: var(--font-display); font-weight: 400; letter-spacing: -0.01em; }
+.italic-serif { font-family: var(--font-display); font-weight: 400; font-style: italic; letter-spacing: -0.01em; }
+.mono         { font-family: var(--font-mono); font-weight: 400; }
+
+/* Magazine eyebrow — `001 — What it does`. Pairs above any section title. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--clay);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.eyebrow::before {
+  content: "";
+  width: 24px;
+  height: 1px;
+  background: currentColor;
+}
+.eyebrow.sky  { color: var(--sky); }
+.eyebrow.ink  { color: var(--ink-2); }
+.eyebrow.teal { color: var(--teal); }
 
 /* Shadow utility classes — pair with surfaces (cards, modals, FABs) */
 .shadow-soft-sm { box-shadow: var(--shadow-sm); }
