@@ -13,7 +13,7 @@ jobs:
     steps:
       # ── 1. Checkout ───────────────────────────────────────────────────────────
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # ── 2. Build React frontend ───────────────────────────────────────────────
       - name: Set up Node
