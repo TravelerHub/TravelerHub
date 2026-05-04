@@ -70,7 +70,7 @@ opentelemetry-semantic-conventions==0.57b0
 orjson==3.11.1
 packaging==25.0
 passlib==1.7.4
-pillow==11.3.0
+pillow==12.2.0
 pluggy==1.6.0
 portalocker==3.2.0
 postgrest==2.25.1
