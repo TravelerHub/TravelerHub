@@ -29,7 +29,12 @@ jobs:
 
       - name: Write frontend env
         working-directory: frontend
-        run: echo "${{ secrets.VITE_FRONTEND_ENV }}" > .env.production
+        run: |
+          # Write the secret blob first (Supabase keys, Mapbox token, etc.)
+          echo "${{ secrets.VITE_FRONTEND_ENV }}" > .env.production
+          # Always pin the production API URL so a missing/blank secret can't
+          # silently fall back to http://localhost:8000 in the browser.
+          echo "VITE_API_URL=https://travelhub-api.fozhan.dev" >> .env.production
 
       - name: Build frontend
         working-directory: frontend
@@ -49,7 +54,7 @@ jobs:
         run: |
           rsync -avz --delete \
             frontend/dist/ \
-            root@${{ secrets.SERVER_IP }}:/var/www/${{ secrets.FRONTEND_DOMAIN }}/
+            root@${{ secrets.SERVER_IP }}:/var/www/travelhub.fozhan.dev/
 
       # ── 5. Deploy backend source code ─────────────────────────────────────────
       - name: Deploy backend to server
