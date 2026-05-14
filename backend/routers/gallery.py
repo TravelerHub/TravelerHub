@@ -15,22 +15,58 @@ Endpoints:
 """
 
 import secrets
-import re
 from typing import Optional
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Query
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Query, Request
 from pydantic import BaseModel
-from supabase_client import supabase, supabase_admin
+from supabase_client import supabase, supabase_admin, safe_single, has_service_role
 from utils import oauth2
+from utils.logger import get_logger
+from utils.trip_access import require_trip_member
 from services.photo_clusterer import PhotoClusterer
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
+
+logger = get_logger(__name__)
 
 router = APIRouter(
     prefix="/trips",
     tags=["Gallery"],
 )
 
-BUCKET_NAME = "Media"
-MAX_GALLERY_IMAGE_BYTES = 20 * 1024 * 1024
-ALLOWED_GALLERY_IMAGE_TYPES = {
+BUCKET_NAME = "trip-media"
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB — matches nginx client_max_body_size
+
+
+def _coerce_public_url(raw, file_path: str) -> str:
+    """Always return a clean string URL for a stored object.
+
+    Different supabase-py / storage3 versions have returned `get_public_url`
+    as either a plain string OR a dict shape like `{"publicURL": "..."}`,
+    `{"signedURL": "..."}`, or `{"data": {"publicUrl": "..."}}`. Storing
+    the raw return value as-is means the dict gets JSON-serialized into
+    the `public_url` column, the frontend renders an `<img>` with that
+    JSON blob as src, and you get blank tiles in production with no
+    helpful error. We normalize here.
+    """
+    if isinstance(raw, str) and raw:
+        return raw.rstrip("?")  # newer clients append a trailing "?" sometimes
+    if isinstance(raw, dict):
+        for k in ("publicUrl", "publicURL", "signedURL", "signed_url", "url"):
+            v = raw.get(k)
+            if isinstance(v, str) and v:
+                return v.rstrip("?")
+        nested = raw.get("data")
+        if isinstance(nested, dict):
+            return _coerce_public_url(nested, file_path)
+    # Fallback: build the canonical Supabase public URL ourselves. This
+    # matches what `get_public_url` returns under the hood and keeps every
+    # row's URL well-formed regardless of client-version drift.
+    from supabase_client import SUPABASE_URL  # late import to avoid cycle
+    base = (SUPABASE_URL or "").rstrip("/")
+    return f"{base}/storage/v1/object/public/{BUCKET_NAME}/{file_path}"
+ALLOWED_CONTENT_TYPES = {
     "image/jpeg",
     "image/png",
     "image/webp",
@@ -43,6 +79,53 @@ ALLOWED_GALLERY_IMAGE_TYPES = {
 def _add_image_variants(photo: dict) -> dict:
     """Add optimized URL variants to a photo record."""
     base_url = photo.get("public_url", "")
+
+    # Repair rows that were stored before _coerce_public_url existed: the old
+    # path serialized the storage client's dict response into the column, so
+    # the field looks like '{"data":{"publicUrl":...}}' or has a trailing
+    # '?'. Rebuild the canonical URL from storage_path when we can detect
+    # this so the <img> tags actually resolve.
+    #
+    # Bucket selection: gallery.py used to upload to "Media" before being
+    # changed to "trip-media". Old rows in trip_media point to objects that
+    # still live in "Media", so we can't unconditionally rebuild against
+    # BUCKET_NAME — that would 404 every old photo. Try to extract the
+    # bucket from the malformed string itself first (the dict-stringified
+    # blob still contains the original `/storage/v1/object/public/<bucket>/`
+    # substring), and only fall back to BUCKET_NAME when extraction fails.
+    storage_path = photo.get("storage_path")
+    looks_malformed = (
+        not isinstance(base_url, str)
+        or not base_url
+        or base_url.startswith("{")
+        or "publicUrl" in base_url
+        or "signedURL" in base_url
+    )
+    if looks_malformed and storage_path:
+        from supabase_client import SUPABASE_URL  # late import to avoid cycle
+        base = (SUPABASE_URL or "").rstrip("/")
+        # Detect the original bucket from the malformed blob if we can.
+        bucket = BUCKET_NAME
+        if isinstance(base_url, str):
+            marker = "/storage/v1/object/public/"
+            idx = base_url.find(marker)
+            if idx >= 0:
+                tail = base_url[idx + len(marker) :]
+                slash = tail.find("/")
+                candidate = tail[:slash] if slash >= 0 else tail
+                # Only trust short, alnum/hyphen bucket names — defends
+                # against picking up junk if the blob is unexpectedly
+                # shaped.
+                if 1 <= len(candidate) <= 40 and all(
+                    c.isalnum() or c in "-_" for c in candidate
+                ):
+                    bucket = candidate
+        base_url = f"{base}/storage/v1/object/public/{bucket}/{storage_path}"
+        photo["public_url"] = base_url
+    elif isinstance(base_url, str) and base_url.endswith("?"):
+        base_url = base_url.rstrip("?")
+        photo["public_url"] = base_url
+
     if not base_url or "supabase" not in base_url:
         photo["thumbnail_url"] = base_url
         photo["display_url"] = base_url
@@ -63,97 +146,31 @@ def _uid(current_user: dict) -> str:
     return user_id
 
 
-def _resolve_public_url(raw_public_url) -> Optional[str]:
-    if isinstance(raw_public_url, dict):
-        return raw_public_url.get("publicURL") or raw_public_url.get("publicUrl")
-    return raw_public_url
-
-
-def _normalize_content_type(content_type: Optional[str]) -> str:
-    if not content_type:
-        return ""
-    return content_type.split(";", 1)[0].strip().lower()
-
-
-def _storage_client():
-    # Prefer service-role for backend trusted uploads/removals when available.
-    return supabase_admin or supabase
-
-
-def _ensure_trip_member(trip_id: str, user_id: str) -> None:
-    try:
-        member = (
-            supabase.table("trip_members")
-            .select("id")
-            .eq("trip_id", trip_id)
-            .eq("user_id", user_id)
-            .is_("left_at", None)
-            .maybe_single()
-            .execute()
-        )
-        if member.data:
-            return
-    except Exception:
-        pass
-
-    try:
-        member = (
-            supabase.table("group_member")
-            .select("id")
-            .eq("group_id", trip_id)
-            .eq("user_id", user_id)
-            .is_("left_datetime", None)
-            .maybe_single()
-            .execute()
-        )
-        if member.data:
-            return
-    except Exception:
-        pass
-
-    owner = (
-        supabase.table("trips")
-        .select("id")
-        .eq("id", trip_id)
-        .eq("owner_id", user_id)
-        .maybe_single()
-        .execute()
-    )
-    if owner.data:
-        return
-
-    raise HTTPException(status_code=403, detail="Not a member of this trip")
-
-
 def _is_trip_leader(trip_id: str, user_id: str) -> bool:
     try:
-        res = (
+        res = safe_single(
             supabase.table("trip_members")
             .select("role")
             .eq("trip_id", trip_id)
             .eq("user_id", user_id)
             .is_("left_at", None)
-            .maybe_single()
-            .execute()
         )
         if res.data and res.data.get("role") == "leader":
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_is_trip_leader] trip_members query failed for trip=%s, user=%s: %s", trip_id, user_id, e, exc_info=True)
 
     try:
-        owner = (
+        owner = safe_single(
             supabase.table("trips")
             .select("id")
             .eq("id", trip_id)
             .eq("owner_id", user_id)
-            .maybe_single()
-            .execute()
         )
         if owner.data:
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[_is_trip_leader] trips owner fallback failed for trip=%s, user=%s: %s", trip_id, user_id, e, exc_info=True)
 
     return False
 
@@ -161,17 +178,19 @@ def _is_trip_leader(trip_id: str, user_id: str) -> bool:
 # ── GET: Fetch all photos for a trip ──────────────────────────────────────────
 
 @router.get("/{trip_id}/media")
+@limiter.limit("60/minute")
 async def get_trip_media(
+    request: Request,
     trip_id: str,
     limit: int = Query(20, ge=1, le=100),
     cursor: Optional[str] = Query(None),  # cursor = last photo's created_at ISO string
     current_user=Depends(oauth2.get_current_user),
 ):
     """Fetches media for a trip with like/save status for the current user. Supports cursor-based pagination."""
-    try:
-        user_id = _uid(current_user)
-        _ensure_trip_member(trip_id, user_id)
+    user_id = _uid(current_user)
+    await require_trip_member(trip_id, user_id)
 
+    try:
         query = supabase.table("trip_media").select("*").eq("trip_id", trip_id)
 
         if cursor:
@@ -220,14 +239,16 @@ async def get_trip_media(
         return {"photos": photos, "next_cursor": next_cursor, "has_more": has_more}
 
     except Exception as e:
-        print(f"Error fetching media: {e}")
+        logger.error("[get_trip_media] trip=%s: %s", trip_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch media")
 
 
 # ── GET: Fetch photos grouped by location / date ─────────────────────────────
 
 @router.get("/{trip_id}/media/grouped")
+@limiter.limit("60/minute")
 async def get_trip_media_grouped(
+    request: Request,
     trip_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
@@ -240,10 +261,9 @@ async def get_trip_media_grouped(
     Returns:
         {"groups": [{"label": "Stop 1", "photos": [...], "cover": <first photo>}, ...]}
     """
-    try:
-        user_id = _uid(current_user)
-        _ensure_trip_member(trip_id, user_id)
+    await require_trip_member(trip_id, _uid(current_user))
 
+    try:
         response = (
             supabase.table("trip_media")
             .select("*")
@@ -284,14 +304,16 @@ async def get_trip_media_grouped(
         return {"groups": groups}
 
     except Exception as e:
-        print(f"Error fetching grouped media: {e}")
+        logger.error("[get_trip_media_grouped] trip=%s: %s", trip_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch grouped media")
 
 
 # ── POST: Upload a new photo ──────────────────────────────────────────────────
 
 @router.post("/{trip_id}/upload")
+@limiter.limit("30/minute")
 async def upload_trip_media(
+    request: Request,
     trip_id: str,
     file: UploadFile = File(...),
     caption: Optional[str] = Form(None),
@@ -299,41 +321,89 @@ async def upload_trip_media(
 ):
     """Upload a photo to a trip album via Supabase Storage."""
     user_id = _uid(current_user)
-    _ensure_trip_member(trip_id, user_id)
+    await require_trip_member(trip_id, user_id)
+
+    # Validate file type
+    if file.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported file type '{file.content_type}'. Allowed: JPEG, PNG, WEBP, GIF, HEIC.",
+        )
 
     random_hex = secrets.token_hex(4)
-    raw_name = (file.filename or "photo").replace(" ", "_")
-    safe_filename = re.sub(r"[^A-Za-z0-9._-]", "", raw_name) or "photo"
-    content_type = _normalize_content_type(file.content_type)
-
-    if not content_type or not content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Only image files are supported")
-
-    if content_type not in ALLOWED_GALLERY_IMAGE_TYPES:
-        raise HTTPException(status_code=400, detail="Only JPG, PNG, WEBP, GIF, and HEIC images are supported")
-
+    # Guard against None filename (can happen with some mobile browsers/programmatic uploads)
+    raw_filename = file.filename or "photo"
+    safe_filename = raw_filename.replace(" ", "_")
     file_path = f"{trip_id}/{random_hex}_{safe_filename}"
+
+    # Hard-fail loudly when the deploy is missing the service role key — without
+    # it `supabase_admin` falls back to the anon client and storage uploads
+    # silently 4xx with an opaque RLS error.
+    if not has_service_role:
+        logger.error("[upload_trip_media] SUPABASE_SERVICE_ROLE_KEY is not set in this environment")
+        raise HTTPException(
+            status_code=503,
+            detail="Photo uploads aren't configured on the server (missing storage credentials). Please ask an admin to set SUPABASE_SERVICE_ROLE_KEY.",
+        )
 
     try:
         file_content = await file.read()
-        if not file_content:
-            raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    except Exception as e:
+        logger.error("[upload_trip_media] read failure trip=%s: %s", trip_id, e, exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Could not read uploaded file: {type(e).__name__}")
 
-        if len(file_content) > MAX_GALLERY_IMAGE_BYTES:
-            raise HTTPException(status_code=400, detail="Image is too large (max 20MB)")
-
-        storage = _storage_client()
-        storage.storage.from_(BUCKET_NAME).upload(
-            path=file_path,
-            file=file_content,
-            file_options={"content-type": content_type},
+    if len(file_content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum allowed size is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
         )
 
-        raw_public_url = storage.storage.from_(BUCKET_NAME).get_public_url(file_path)
-        public_url = _resolve_public_url(raw_public_url)
-        if not public_url:
-            raise HTTPException(status_code=500, detail="Upload succeeded but public URL could not be resolved")
+    # Step 1: storage upload — distinct error so we know if the bucket / key is
+    # the problem.
+    try:
+        supabase_admin.storage.from_(BUCKET_NAME).upload(
+            path=file_path,
+            file=file_content,
+            file_options={"content-type": file.content_type},
+        )
+        public_url = _coerce_public_url(
+            supabase_admin.storage.from_(BUCKET_NAME).get_public_url(file_path),
+            file_path,
+        )
+    except Exception as e:
+        logger.error("[upload_trip_media] storage upload failed trip=%s: %s", trip_id, e, exc_info=True)
+        # Translate the most common Supabase-side failures into messages that
+        # tell the operator what to fix, instead of bubbling raw vendor JSON
+        # to the user.
+        raw = str(e)
+        lowered = raw.lower()
+        if "jws protected header is invalid" in lowered or "jwt" in lowered and "invalid" in lowered:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Storage credentials look malformed (server-side). "
+                    "Ask an admin to verify SUPABASE_SERVICE_ROLE_KEY has no "
+                    "stray whitespace or surrounding quotes and is the current "
+                    "key from the Supabase dashboard."
+                ),
+            )
+        if "row-level security" in lowered or "rls" in lowered:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Storage rejected the upload because of row-level security. "
+                    "Either SUPABASE_SERVICE_ROLE_KEY isn't set on the server, "
+                    "or the trip-media bucket policy needs review."
+                ),
+            )
+        # Surface enough detail for the client error toast to be useful, but
+        # keep it short and free of credentials.
+        msg = raw[:160] or type(e).__name__
+        raise HTTPException(status_code=502, detail=f"Storage upload failed: {msg}")
 
+    # Step 2: DB insert — separate so we can tell storage vs metadata failures
+    # apart in the logs and the client error message.
+    try:
         db_record = {
             "trip_id": trip_id,
             "storage_path": file_path,
@@ -342,25 +412,15 @@ async def upload_trip_media(
             "uploaded_by_name": current_user.get("username") or current_user.get("email") or "Group Member",
             "caption": caption,
         }
-
         db_res = supabase.table("trip_media").insert(db_record).execute()
         saved = (db_res.data or [None])[0]
         if not saved:
-            raise Exception("Database insert returned empty.")
-
+            raise Exception("trip_media insert returned no row")
         return saved
-
-    except HTTPException:
-        raise
     except Exception as e:
-        print(f"Error uploading media: {e}")
-        err_text = str(e)
-        if "row-level security policy" in err_text.lower() and supabase_admin is None:
-            raise HTTPException(
-                status_code=500,
-                detail="Storage RLS blocked gallery upload. Set SUPABASE_SERVICE_ROLE_KEY in backend .env and restart backend.",
-            )
-        raise HTTPException(status_code=500, detail=f"Failed to upload media: {err_text}")
+        logger.error("[upload_trip_media] DB insert failed trip=%s: %s", trip_id, e, exc_info=True)
+        msg = str(e)[:160] or type(e).__name__
+        raise HTTPException(status_code=500, detail=f"Saved file but couldn't write metadata: {msg}")
 
 
 # ── PATCH: Update caption ─────────────────────────────────────────────────────
@@ -370,7 +430,9 @@ class CaptionUpdate(BaseModel):
 
 
 @router.patch("/{trip_id}/media/{media_id}")
+@limiter.limit("30/minute")
 async def update_media_caption(
+    request: Request,
     trip_id: str,
     media_id: str,
     body: CaptionUpdate,
@@ -378,15 +440,12 @@ async def update_media_caption(
 ):
     """Update the caption on a photo. Owner or trip leader can edit."""
     user_id = _uid(current_user)
-    _ensure_trip_member(trip_id, user_id)
 
-    existing = (
+    existing = safe_single(
         supabase.table("trip_media")
         .select("id, uploaded_by")
         .eq("id", media_id)
         .eq("trip_id", trip_id)
-        .maybe_single()
-        .execute()
     )
     if not existing.data:
         raise HTTPException(status_code=404, detail="Photo not found")
@@ -408,22 +467,21 @@ async def update_media_caption(
 # ── DELETE: Remove a photo ────────────────────────────────────────────────────
 
 @router.delete("/{trip_id}/media/{media_id}")
+@limiter.limit("30/minute")
 async def delete_trip_media(
+    request: Request,
     trip_id: str,
     media_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
     """Delete a photo. Owner or trip leader can delete."""
     user_id = _uid(current_user)
-    _ensure_trip_member(trip_id, user_id)
 
-    existing = (
+    existing = safe_single(
         supabase.table("trip_media")
         .select("id, uploaded_by, storage_path")
         .eq("id", media_id)
         .eq("trip_id", trip_id)
-        .maybe_single()
-        .execute()
     )
     if not existing.data:
         raise HTTPException(status_code=404, detail="Photo not found")
@@ -434,9 +492,9 @@ async def delete_trip_media(
 
     # Delete from storage
     try:
-        _storage_client().storage.from_(BUCKET_NAME).remove([existing.data["storage_path"]])
-    except Exception:
-        pass  # Storage cleanup failure shouldn't block DB deletion
+        supabase_admin.storage.from_(BUCKET_NAME).remove([existing.data["storage_path"]])
+    except Exception as e:
+        logger.warning("[delete_trip_media] storage cleanup failed for path=%s: %s", existing.data["storage_path"], e, exc_info=True)  # non-blocking
 
     supabase.table("trip_media").delete().eq("id", media_id).execute()
 
@@ -446,7 +504,9 @@ async def delete_trip_media(
 # ── GET: My albums (all trips with photo counts) ─────────────────────────────
 
 @router.get("/my-albums")
+@limiter.limit("60/minute")
 async def get_my_albums(
+    request: Request,
     current_user=Depends(oauth2.get_current_user),
 ):
     """List all trips the user belongs to, with photo count per trip."""
@@ -464,8 +524,8 @@ async def get_my_albums(
             .execute()
         )
         trip_ids.update(r["trip_id"] for r in (tm.data or []))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[get_my_albums] trip_members query failed for user=%s: %s", user_id, e, exc_info=True)
 
     try:
         gm = (
@@ -476,8 +536,8 @@ async def get_my_albums(
             .execute()
         )
         trip_ids.update(r["group_id"] for r in (gm.data or []))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[get_my_albums] group_member query failed for user=%s: %s", user_id, e, exc_info=True)
 
     try:
         owned = (
@@ -487,8 +547,8 @@ async def get_my_albums(
             .execute()
         )
         trip_ids.update(r["id"] for r in (owned.data or []))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[get_my_albums] owned trips query failed for user=%s: %s", user_id, e, exc_info=True)
 
     if not trip_ids:
         return {"albums": []}
@@ -504,33 +564,32 @@ async def get_my_albums(
     )
     trip_map = {t["id"]: t.get("name", "Untitled Trip") for t in (trips_res.data or [])}
 
-    # Get photo counts and latest photo per trip
+    all_photos_res = (
+        supabase.table("trip_media")
+        .select("id, trip_id, public_url, created_at")
+        .in_("trip_id", trip_list)
+        .order("created_at", desc=True)
+        .execute()
+    )
+
+    photos_by_trip: dict[str, list[dict]] = {tid: [] for tid in trip_list}
+    counts_by_trip: dict[str, int] = {tid: 0 for tid in trip_list}
+    for p in (all_photos_res.data or []):
+        tid = p.get("trip_id")
+        if tid not in photos_by_trip:
+            continue
+        counts_by_trip[tid] += 1
+        if len(photos_by_trip[tid]) < 4:
+            photos_by_trip[tid].append(p)
+
     albums = []
     for tid in trip_list:
-        media_res = (
-            supabase.table("trip_media")
-            .select("id, public_url, created_at")
-            .eq("trip_id", tid)
-            .order("created_at", desc=True)
-            .limit(4)
-            .execute()
-        )
-        photos = media_res.data or []
-
-        # Get total count
-        all_res = (
-            supabase.table("trip_media")
-            .select("id")
-            .eq("trip_id", tid)
-            .execute()
-        )
-        total = len(all_res.data or [])
-
-        preview_photos = [_add_image_variants(dict(p)) for p in photos[:4]]
+        photos = photos_by_trip[tid]
+        preview_photos = [_add_image_variants(dict(p)) for p in photos]
         albums.append({
             "trip_id": tid,
             "trip_name": trip_map.get(tid, "Untitled Trip"),
-            "photo_count": total,
+            "photo_count": counts_by_trip[tid],
             "preview_urls": [p["public_url"] for p in preview_photos],
             "preview_thumbnail_urls": [p["thumbnail_url"] for p in preview_photos],
             "latest_at": photos[0]["created_at"] if photos else None,
@@ -544,29 +603,29 @@ async def get_my_albums(
 # ── POST: Toggle like ────────────────────────────────────────────────────────
 
 @router.post("/{trip_id}/media/{media_id}/like")
+@limiter.limit("60/minute")
 async def toggle_like(
+    request: Request,
     trip_id: str,
     media_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
     """Like or unlike a photo. Returns the new like state and count."""
     user_id = _uid(current_user)
-    _ensure_trip_member(trip_id, user_id)
+    await require_trip_member(trip_id, user_id)
 
-    existing = (
+    existing = safe_single(
         supabase.table("media_likes")
         .select("id")
         .eq("media_id", media_id)
         .eq("user_id", user_id)
-        .maybe_single()
-        .execute()
     )
 
     if existing.data:
         # Unlike
         supabase.table("media_likes").delete().eq("id", existing.data["id"]).execute()
         # Decrement count
-        photo = supabase.table("trip_media").select("like_count").eq("id", media_id).maybe_single().execute()
+        photo = safe_single(supabase.table("trip_media").select("like_count").eq("id", media_id))
         new_count = max(0, (photo.data or {}).get("like_count", 1) - 1)
         supabase.table("trip_media").update({"like_count": new_count}).eq("id", media_id).execute()
         return {"liked": False, "like_count": new_count}
@@ -576,7 +635,7 @@ async def toggle_like(
             "media_id": media_id,
             "user_id": user_id,
         }).execute()
-        photo = supabase.table("trip_media").select("like_count").eq("id", media_id).maybe_single().execute()
+        photo = safe_single(supabase.table("trip_media").select("like_count").eq("id", media_id))
         new_count = ((photo.data or {}).get("like_count", 0) or 0) + 1
         supabase.table("trip_media").update({"like_count": new_count}).eq("id", media_id).execute()
         return {"liked": True, "like_count": new_count}
@@ -585,22 +644,22 @@ async def toggle_like(
 # ── POST: Toggle save/bookmark ───────────────────────────────────────────────
 
 @router.post("/{trip_id}/media/{media_id}/save")
+@limiter.limit("60/minute")
 async def toggle_save(
+    request: Request,
     trip_id: str,
     media_id: str,
     current_user=Depends(oauth2.get_current_user),
 ):
     """Save or unsave a photo to personal collection."""
     user_id = _uid(current_user)
-    _ensure_trip_member(trip_id, user_id)
+    await require_trip_member(trip_id, user_id)
 
-    existing = (
+    existing = safe_single(
         supabase.table("media_saves")
         .select("id")
         .eq("media_id", media_id)
         .eq("user_id", user_id)
-        .maybe_single()
-        .execute()
     )
 
     if existing.data:
@@ -617,7 +676,9 @@ async def toggle_save(
 # ── GET: Saved photos ────────────────────────────────────────────────────────
 
 @router.get("/saved-photos")
+@limiter.limit("60/minute")
 async def get_saved_photos(
+    request: Request,
     current_user=Depends(oauth2.get_current_user),
 ):
     """Get all photos the user has saved/bookmarked across all trips."""

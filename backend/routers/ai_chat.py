@@ -327,7 +327,7 @@ class ChatHistoryItem(BaseModel):
 # --- Endpoints ---
 
 @router.post("/send")
-@limiter.limit("30/minute")
+@limiter.limit("10/minute")
 async def send_message(
     request: Request,
     payload: ChatMessage,

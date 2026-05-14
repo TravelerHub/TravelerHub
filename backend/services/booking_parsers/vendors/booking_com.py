@@ -44,8 +44,10 @@ def matches(text: str) -> bool:
     if not text:
         return False
     lowered = text.lower()
-    has_brand = _has_domain(text, "booking.com") or (
-        "booking confirmation" in lowered and "your stay" in lowered
+    has_brand = (
+        _has_domain(text, "booking.com")
+        or "booking.com" in lowered
+        or ("booking confirmation" in lowered and "your stay" in lowered)
     )
     return has_brand and bool(_CONF_RE.search(text))
 
