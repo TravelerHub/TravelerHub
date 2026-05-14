@@ -8,6 +8,7 @@ export default function ImageUpload({ onUploadSuccess }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const safePreview = preview && preview.startsWith("blob:") ? preview : null;
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -59,11 +60,11 @@ export default function ImageUpload({ onUploadSuccess }) {
         "
       />
 
-      {preview && (
+      {safePreview && (
         <div className="mt-4">
           <p className="text-sm text-gray-500 mb-2">Preview:</p>
           <img
-            src={preview}
+            src={safePreview}
             alt="Preview"
             loading="lazy"
             decoding="async"

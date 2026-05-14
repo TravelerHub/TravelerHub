@@ -7,6 +7,7 @@ Endpoint:
                                  radius_km?, max_stops? }
 """
 
+import logging
 from datetime import date as _date, datetime, time
 from typing import Optional
 
@@ -21,6 +22,7 @@ from services.itinerary_builder import build_itinerary, stops_to_dicts
 from utils import oauth2
 
 limiter = Limiter(key_func=get_remote_address)
+logger = logging.getLogger("travelhub")
 
 router = APIRouter(prefix="/itinerary", tags=["Itinerary"])
 
@@ -62,10 +64,15 @@ async def build_day(
     candidates = osm.get("data") or []
 
     if not candidates:
+        warning = "No attractions found in radius."
+        error = osm.get("error")
+        if error:
+            logger.warning("OSM attraction lookup failed: %s", error)
+            warning = "Attractions lookup failed."
         return {
             "stops": [],
             "source": "osm",
-            "warning": osm.get("error") or "No attractions found in radius.",
+            "warning": warning,
         }
 
     # Wikipedia enrichment is best-effort and only adds title/thumbnail/extract.

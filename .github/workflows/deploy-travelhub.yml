@@ -4,6 +4,9 @@ on:
   push:
     branches: [main, deployment]
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     name: Build & Deploy to Hetzner

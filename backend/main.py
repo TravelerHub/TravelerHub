@@ -234,17 +234,15 @@ def root():
 def health():
     from supabase_client import supabase
     db_ok = False
-    db_error = None
     try:
         supabase.table("users").select("id").limit(1).execute()
         db_ok = True
     except Exception as e:
-        db_error = str(e)
         logger.warning("Health check DB ping failed: %s", e)
 
     if not db_ok:
         return JSONResponse(
             status_code=503,
-            content={"status": "degraded", "db": "unreachable", "detail": db_error},
+            content={"status": "degraded", "db": "unreachable"},
         )
     return {"status": "ok", "db": "reachable"}
