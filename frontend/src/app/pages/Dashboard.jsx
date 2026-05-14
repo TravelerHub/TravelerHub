@@ -71,6 +71,7 @@ export default function Dashboard() {
   const [inviteTab,        setInviteTab]        = useState("search"); // "search" | "connections"
   const [searchQuery,      setSearchQuery]      = useState("");
   const [searchResult,     setSearchResult]     = useState(null);   // null = no search yet, [] = no match
+  const [searchError,      setSearchError]      = useState("");
   const [searchLoading,    setSearchLoading]    = useState(false);
   const [connections,      setConnections]      = useState(null);   // null = not loaded yet
   const [connectionsLoading, setConnectionsLoading] = useState(false);
@@ -164,11 +165,16 @@ export default function Dashboard() {
   const upcomingBookings = bookingsData ?? [];
 
   // ── Exact-match user search (fires on button click only) ──────────────────
+  // The backend treats email as exact-only and username as exact-or-prefix
+  // (prefix needs >=3 chars). Without surfacing fetch failures separately the
+  // user can't tell "no match" from "auth expired" or "API unreachable" —
+  // both used to render the same empty-state message.
   const handleSearchUser = async () => {
     const q = searchQuery.trim();
     if (!q) return;
     setSearchLoading(true);
     setSearchResult(null);
+    setSearchError("");
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(`${API_BASE}/users/search?q=${encodeURIComponent(q)}`, {
@@ -177,10 +183,18 @@ export default function Dashboard() {
       if (res.ok) {
         const data = await res.json();
         setSearchResult(data.users || []);
+      } else if (res.status === 401) {
+        setSearchError("Your session expired — please sign in again.");
+        setSearchResult([]);
+      } else if (res.status === 429) {
+        setSearchError("Too many searches in a short time — try again in a moment.");
+        setSearchResult([]);
       } else {
+        setSearchError(`Search failed (${res.status}). Please try again.`);
         setSearchResult([]);
       }
-    } catch {
+    } catch (e) {
+      setSearchError("Can't reach the server. Check your connection.");
       setSearchResult([]);
     } finally {
       setSearchLoading(false);
@@ -324,7 +338,17 @@ export default function Dashboard() {
       });
       if (res.ok) {
         const data = await res.json();
-        setInviteUrl(data.invite_url);
+        // Always rebuild the URL from window.location.origin. The backend's
+        // INVITE_BASE_URL defaults to http://localhost:5173 when the
+        // FRONTEND_URL env var isn't set, so trusting data.invite_url means
+        // anyone who shares the link sends their friend a useless localhost
+        // URL. The browser's origin is the actual public URL the user is on.
+        const inviteToken = data.token || (data.invite_url || "").split("/").pop();
+        if (inviteToken) {
+          setInviteUrl(`${window.location.origin}/join/${inviteToken}`);
+        } else {
+          setInviteUrl(data.invite_url || "");
+        }
         setInviteExpiresAt(data.expires_at);
       } else {
         const err = await res.json();
@@ -816,7 +840,7 @@ export default function Dashboard() {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleSearchUser())}
-                        placeholder="Exact username or email"
+                        placeholder="Username (3+ chars) or full email"
                         className="flex-1 px-3 py-2 rounded-lg outline-none text-sm"
                         style={{ background: "#f3f4f6", color: "#111827", border: "1px solid #374151" }}
                       />
@@ -830,10 +854,18 @@ export default function Dashboard() {
                         {searchLoading ? "…" : "Search"}
                       </button>
                     </div>
-                    {searchResult !== null && (
+                    {searchError && (
+                      <p className="mt-2 text-xs px-1" style={{ color: "#dc2626" }}>{searchError}</p>
+                    )}
+                    {searchResult !== null && !searchError && (
                       <div className="mt-2">
                         {searchResult.length === 0 ? (
-                          <p className="text-xs px-1" style={{ color: "#6b7280" }}>No user found. Only exact matches are returned.</p>
+                          <div className="px-1">
+                            <p className="text-xs" style={{ color: "#6b7280" }}>No user found.</p>
+                            <p className="text-[11px] mt-0.5" style={{ color: "#9ca3af" }}>
+                              Tip: emails must match exactly. Usernames need 3+ characters and match by prefix.
+                            </p>
+                          </div>
                         ) : (
                           searchResult.map((u) => {
                             const added = selectedInvitees.find((x) => x.id === u.id);
@@ -1001,7 +1033,7 @@ export default function Dashboard() {
             {inviteTab === "search" && (
               <>
                 <p className="text-xs mb-3" style={{ color: "#9ca3af" }}>
-                  Only exact matches are returned — usernames and emails are never browseable.
+                  Emails must match exactly. Usernames need 3+ characters and match by prefix.
                 </p>
                 <div className="flex gap-2 mb-3">
                   <input
@@ -1009,7 +1041,7 @@ export default function Dashboard() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleSearchUser()}
-                    placeholder="Exact username or email"
+                    placeholder="Username (3+ chars) or full email"
                     className="flex-1 px-3 py-2 rounded-lg outline-none text-sm"
                     style={{ background: "rgba(255,255,255,0.08)", color: "#fbfbf2", border: "1px solid rgba(255,255,255,0.12)" }}
                   />
@@ -1023,10 +1055,18 @@ export default function Dashboard() {
                   </button>
                 </div>
 
-                {searchResult !== null && (
+                {searchError && (
+                  <p className="mb-3 text-xs px-1" style={{ color: "#f87171" }}>{searchError}</p>
+                )}
+                {searchResult !== null && !searchError && (
                   <div className="mb-4">
                     {searchResult.length === 0 ? (
-                      <p className="text-xs px-1" style={{ color: "#9ca3af" }}>No user found. Try the exact username or email address.</p>
+                      <div className="px-1">
+                        <p className="text-xs" style={{ color: "#9ca3af" }}>No user found.</p>
+                        <p className="text-[11px] mt-0.5" style={{ color: "#6b7280" }}>
+                          Try the full email, or a username prefix of 3+ characters.
+                        </p>
+                      </div>
                     ) : (
                       searchResult.map((u) => (
                         <div key={u.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl" style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}>
