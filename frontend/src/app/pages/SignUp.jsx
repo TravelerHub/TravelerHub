@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { API_BASE } from '../../config';
 import Navbar_empty from "../../components/navbar/Navbar_empty";
 import { encryptionUtils } from "../../lib/encryption";
@@ -7,6 +7,7 @@ import { chatApi } from "../../components/chatbox/chatAPI";
 
 function SignUp() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
@@ -81,8 +82,15 @@ function SignUp() {
           }
         }
 
-      // Redirect to Dashboard
-        navigate("/dashboard");
+        // Honor ?redirect=... — without this, a friend who opens an
+        // invite link (e.g. /join/<token>) on a new device, taps "Sign
+        // up", and completes signup gets dropped on /dashboard with no
+        // trip joined and no signal that anything is supposed to happen.
+        // Login.jsx already does this; SignUp was the only path that
+        // silently swallowed the redirect.
+        const params = new URLSearchParams(location.search);
+        const redirectTo = params.get("redirect");
+        navigate(redirectTo || "/dashboard");
       }
       else {
         // Pydantic 422 returns `detail` as an *array* of error objects:
