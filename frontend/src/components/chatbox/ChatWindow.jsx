@@ -290,6 +290,7 @@ export default function ChatWindow({
     if (!conversationID) return;
     let isActive = true;
     let retryCount = 0;
+    let hasConnectedOnce = false;
     let reconnectTimer = null;
     let pingInterval = null;
 
@@ -308,6 +309,8 @@ export default function ChatWindow({
       wsRef.current = ws;
 
       ws.onopen = () => {
+        const wasReconnect = hasConnectedOnce;
+        hasConnectedOnce = true;
         retryCount = 0;
         if (currentUserId && lastMessageId) {
           ws.send(JSON.stringify({
@@ -315,6 +318,36 @@ export default function ChatWindow({
             user_id: currentUserId,
             last_read_message_id: lastMessageId,
           }));
+        }
+
+        // Reconnect → refetch messages and merge by message_id. Without this,
+        // any messages sent by others while the socket was down stay missing
+        // until a full page reload, because the WS only pushes deltas.
+        if (wasReconnect) {
+          (async () => {
+            try {
+              const fresh = await chatApi.getMessages(conversationID);
+              if (!isActive) return;
+              const arr = Array.isArray(fresh) ? fresh : fresh.messages || [];
+              setLocalMessages((prev) => {
+                const seen = new Set(prev.map((m) => m.message_id).filter(Boolean));
+                const merged = prev.slice();
+                for (const m of arr) {
+                  if (!m?.message_id || seen.has(m.message_id)) continue;
+                  merged.push(m);
+                  seen.add(m.message_id);
+                }
+                merged.sort((a, b) => {
+                  const at = new Date(a.sent_datetime || a.created_at || 0).getTime();
+                  const bt = new Date(b.sent_datetime || b.created_at || 0).getTime();
+                  return at - bt;
+                });
+                return merged;
+              });
+            } catch {
+              // Best-effort refetch; the next WS push will eventually catch us up.
+            }
+          })();
         }
       };
 
@@ -523,25 +556,69 @@ export default function ChatWindow({
         {/* Inline encryption-setup banner — friendlier than relying on the
             lock-icon tooltip alone. Shown only when `encryptionError` is
             set; the small spinner reads as "still working" instead of
-            "stuck". */}
-        {encryptionError && !loading && !error && (
-          <div
-            className="shrink-0 flex items-center gap-2 px-4 py-2 text-xs"
-            style={{
-              background: "rgba(200,169,110,0.10)",
-              borderBottom: "1px solid rgba(200,169,110,0.25)",
-              color: "#7c5e1a",
-            }}
-            role="status"
-          >
-            <span
-              aria-hidden="true"
-              className="inline-block w-3 h-3 rounded-full border-2 border-t-transparent animate-spin"
-              style={{ borderColor: "#c8a96e", borderTopColor: "transparent" }}
-            />
-            <span className="leading-snug">{encryptionError}</span>
-          </div>
-        )}
+            "stuck". When the error is the "waiting for a trip-mate" state
+            we also enumerate which members can unlock the chat and give
+            the user a one-tap way to copy an invite message — otherwise
+            the user has no idea who they're waiting on. */}
+        {encryptionError && !loading && !error && (() => {
+          const isWaitingForPeer = /trip-mate|trip mate|another member/i.test(encryptionError);
+          const others = (members || []).filter((u) => u.id !== currentUserId);
+          const otherNames = others.map((u) => u.username || u.email || "trip-mate");
+          const copyInvite = async () => {
+            const text = `Hey — can you open the TravelerHub chat on your phone once? It needs another device online to finish setting up encryption. Thanks!`;
+            try {
+              await navigator.clipboard.writeText(text);
+            } catch {
+              // Clipboard API unavailable (e.g. non-HTTPS preview build) — silently no-op.
+            }
+          };
+          return (
+            <div
+              className="shrink-0 px-4 py-2 text-xs"
+              style={{
+                background: "rgba(200,169,110,0.10)",
+                borderBottom: "1px solid rgba(200,169,110,0.25)",
+                color: "#7c5e1a",
+              }}
+              role="status"
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className="inline-block w-3 h-3 rounded-full border-2 border-t-transparent animate-spin shrink-0"
+                  style={{ borderColor: "#c8a96e", borderTopColor: "transparent" }}
+                />
+                <span className="leading-snug">{encryptionError}</span>
+              </div>
+
+              {isWaitingForPeer && otherNames.length > 0 && (
+                <div className="mt-1.5 ml-5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="opacity-70">Waiting on:</span>
+                  {otherNames.slice(0, 4).map((n) => (
+                    <span
+                      key={n}
+                      className="px-1.5 py-0.5 rounded-md font-medium"
+                      style={{ background: "rgba(200,169,110,0.18)" }}
+                    >
+                      {n}
+                    </span>
+                  ))}
+                  {otherNames.length > 4 && (
+                    <span className="opacity-70">+{otherNames.length - 4} more</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={copyInvite}
+                    className="ml-auto px-2 py-1 rounded-md text-[11px] font-semibold transition hover:bg-white/40"
+                    style={{ border: "1px solid rgba(200,169,110,0.5)", color: "#7c5e1a" }}
+                  >
+                    Copy a "please open the app" message
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ── Message body ─────────────────────────────────────────────── */}
         <div

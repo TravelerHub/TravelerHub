@@ -44,6 +44,8 @@ function Expenses() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeElapsed, setAnalyzeElapsed] = useState(0);
+  const analyzeAbortRef = useRef(null);
   const [error, setError] = useState("");
 
   // Analysis mode: 'receipt' or 'document'
@@ -138,14 +140,25 @@ function Expenses() {
   // Analyze the image
   const handleAnalyze = async () => {
     if (!selectedFile) return;
+
+    const controller = new AbortController();
+    analyzeAbortRef.current = controller;
+
     setAnalyzing(true);
+    setAnalyzeElapsed(0);
     setError("");
+
+    const startedAt = Date.now();
+    const tick = setInterval(() => {
+      setAnalyzeElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 250);
+
     try {
       let response;
       if (mode === "receipt") {
-        response = await analyzeReceipt(selectedFile);
+        response = await analyzeReceipt(selectedFile, { signal: controller.signal });
       } else {
-        response = await analyzeDocument(selectedFile);
+        response = await analyzeDocument(selectedFile, { signal: controller.signal });
       }
       if (response.success) {
         setResult(response.data);
@@ -157,10 +170,23 @@ function Expenses() {
         setError(response.error || "Could not analyze the image. Try a clearer photo.");
       }
     } catch (err) {
-      console.error("Analysis error:", err);
-      setError("Failed to analyze. Please try again.");
+      if (err?.name === "AbortError") {
+        // User cancelled — leave the form untouched so they can retry.
+      } else {
+        console.error("Analysis error:", err);
+        setError("Failed to analyze. Please try again.");
+      }
     } finally {
+      clearInterval(tick);
+      analyzeAbortRef.current = null;
       setAnalyzing(false);
+      setAnalyzeElapsed(0);
+    }
+  };
+
+  const handleCancelAnalyze = () => {
+    if (analyzeAbortRef.current) {
+      analyzeAbortRef.current.abort();
     }
   };
 
@@ -850,7 +876,7 @@ function Expenses() {
               {/* Analyzing state */}
               {analyzing && (
                 <div
-                  className="rounded-2xl flex flex-col items-center justify-center py-20"
+                  className="rounded-2xl flex flex-col items-center justify-center py-16 px-8"
                   style={{ background: "#fff", border: "1px solid #e5e7eb" }}
                 >
                   <ArrowPathIcon
@@ -858,11 +884,42 @@ function Expenses() {
                     style={{ color: mode === "receipt" ? "#183a37" : "#1e3a5f" }}
                   />
                   <p className="text-sm font-medium" style={{ color: "#374151" }}>
-                    Analyzing with AI…
+                    {analyzeElapsed < 3
+                      ? "Reading the image…"
+                      : analyzeElapsed < 8
+                      ? "Extracting text and amounts…"
+                      : analyzeElapsed < 15
+                      ? "Still working — large receipts can take a while…"
+                      : "This is taking longer than usual. You can cancel and try a clearer photo."}
                   </p>
                   <p className="text-xs mt-1" style={{ color: "#9ca3af" }}>
-                    This usually takes a few seconds
+                    Elapsed: {analyzeElapsed}s
                   </p>
+
+                  {/* Indeterminate-style progress bar that fills toward 95% over ~20s
+                      so the user has a visible signal of progress without us
+                      claiming a real percentage we don't actually have. */}
+                  <div
+                    className="w-full max-w-xs h-1.5 rounded-full mt-4 overflow-hidden"
+                    style={{ background: "#f3f4f6" }}
+                  >
+                    <div
+                      className="h-full transition-all duration-500 ease-out"
+                      style={{
+                        width: `${Math.min(95, 5 + analyzeElapsed * 5)}%`,
+                        background: mode === "receipt" ? "#183a37" : "#1e3a5f",
+                      }}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleCancelAnalyze}
+                    className="mt-6 px-4 py-2 rounded-lg text-xs font-semibold transition hover:bg-gray-100"
+                    style={{ border: "1px solid #e5e7eb", color: "#6b7280" }}
+                  >
+                    Cancel
+                  </button>
                 </div>
               )}
             </div>
