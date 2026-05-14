@@ -12,11 +12,48 @@ from utils import hasing, oauth2, otp
 from utils.encryption import generate_conversation_key
 from utils.logger import get_logger
 
+from datetime import timedelta
+from jose import JWTError, jwt as _jwt
+
 logger = get_logger(__name__)
 
 router = APIRouter(
     tags=["auth"]
 )
+
+
+# Reset tokens are short-lived JWTs marked with `purpose: "password_reset"`,
+# minted only after a successful OTP verification and required by
+# /updatepassword. Without this gate the endpoint accepts {email, new_password}
+# from any caller — full account takeover with just an email.
+_PASSWORD_RESET_TTL = timedelta(minutes=5)
+_PASSWORD_RESET_PURPOSE = "password_reset"
+
+
+def _create_password_reset_token(email: str) -> str:
+    payload = {
+        "sub": email,
+        "purpose": _PASSWORD_RESET_PURPOSE,
+    }
+    return oauth2.create_access_token(payload, expires_delta=_PASSWORD_RESET_TTL)
+
+
+def _verify_password_reset_token(token: str) -> str:
+    """Return the email bound to a valid reset token, or raise 401."""
+    invalid = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired reset token. Re-verify your OTP.",
+    )
+    try:
+        decoded = _jwt.decode(token, oauth2.JWT_SECRET, algorithms=[oauth2.JWT_ALGORITHM])
+    except JWTError:
+        raise invalid
+    if decoded.get("purpose") != _PASSWORD_RESET_PURPOSE:
+        raise invalid
+    email = decoded.get("sub")
+    if not isinstance(email, str) or not email:
+        raise invalid
+    return email
 
 
 # Fields we never want to ship back to the client. `password` is the bcrypt
@@ -269,11 +306,15 @@ def verify_otp_code(data: OtpVerifyRequest):
                 "message": message
             }
         
-        # OTP is valid! Return success
+        # OTP is valid. Mint a short-lived reset token that /updatepassword
+        # requires — without it, the password-update endpoint would accept an
+        # email + new_password from any anonymous caller.
+        reset_token = _create_password_reset_token(data.email)
         return {
             "success": True,
             "message": "OTP verified successfully. You can now reset your password.",
-            "email": data.email
+            "email": data.email,
+            "reset_token": reset_token,
         }
         
     except Exception as e:
@@ -286,17 +327,25 @@ def verify_otp_code(data: OtpVerifyRequest):
 
 
 @router.post("/updatepassword")
-def update_password(payload: dict):
+@limiter.limit("5/minute")
+def update_password(request: Request, payload: dict):
     """Update user password after OTP verification.
 
-    Expected payload: { "email": str, "new_password": str }
+    Expected payload: { "reset_token": str, "new_password": str }
+    The reset_token is issued by /verify-otp; the email is read from the
+    token's `sub` claim, not the request body.
     """
     try:
-        email = payload.get("email")
+        reset_token = payload.get("reset_token")
         new_password = payload.get("new_password")
 
-        if not email or not new_password:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email and new_password are required")
+        if not reset_token or not new_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="reset_token and new_password are required",
+            )
+
+        email = _verify_password_reset_token(reset_token)
 
         # Hash the new password
         hashed = hasing.hash_password(new_password)
