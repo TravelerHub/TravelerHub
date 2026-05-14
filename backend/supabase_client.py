@@ -139,6 +139,14 @@ supabase_admin: Client = (
     else supabase
 )
 
+if has_service_role:
+    _old_admin_session = supabase_admin.postgrest.session
+    supabase_admin.postgrest.session = httpx.Client(
+        base_url=str(_old_admin_session.base_url),
+        headers=dict(_old_admin_session.headers),
+        http2=False,
+    )
+
 
 def safe_single(query_builder):
     """

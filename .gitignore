@@ -37,6 +37,7 @@ env/
 
 # frontend/.env.local has real local overrides — keep ignored
 frontend/.env.local
+frontend/.env.production
 
 # Python cache / bytecode
 __pycache__/

@@ -12,15 +12,18 @@ Airbnb confirmations have an opinionated layout:
 from __future__ import annotations
 
 import re
+from urllib.parse import urlparse
 from datetime import datetime
 from typing import Optional
 
 
 _CONF_RE = re.compile(r"\b(HM[A-Z0-9]{6,12})\b")  # Airbnb codes
+_BRAND_RE = re.compile(r"\bairbnb\b", re.IGNORECASE)
 _PROPERTY_RE = re.compile(
     r"(?:reservation\s+at|your\s+stay\s+at|home\s+at)\s+([^\n\r]{3,80})",
     re.IGNORECASE,
 )
+_URL_RE = re.compile(r"https?://[^\s)]+", re.IGNORECASE)
 _DATE_RE = re.compile(
     r"(?:Check[- ]?in|Check[- ]?out|Arrive|Depart)\s*[:]?\s*"
     r"(?:\w+,?\s+)?"                                       # optional weekday
@@ -40,10 +43,21 @@ _SYM_TO_CUR = {"$": "USD", "€": "EUR", "£": "GBP", "¥": "JPY"}
 def matches(text: str) -> bool:
     if not text:
         return False
-    lowered = text.lower()
-    has_brand = ("airbnb" in lowered) or ("airbnb.com" in lowered)
+    has_brand = bool(_BRAND_RE.search(text)) or _has_domain(text, "airbnb.com")
     has_code = bool(_CONF_RE.search(text))
     return has_brand and has_code
+
+
+def _has_domain(text: str, domain: str) -> bool:
+    for match in _URL_RE.findall(text):
+        try:
+            host = urlparse(match).hostname or ""
+        except ValueError:
+            continue
+        host = host.lower()
+        if host == domain or host.endswith(f".{domain}"):
+            return True
+    return False
 
 
 def _parse_date(m: re.Match) -> Optional[datetime]:

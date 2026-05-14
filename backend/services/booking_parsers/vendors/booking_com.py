@@ -16,6 +16,7 @@ shape (10 digits, distinctive) before claiming a match.
 from __future__ import annotations
 
 import re
+from urllib.parse import urlparse
 from datetime import datetime
 from typing import Optional
 
@@ -36,14 +37,31 @@ _PRICE_RE = re.compile(
     re.IGNORECASE,
 )
 _SYM_TO_CUR = {"$": "USD", "€": "EUR", "£": "GBP", "¥": "JPY"}
+_URL_RE = re.compile(r"https?://[^\s)]+", re.IGNORECASE)
 
 
 def matches(text: str) -> bool:
     if not text:
         return False
     lowered = text.lower()
-    has_brand = ("booking.com" in lowered) or ("booking confirmation" in lowered and "your stay" in lowered)
+    has_brand = (
+        _has_domain(text, "booking.com")
+        or "booking.com" in lowered
+        or ("booking confirmation" in lowered and "your stay" in lowered)
+    )
     return has_brand and bool(_CONF_RE.search(text))
+
+
+def _has_domain(text: str, domain: str) -> bool:
+    for match in _URL_RE.findall(text):
+        try:
+            host = urlparse(match).hostname or ""
+        except ValueError:
+            continue
+        host = host.lower()
+        if host == domain or host.endswith(f".{domain}"):
+            return True
+    return False
 
 
 def _parse_date_match(m: re.Match) -> Optional[datetime]:
