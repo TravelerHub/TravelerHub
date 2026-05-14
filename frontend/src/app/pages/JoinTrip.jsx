@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { API_BASE } from "../../config";
 
 export default function JoinTrip() {
   const { token } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
 
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -77,6 +79,7 @@ export default function JoinTrip() {
             localStorage.setItem("activeGroupId", String(groupId));
           } catch { /* storage unavailable */ }
         }
+        queryClient.invalidateQueries({ queryKey: ["my-groups"] });
         navigate("/dashboard", { replace: true });
         return;
       }
@@ -88,6 +91,22 @@ export default function JoinTrip() {
         setError(data.detail || "Failed to join the trip. Please try again.");
         return;
       }
+
+      // Pin the newly joined trip as the active one and force the dashboard
+      // to refetch /groups/me before rendering. The query has a 5-minute
+      // staleTime, so without this invalidation the joiner can land on the
+      // dashboard, hit cached results from a previous session that don't
+      // include this trip, and see nothing.
+      const newGroupId =
+        data?.group_id || data?.trip_id || preview?.group_id || preview?.trip_id;
+      if (newGroupId) {
+        try {
+          localStorage.setItem("active_group_id", String(newGroupId));
+          localStorage.setItem("activeGroupId", String(newGroupId));
+        } catch { /* storage unavailable */ }
+      }
+      queryClient.invalidateQueries({ queryKey: ["my-groups"] });
+      queryClient.invalidateQueries({ queryKey: ["bookings"] });
 
       setSuccessMsg(data.message || `You joined ${preview?.trip_name}!`);
       setTimeout(() => navigate("/dashboard"), 1800);
