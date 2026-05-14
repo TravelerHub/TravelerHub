@@ -86,6 +86,13 @@ export default function Dashboard() {
   const [inviteExpiresAt,  setInviteExpiresAt]  = useState("");
   const [inviteLoading,    setInviteLoading]    = useState(false);
   const [inviteCopied,     setInviteCopied]     = useState(false);
+  // The trip the share modal is currently scoped to. Without this the Add
+  // buttons on the "Find by username/email" tab have no group to POST to —
+  // search results just rendered a "Found" badge with no way to actually
+  // invite the user.
+  const [inviteForGroupId, setInviteForGroupId] = useState(null);
+  // Per-user invite state: { [userId]: "idle" | "adding" | "added" | "error" }
+  const [inviteUserStatus, setInviteUserStatus] = useState({});
 
   const [activeTripId, setActiveTripId] = useState(
     () => localStorage.getItem("active_group_id") || localStorage.getItem("activeGroupId") || null
@@ -329,6 +336,8 @@ export default function Dashboard() {
     setInviteTab("link");
     setSearchQuery("");
     setSearchResult(null);
+    setInviteUserStatus({});
+    setInviteForGroupId(group?.group_id || null);
     setShowInviteModal(true);
     try {
       const token = localStorage.getItem("token");
@@ -367,6 +376,32 @@ export default function Dashboard() {
       setInviteCopied(true);
       setTimeout(() => setInviteCopied(false), 2500);
     });
+  };
+
+  // Directly add a found user to the currently scoped trip. Used by the
+  // share modal's "Find by username/email" tab and the "People you've
+  // traveled with" list — previously those rows had no Add button at all,
+  // so the user could find someone but had no way to actually invite them.
+  const inviteUserToGroup = async (userId) => {
+    if (!inviteForGroupId || !userId) return;
+    setInviteUserStatus((prev) => ({ ...prev, [userId]: "adding" }));
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/groups/${inviteForGroupId}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ user_id: userId }),
+      });
+      // 409 Conflict = already a member; treat as success from the user's POV.
+      if (res.ok || res.status === 409) {
+        setInviteUserStatus((prev) => ({ ...prev, [userId]: "added" }));
+        queryClient.invalidateQueries({ queryKey: ["my-groups"] });
+      } else {
+        setInviteUserStatus((prev) => ({ ...prev, [userId]: "error" }));
+      }
+    } catch {
+      setInviteUserStatus((prev) => ({ ...prev, [userId]: "error" }));
+    }
   };
 
   // ── Guard ──────────────────────────────────────────────────────────────────
@@ -961,7 +996,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold" style={{ color: "#fbfbf2" }}>Add People to Trip</h3>
               <button
-                onClick={() => { setShowInviteModal(false); setSearchQuery(""); setSearchResult(null); setInviteTab("search"); }}
+                onClick={() => { setShowInviteModal(false); setSearchQuery(""); setSearchResult(null); setInviteTab("search"); setInviteForGroupId(null); setInviteUserStatus({}); }}
                 className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-xl transition"
                 style={{ color: "#9ca3af" }}
               >
@@ -1059,7 +1094,7 @@ export default function Dashboard() {
                   <p className="mb-3 text-xs px-1" style={{ color: "#f87171" }}>{searchError}</p>
                 )}
                 {searchResult !== null && !searchError && (
-                  <div className="mb-4">
+                  <div className="mb-4 space-y-1.5">
                     {searchResult.length === 0 ? (
                       <div className="px-1">
                         <p className="text-xs" style={{ color: "#9ca3af" }}>No user found.</p>
@@ -1068,12 +1103,36 @@ export default function Dashboard() {
                         </p>
                       </div>
                     ) : (
-                      searchResult.map((u) => (
-                        <div key={u.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl" style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}>
-                          <span className="text-sm font-medium" style={{ color: "#fbfbf2" }}>{u.username}</span>
-                          <span className="text-xs px-2 py-1 rounded-full" style={{ background: "#183a37", color: "#a3e635" }}>Found</span>
-                        </div>
-                      ))
+                      searchResult.map((u) => {
+                        const status = inviteUserStatus[u.id] || "idle";
+                        return (
+                          <div key={u.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl" style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                            <span className="text-sm font-medium" style={{ color: "#fbfbf2" }}>{u.username}</span>
+                            {status === "added" ? (
+                              <span className="text-xs px-2 py-1 rounded-full" style={{ background: "#183a37", color: "#a3e635" }}>Added ✓</span>
+                            ) : status === "error" ? (
+                              <button
+                                type="button"
+                                onClick={() => inviteUserToGroup(u.id)}
+                                className="text-xs px-2 py-1 rounded-full font-semibold transition"
+                                style={{ background: "rgba(220,38,38,0.15)", color: "#f87171", border: "1px solid rgba(248,113,113,0.3)" }}
+                              >
+                                Retry
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => inviteUserToGroup(u.id)}
+                                disabled={status === "adding" || !inviteForGroupId}
+                                className="text-xs px-3 py-1 rounded-full font-semibold transition disabled:opacity-50"
+                                style={{ background: "#a3e635", color: "#183a37" }}
+                              >
+                                {status === "adding" ? "Adding…" : "Add"}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })
                     )}
                   </div>
                 )}
@@ -1095,11 +1154,27 @@ export default function Dashboard() {
                     <p className="text-xs" style={{ color: "#5c6b73" }}>None yet — travel more!</p>
                   ) : (
                     <div className="space-y-1 max-h-28 overflow-y-auto">
-                      {connections.map((u) => (
-                        <div key={u.id} className="flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.05)" }}>
-                          <span className="text-sm" style={{ color: "#d1d5db" }}>{u.username}</span>
-                        </div>
-                      ))}
+                      {connections.map((u) => {
+                        const status = inviteUserStatus[u.id] || "idle";
+                        return (
+                          <div key={u.id} className="flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.05)" }}>
+                            <span className="text-sm" style={{ color: "#d1d5db" }}>{u.username}</span>
+                            {status === "added" ? (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "#183a37", color: "#a3e635" }}>Added ✓</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => inviteUserToGroup(u.id)}
+                                disabled={status === "adding" || !inviteForGroupId}
+                                className="text-[10px] px-2 py-0.5 rounded-full font-semibold transition disabled:opacity-50"
+                                style={{ background: status === "error" ? "rgba(248,113,113,0.15)" : "#a3e635", color: status === "error" ? "#f87171" : "#183a37" }}
+                              >
+                                {status === "adding" ? "…" : status === "error" ? "Retry" : "Add"}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1107,7 +1182,7 @@ export default function Dashboard() {
             )}
 
             <button
-              onClick={() => { setShowInviteModal(false); setSearchQuery(""); setSearchResult(null); setInviteTab("search"); }}
+              onClick={() => { setShowInviteModal(false); setSearchQuery(""); setSearchResult(null); setInviteTab("search"); setInviteForGroupId(null); setInviteUserStatus({}); }}
               className="mt-5 w-full py-2.5 rounded-xl font-medium text-sm transition hover:bg-white/10"
               style={{ background: "rgba(255,255,255,0.07)", color: "#9ca3af" }}
             >
