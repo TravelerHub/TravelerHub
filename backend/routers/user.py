@@ -32,7 +32,10 @@ def read_me(request: Request, current_user=Depends(oauth2.get_current_user)):
 # "find my friend whose username starts with kinoko" flows work — capped at
 # 5 results, ordered exact-match-first, with heavy rate limit on top so it
 # can't be used to enumerate.
-# Never returns password hashes; only exposes id, username, and avatar_url.
+# Never returns password hashes; only exposes id + username (avatar_url is
+# not yet a column on the users table, so selecting it makes Postgrest
+# throw "column users.avatar_url does not exist" and the whole request
+# 500s — surfacing as "Search failed (500)" with no user findable).
 @router.get("/search")
 @limiter.limit("20/minute")
 async def search_users(
@@ -60,7 +63,7 @@ async def search_users(
         email_res = await asyncio.to_thread(
             lambda: supabase
             .table("users")
-            .select("id, username, avatar_url")
+            .select("id, username")
             .ilike("email", query)
             .neq("username", "[deleted]")
             .limit(1)
@@ -74,7 +77,7 @@ async def search_users(
         exact_res = await asyncio.to_thread(
             lambda: supabase
             .table("users")
-            .select("id, username, avatar_url")
+            .select("id, username")
             .ilike("username", query)
             .neq("username", "[deleted]")
             .limit(1)
@@ -95,7 +98,7 @@ async def search_users(
         prefix_res = await asyncio.to_thread(
             lambda: supabase
             .table("users")
-            .select("id, username, avatar_url")
+            .select("id, username")
             .ilike("username", f"{query}%")
             .neq("username", "[deleted]")
             .order("username")
@@ -127,7 +130,9 @@ async def get_my_connections(
     Returns users who share at least one group with the current user.
     These are safe to surface because both parties already know each other
     through a shared trip — no privacy concern.
-    Only returns: id, username, avatar_url.
+    Only returns: id, username (avatar_url is not yet a column on the
+    users table; selecting it would 500 the request the same way the
+    /search endpoint did).
     """
     user_id = current_user.get("id") or current_user.get("user_id")
     if not user_id:
@@ -165,7 +170,7 @@ async def get_my_connections(
         profiles_res = await asyncio.to_thread(
             lambda: supabase
             .table("users")
-            .select("id, username, avatar_url")
+            .select("id, username")
             .in_("id", peer_ids)
             .neq("username", "[deleted]")
             .execute()
