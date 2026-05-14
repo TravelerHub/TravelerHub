@@ -43,7 +43,25 @@ def save_subscription(request: Request, sub: PushSubscription, current_user=Depe
     """Store a browser push subscription for the current user."""
     user_id = current_user["id"]
     try:
-        # Upsert so re-subscribing on the same browser doesn't duplicate
+        # The endpoint column has a UNIQUE constraint. Without checking
+        # ownership first, a plain upsert(on_conflict="endpoint") would let
+        # any authenticated caller rebind another user's endpoint to their
+        # own user_id — hijacking that user's push notifications.
+        existing = (
+            supabase.table("push_subscriptions")
+            .select("user_id")
+            .eq("endpoint", sub.endpoint)
+            .limit(1)
+            .execute()
+        )
+        if existing.data:
+            owner_id = existing.data[0].get("user_id")
+            if owner_id and str(owner_id) != str(user_id):
+                raise HTTPException(
+                    status_code=409,
+                    detail="This push endpoint is already registered to another user.",
+                )
+
         supabase.table("push_subscriptions").upsert({
             "user_id": user_id,
             "endpoint": sub.endpoint,
@@ -51,6 +69,8 @@ def save_subscription(request: Request, sub: PushSubscription, current_user=Depe
             "auth": sub.keys.get("auth"),
             "user_agent": sub.user_agent,
         }, on_conflict="endpoint").execute()
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"ok": True}
@@ -60,5 +80,10 @@ def save_subscription(request: Request, sub: PushSubscription, current_user=Depe
 @limiter.limit("30/minute")
 def remove_subscription(request: Request, endpoint: str, current_user=Depends(get_current_user)):
     """Unsubscribe (called when user revokes permission)."""
-    supabase.table("push_subscriptions").delete().eq("endpoint", endpoint).execute()
+    # Scope by user_id so a caller can only delete their own subscriptions.
+    # Previously this deleted by endpoint alone, letting any authenticated
+    # user silently kill another user's push notifications.
+    supabase.table("push_subscriptions").delete().eq("endpoint", endpoint).eq(
+        "user_id", current_user["id"]
+    ).execute()
     return {"ok": True}

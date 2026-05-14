@@ -14,8 +14,10 @@ export default function NewPassword() {
   const navigate = useNavigate();
 
   const email = location.state?.email;
+  const resetToken =
+    location.state?.resetToken || sessionStorage.getItem("resetToken");
 
-  if (!email) {
+  if (!email || !resetToken) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="max-w-md w-full bg-white p-8 rounded-lg shadow">
@@ -63,7 +65,7 @@ export default function NewPassword() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email,
+          reset_token: resetToken,
           new_password: newPassword,
         }),
       });
@@ -74,13 +76,14 @@ export default function NewPassword() {
         setSuccess("Password updated successfully!");
         setNewPassword("");
         setConfirmPassword("");
+        sessionStorage.removeItem("resetToken");
 
         // Redirect to login after 2 seconds
         setTimeout(() => {
           navigate("/login");
         }, 2000);
       } else {
-        setError(data.message || "Failed to update password");
+        setError(data.detail || data.message || "Failed to update password");
       }
     } catch (err) {
       setError("An error occurred. Please try again.");

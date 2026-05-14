@@ -66,9 +66,16 @@ function OTP() {
         setSuccess("OTP verified successfully! Redirecting...");
         // Store email in localStorage for persistence
         localStorage.setItem("resetEmail", email);
+        // Stash the short-lived reset token. /updatepassword requires it;
+        // without it, the API rejects the reset and we'd silently fail.
+        if (data.reset_token) {
+          sessionStorage.setItem("resetToken", data.reset_token);
+        }
         setTimeout(() => {
           // Redirect to password reset page and pass email in state
-          navigate("/newpassword", { state: { email: email } });
+          navigate("/newpassword", {
+            state: { email: email, resetToken: data.reset_token },
+          });
         }, 1500);
       } else {
         setError(data.message || "Invalid OTP. Please try again.");
