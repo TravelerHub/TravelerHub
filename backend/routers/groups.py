@@ -58,36 +58,49 @@ class RoleUpdate(BaseModel):
 # ---- Helpers ----
 
 async def _get_trip_members(group_id: str) -> List[dict]:
-    """Read group membership rows from trip_members first, then legacy group_member."""
+    """Read group membership rows from trip_members AND legacy group_member,
+    merging by user_id. Previously this only queried group_member as a
+    fallback on EXCEPTION from trip_members — so rows that landed in
+    group_member (the invite flow's fallback path when trip_members.insert
+    fails) were invisible to the owner's View Members modal whenever the
+    trip_members query just returned [] instead of throwing."""
+    by_user_id: dict = {}
+
     try:
-        res = await asyncio.to_thread(
+        tm_res = await asyncio.to_thread(
             lambda: supabase.table("trip_members")
             .select("user_id, role, joined_at")
             .eq("trip_id", group_id)
             .is_("left_at", None)
             .execute()
         )
-        return res.data or []
+        for r in (tm_res.data or []):
+            uid = r.get("user_id")
+            if uid:
+                by_user_id[uid] = r
     except Exception as e:
         logger.warning("[_get_trip_members] trip_members query failed for group=%s: %s", group_id, e, exc_info=True)
 
     try:
-        res = await asyncio.to_thread(
+        gm_res = await asyncio.to_thread(
             lambda: supabase.table("group_member")
             .select("user_id, role, join_datetime")
             .eq("group_id", group_id)
             .is_("left_datetime", None)
             .execute()
         )
-        rows = res.data or []
-        return [{
-            "user_id": r.get("user_id"),
-            "role": r.get("role", "member"),
-            "joined_at": r.get("join_datetime"),
-        } for r in rows]
+        for r in (gm_res.data or []):
+            uid = r.get("user_id")
+            if uid and uid not in by_user_id:
+                by_user_id[uid] = {
+                    "user_id": uid,
+                    "role": r.get("role", "member"),
+                    "joined_at": r.get("join_datetime"),
+                }
     except Exception as e:
-        logger.warning("[_get_trip_members] group_member fallback failed for group=%s: %s", group_id, e, exc_info=True)
-        return []
+        logger.warning("[_get_trip_members] group_member query failed for group=%s: %s", group_id, e, exc_info=True)
+
+    return list(by_user_id.values())
 
 
 async def _is_trip_member(group_id: str, user_id: str) -> bool:
@@ -259,32 +272,45 @@ async def get_my_groups(request: Request, current_user=Depends(oauth2.get_curren
     List all groups where current user is an active member.
     """
     try:
+        # The schema has two parallel membership tables: `trip_members` (the
+        # canonical one) and `group_member` (legacy fallback that the invite
+        # path drops into when trip_members.insert fails — e.g. when only the
+        # group_member side has been migrated to the new RLS policy). Previous
+        # versions of this endpoint only queried group_member on EXCEPTION
+        # from trip_members; if trip_members just returned `[]` (because the
+        # row landed in group_member), the user's joined trips were silently
+        # invisible. Always read both and merge.
         membership_map = {}
+
         try:
-            memberships_res = await asyncio.to_thread(
+            tm_res = await asyncio.to_thread(
                 lambda: supabase.table("trip_members")
                 .select("trip_id, role")
                 .eq("user_id", current_user["id"])
                 .is_("left_at", None)
                 .execute()
             )
-            membership_rows = memberships_res.data or []
-            membership_map = {m["trip_id"]: m.get("role", "member") for m in membership_rows if m.get("trip_id")}
+            for m in (tm_res.data or []):
+                tid = m.get("trip_id")
+                if tid:
+                    membership_map[tid] = m.get("role", "member")
         except Exception as e:
             logger.warning("[get_my_groups] trip_members query failed for user=%s: %s", current_user["id"], e, exc_info=True)
-            try:
-                memberships_res = await asyncio.to_thread(
-                    lambda: supabase.table("group_member")
-                    .select("group_id, role")
-                    .eq("user_id", current_user["id"])
-                    .is_("left_datetime", None)
-                    .execute()
-                )
-                membership_rows = memberships_res.data or []
-                membership_map = {m["group_id"]: m.get("role", "member") for m in membership_rows if m.get("group_id")}
-            except Exception as e2:
-                logger.warning("[get_my_groups] group_member fallback also failed for user=%s: %s", current_user["id"], e2, exc_info=True)
-                membership_map = {}
+
+        try:
+            gm_res = await asyncio.to_thread(
+                lambda: supabase.table("group_member")
+                .select("group_id, role")
+                .eq("user_id", current_user["id"])
+                .is_("left_datetime", None)
+                .execute()
+            )
+            for m in (gm_res.data or []):
+                gid = m.get("group_id")
+                if gid and gid not in membership_map:
+                    membership_map[gid] = m.get("role", "member")
+        except Exception as e:
+            logger.warning("[get_my_groups] group_member query failed for user=%s: %s", current_user["id"], e, exc_info=True)
 
         # Backfill older data where creator has no explicit membership row yet.
         owner_trips_res = await asyncio.to_thread(
