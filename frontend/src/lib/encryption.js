@@ -1,3 +1,9 @@
+import nacl from "tweetnacl";
+import { encodeBase64, decodeBase64, encodeUTF8, decodeUTF8 } from "tweetnacl-util";
+
+// Re-export as nacl.util shape so the rest of the file doesn't need to change
+nacl.util = { encodeBase64, decodeBase64, encodeUTF8, decodeUTF8 };
+
 /**
  * End-to-End Encryption utilities for frontend
  * Uses TweetNaCl.js for hybrid encryption.
@@ -29,6 +35,37 @@ export const encryptionUtils = {
    */
   generateKeypair: () => {
     const keyPair = nacl.box.keyPair();
+    return {
+      public_key: nacl.util.encodeBase64(keyPair.publicKey),
+      private_key: nacl.util.encodeBase64(keyPair.secretKey),
+    };
+  },
+
+  /**
+   * Derive a deterministic X25519 keypair from a 32-byte seed (base64).
+   *
+   * Why we need this:
+   *   The user's `symmetric_key` is server-side and shared across all of
+   *   their devices. By using it as the seed, every device the user logs
+   *   in on derives the *same* keypair, so they all hold the same private
+   *   key and can decrypt the same conversation session keys. This
+   *   replaces the previous behavior where each device generated its own
+   *   random keypair, which broke multi-device chat: a message sent from
+   *   the phone couldn't be decrypted on the laptop because the laptop's
+   *   private key didn't match the public key the session key had been
+   *   encrypted to.
+   *
+   * @param {string} seedBase64 - 32-byte base64 seed (e.g. user's symmetric_key)
+   * @returns {{ public_key: string, private_key: string }} both as base64
+   */
+  generateKeypairFromSeed: (seedBase64) => {
+    const seed = nacl.util.decodeBase64(seedBase64);
+    if (seed.length !== 32) {
+      throw new Error(`Seed must be exactly 32 bytes, got ${seed.length}`);
+    }
+    // nacl.box.keyPair.fromSecretKey accepts any 32-byte buffer as the
+    // private key — Curve25519 clamping happens internally.
+    const keyPair = nacl.box.keyPair.fromSecretKey(seed);
     return {
       public_key: nacl.util.encodeBase64(keyPair.publicKey),
       private_key: nacl.util.encodeBase64(keyPair.secretKey),

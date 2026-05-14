@@ -2,6 +2,18 @@ import { useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import Navbar_Landing from "../../components/navbar/Navbar_landing";
 import Footer from "../../components/Footer";
+import LazyVideo from "../../components/LazyVideo";
+import {
+  PlaneIcon,
+  GroupIcon,
+  ChatIcon,
+  CashIcon,
+  MapIcon,
+  CameraIcon,
+  CompassIcon,
+  ChecklistIcon,
+  ConfettiIcon,
+} from "../../components/icons/NavIcons.jsx";
 
 // import beachVideo from "../../assets/images/beachVideo.mp4";
 // import vietnameVideo from "../../assets/images/vietnameVideo.mp4";
@@ -65,18 +77,18 @@ return value;
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 const FEATURES = [
-{ icon: "✈️", title: "Book in one place", desc: "Flights, hotels, cars — all managed without switching apps." },
-{ icon: "👥", title: "Plan as a group", desc: "Vote on destinations, split decisions, move faster together." },
-{ icon: "💬", title: "Chat & decide", desc: "Encrypted group chat built right into your trip." },
-{ icon: "💸", title: "Split expenses", desc: "Track costs and settle up without the awkward math." },
-{ icon: "🗺️", title: "Navigate together", desc: "Real-time maps and saved routes for the whole group." },
-{ icon: "📸", title: "Capture memories", desc: "Shared photos and receipts — automatically organized." },
+{ Icon: PlaneIcon,    title: "Book in one place", desc: "Flights, hotels, cars — all managed without switching apps." },
+{ Icon: GroupIcon,    title: "Plan as a group",   desc: "Vote on destinations, split decisions, move faster together." },
+{ Icon: ChatIcon,     title: "Chat & decide",     desc: "Encrypted group chat built right into your trip." },
+{ Icon: CashIcon,     title: "Split expenses",    desc: "Track costs and settle up without the awkward math." },
+{ Icon: MapIcon,      title: "Navigate together", desc: "Real-time maps and saved routes for the whole group." },
+{ Icon: CameraIcon,   title: "Capture memories",  desc: "Shared photos and receipts — automatically organized." },
 ];
 
 const HOW_IT_WORKS = [
-{ num: "01", icon: "🗺️", title: "Create your trip", desc: "Add a destination, travel dates, and invite your group in under a minute." },
-{ num: "02", icon: "📋", title: "Plan together", desc: "Vote on places, book flights and hotels, and share ideas in real-time." },
-{ num: "03", icon: "🎉", title: "Travel & track", desc: "Live maps, expense splits, and shared memories — all in one place." },
+{ num: "01", Icon: CompassIcon,   title: "Create your trip", desc: "Add a destination, travel dates, and invite your group in under a minute." },
+{ num: "02", Icon: ChecklistIcon, title: "Plan together",    desc: "Vote on places, book flights and hotels, and share ideas in real-time." },
+{ num: "03", Icon: ConfettiIcon,  title: "Travel & track",   desc: "Live maps, expense splits, and shared memories — all in one place." },
 ];
 
 const MARQUEE_ITEMS = [
@@ -107,6 +119,8 @@ return (
 <img
 src={img}
 alt={title}
+loading="lazy"
+decoding="async"
 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
 />
 {/* base gradient */}
@@ -116,11 +130,11 @@ className="w-full h-full object-cover transition-transform duration-700 group-ho
 className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-400"
 style={{ background: "rgba(24,58,55,0.28)" }}
 />
-<div className="absolute bottom-5 left-5">
-<p className="text-white font-bold text-lg leading-tight translate-y-1 group-hover:translate-y-0 transition-transform duration-300">
+<div className="absolute bottom-3 sm:bottom-5 left-3 sm:left-5 right-3 sm:right-5">
+<p className="text-white font-bold text-sm sm:text-lg leading-tight translate-y-1 group-hover:translate-y-0 transition-transform duration-300 wrap-break-word">
 {title}
 </p>
-<p className="text-white/70 text-sm mt-0.5 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 delay-75">
+<p className="text-white/70 text-xs sm:text-sm mt-0.5 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 delay-75">
 {tag}
 </p>
 </div>
@@ -158,10 +172,12 @@ return (
 {/* ══ HERO ═════════════════════════════════════════════════════════════ */}
 <section className="relative min-h-[94vh] flex items-center justify-center text-white overflow-hidden">
 
-{/* Video background */}
+{/* Video background — hero / LCP, kept inline so it autoplays immediately */}
 <video
 className="absolute inset-0 w-full h-full object-cover"
 src={beachVideo}
+poster={LandingImg5}
+preload="metadata"
 autoPlay
 muted
 loop
@@ -328,13 +344,14 @@ style={revealStyle(howVisible, i * 0.18)}
 >
 <div className="relative mb-6">
 <div
-className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl"
+className="w-20 h-20 rounded-2xl flex items-center justify-center"
 style={{
 background: "#160f29",
+color: "#c8a96e",
 animation: howVisible ? `tealPulse 3s ease ${i * 0.4 + 0.5}s infinite` : "none",
 }}
 >
-{step.icon}
+<step.Icon size={36} />
 </div>
 <span
 className="absolute -top-2.5 -right-2.5 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
@@ -387,7 +404,12 @@ e.currentTarget.style.background = "rgba(255,255,255,0.04)";
 e.currentTarget.style.borderColor = "rgba(255,255,255,0.09)";
 }}
 >
-<span className="text-2xl">{f.icon}</span>
+<span
+className="inline-flex w-11 h-11 rounded-xl items-center justify-center"
+style={{ background: "rgba(110,231,183,0.12)", color: "#6ee7b7" }}
+>
+<f.Icon size={22} />
+</span>
 <p className="mt-3 font-semibold text-white">{f.title}</p>
 <p className="mt-2 text-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>{f.desc}</p>
 </div>
@@ -405,6 +427,8 @@ border: "1px solid rgba(255,255,255,0.07)",
 <img
 src={LandingImg2}
 alt="Travel preview"
+loading="lazy"
+decoding="async"
 className="w-full h-[380px] object-cover"
 />
 <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
@@ -476,13 +500,10 @@ About us →
 
 {/* Quote photo */}
 <div className="rounded-2xl overflow-hidden h-60 md:h-72 relative">
-<video
+<LazyVideo
 src={vietnameVideo}
+poster={LandingImg5}
 className="w-full h-full object-cover"
-autoPlay
-muted
-loop
-playsInline
 />
 <div
 className="absolute inset-0"
@@ -527,22 +548,35 @@ Explore all →
 </button>
 </div>
 
-{/* Row 1: big (col-span-2) + tall (row-span-2 implicitly via CSS) */}
+{/* ── Mobile bento (≤ md): clean 2-col grid, every tile the same height ── */}
+<div
+className="grid grid-cols-2 gap-3 md:hidden"
+style={revealStyle(gridVisible, 0.1)}
+>
+<PhotoCard img={LandingImg7} title="Coastal Escapes"      tag="Sun + water"        height="h-44" />
+<PhotoCard img={LandingImg5} title="Mountain Mornings"    tag="Hikes + views"      height="h-44" />
+<PhotoCard img={LandingImg1} title="City Nights"          tag="Food + lights"      height="h-44" />
+<PhotoCard img={LandingImg4} title="Big Adventures"       tag="Go all in"          height="h-44" />
+<PhotoCard img={LandingImg6} title="Hidden Gems"          tag="Local favorites"    height="h-44" />
+<PhotoCard img={LandingImg2} title="Weekend Getaways"     tag="Quick reset"        height="h-44" />
+<PhotoCard img={LandingImg3} title="Urban Escapes"        tag="New perspectives"   height="h-44" className="col-span-2" />
+</div>
+
+{/* ── Desktop bento (md+): wide + tall + 2 small + row of 3 ── */}
+<div className="hidden md:block">
+{/* Row 1: wide (col-span-2) + tall (row-span-2) */}
 <div
 className="grid grid-cols-3 gap-4"
 style={revealStyle(gridVisible, 0.1)}
 >
-{/* Wide tile */}
 <div className="col-span-2">
 <PhotoCard img={LandingImg7} title="Coastal Escapes" tag="Sun + water" height="h-72" />
 </div>
-{/* Tall tile */}
 <div className="row-span-2" style={{ gridRow: "1 / 3" }}>
 <PhotoCard img={LandingImg5} title="Mountain Mornings" tag="Hikes + views" height="h-full" className="min-h-[592px]" />
 </div>
-{/* Two smaller tiles in row 2 */}
-<PhotoCard img={LandingImg1} title="City Nights" tag="Food + lights" height="h-72" style={revealStyle(gridVisible, 0.18)} />
-<PhotoCard img={LandingImg4} title="Big Adventures" tag="Go all in" height="h-72" style={revealStyle(gridVisible, 0.22)} />
+<PhotoCard img={LandingImg1} title="City Nights"     tag="Food + lights" height="h-72" style={revealStyle(gridVisible, 0.18)} />
+<PhotoCard img={LandingImg4} title="Big Adventures"  tag="Go all in"     height="h-72" style={revealStyle(gridVisible, 0.22)} />
 </div>
 
 {/* Row 3: three equal */}
@@ -550,9 +584,10 @@ style={revealStyle(gridVisible, 0.1)}
 className="grid grid-cols-3 gap-4 mt-4"
 style={revealStyle(gridVisible, 0.3)}
 >
-<PhotoCard img={LandingImg6} title="Hidden Gems" tag="Local favorites" height="h-56" />
-<PhotoCard img={LandingImg2} title="Weekend Getaways" tag="Quick reset" height="h-56" />
-<PhotoCard img={LandingImg3} title="Urban Escapes" tag="New perspectives" height="h-56" />
+<PhotoCard img={LandingImg6} title="Hidden Gems"        tag="Local favorites"  height="h-56" />
+<PhotoCard img={LandingImg2} title="Weekend Getaways"   tag="Quick reset"      height="h-56" />
+<PhotoCard img={LandingImg3} title="Urban Escapes"      tag="New perspectives" height="h-56" />
+</div>
 </div>
 </div>
 </section>
@@ -563,14 +598,11 @@ ref={ctaRef}
 className="relative overflow-hidden text-white min-h-[600px] flex items-center"
 style={revealStyle(ctaVisible)}
 >
-{/* Video background */}
-<video
-className="absolute inset-0 w-full h-full object-cover"
+{/* Video background — offscreen on initial load, lazily loaded + auto-paused */}
+<LazyVideo
 src={drivingVideo}
-autoPlay
-muted
-loop
-playsInline
+poster={LandingImg5}
+className="absolute inset-0 w-full h-full object-cover"
 />
 
 {/* Dark gradient overlay — heavier on left so text stays readable */}

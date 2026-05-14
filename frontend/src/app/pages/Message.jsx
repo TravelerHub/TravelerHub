@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { chatApi } from "../../components/chatbox/chatAPI";
 import ChatLayout from "../../components/chatbox/chatLayout";
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
-import { XMarkIcon, CheckIcon } from "@heroicons/react/24/outline";
+import { XMarkIcon, CheckIcon, Bars3Icon } from "@heroicons/react/24/outline";
 import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
 import { API_BASE } from "../../config";
 import { ensureActiveGroupId, getActiveGroupId, getMyGroups, setActiveGroupId } from "../../services/groupService";
@@ -21,6 +21,7 @@ export default function Message() {
   const [refreshTrigger,   setRefreshTrigger]   = useState(0);
   const [groups,           setGroups]           = useState([]);
   const [activeGroupId,    setActiveGroupIdState] = useState("");
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
 
   const displayName = user?.username || user?.name || "Traveler";
 
@@ -120,28 +121,57 @@ export default function Message() {
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "#f3f4f6" }}>
 
+      {/* ══ MOBILE SIDEBAR BACKDROP ═══════════════════════════════════════ */}
+      {showMobileSidebar && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setShowMobileSidebar(false)}
+        />
+      )}
+
       {/* ══ SIDEBAR ════════════════════════════════════════════════════════ */}
-      <aside className="w-52 shrink-0 flex flex-col" style={{ background: "#000000" }}>
+      <aside
+        className={`
+          fixed inset-y-0 left-0 z-50 w-52 flex flex-col transition-transform duration-300
+          lg:static lg:translate-x-0 lg:shrink-0
+          ${showMobileSidebar ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
+        `}
+        style={{ background: "#000000" }}
+      >
 
         {/* Greeting */}
-        <div className="px-5 pt-6 pb-5 border-b shrink-0" style={{ borderColor: "#374151" }}>
-          <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: "#6b7280" }}>
-            Hi,
-          </p>
-          <p className="font-bold text-lg leading-tight truncate" style={{ color: "#f9fafb" }}>
-            {displayName}
-          </p>
+        <div className="px-5 pt-6 pb-5 border-b shrink-0 flex items-start justify-between gap-2" style={{ borderColor: "#374151" }}>
+          <div className="min-w-0">
+            <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: "#6b7280" }}>
+              Hi,
+            </p>
+            <p className="font-bold text-lg leading-tight truncate" style={{ color: "#f9fafb" }}>
+              {displayName}
+            </p>
+          </div>
+          <button
+            onClick={() => setShowMobileSidebar(false)}
+            className="lg:hidden p-1 rounded-lg hover:bg-white/10 shrink-0"
+            aria-label="Close menu"
+          >
+            <XMarkIcon className="w-5 h-5" style={{ color: "#9ca3af" }} />
+          </button>
         </div>
 
         {/* Nav */}
-        <nav className="flex flex-col gap-1 px-3 py-4 flex-1">
+        <nav className="flex flex-col gap-1 px-3 py-4 flex-1 overflow-y-auto">
           {SIDEBAR_ITEMS.map((item) => {
             const isActive   = item.path === "/message";
             const isDisabled = !item.path;
             return (
               <button
                 key={item.label}
-                onClick={() => item.path && navigate(item.path)}
+                onClick={() => {
+                  if (item.path) {
+                    navigate(item.path);
+                    setShowMobileSidebar(false);
+                  }
+                }}
                 disabled={isDisabled}
                 className={`
                   w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition
@@ -159,7 +189,7 @@ export default function Message() {
         </nav>
 
         {/* New trip */}
-        <div className="px-3 pb-5">
+        <div className="px-3 pb-5 shrink-0">
           <button
             onClick={() => navigate("/dashboard")}
             className="w-full py-2.5 rounded-lg text-sm font-semibold transition hover:bg-gray-700 active:scale-95"
@@ -172,37 +202,10 @@ export default function Message() {
 
       {/* ══ MAIN ══════════════════════════════════════════════════════════ */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Navbar_Dashboard />
+        <Navbar_Dashboard onMenuClick={() => setShowMobileSidebar(true)} />
 
-        {/* Chat area */}
-        <div className="flex-1 overflow-hidden p-4" style={{ background: "#f3f4f6" }}>
-          <div className="mb-3 flex items-center gap-2">
-            <span className="text-xs font-semibold" style={{ color: "#6b7280" }}>Group</span>
-            <select
-              value={activeGroupId}
-              onChange={(e) => {
-                const value = e.target.value;
-                setActiveGroupId(value);
-                setActiveGroupIdState(value);
-                setRefreshTrigger((n) => n + 1);
-              }}
-              className="px-3 py-1.5 rounded-lg text-xs"
-              style={{ border: "1px solid #d1d5db", background: "#fff", color: "#111827" }}
-            >
-              {groups.length === 0 ? (
-                <option value="">No groups</option>
-              ) : (
-                groups.map((group) => {
-                  const gid = group.group_id || group.id;
-                  return (
-                    <option key={gid} value={gid}>
-                      {group.name || "Untitled Group"}
-                    </option>
-                  );
-                })
-              )}
-            </select>
-          </div>
+        {/* Chat area — trip selector lives in the top navbar; no duplicate here. */}
+        <div className="flex-1 overflow-hidden p-2 sm:p-4 pb-[calc(60px+env(safe-area-inset-bottom,0px))] md:pb-4" style={{ background: "#f3f4f6" }}>
           <ChatLayout
             key={refreshTrigger}
             currentUser={user}
@@ -220,7 +223,7 @@ export default function Message() {
           onClick={closeModal}
         >
           <div
-            className="rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden"
+            className="rounded-2xl max-w-sm w-full shadow-2xl overflow-y-auto max-h-[90vh]"
             style={{ background: "#fbfbf2" }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -231,7 +234,7 @@ export default function Message() {
               </p>
               <button
                 onClick={closeModal}
-                className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/10 transition"
+                className="w-9 h-9 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg hover:bg-white/10 transition"
               >
                 <XMarkIcon className="w-4 h-4 text-gray-400" />
               </button>

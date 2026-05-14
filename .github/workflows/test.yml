@@ -1,0 +1,83 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend deps
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio
+
+      - name: Run pytest
+        working-directory: backend
+        env:
+          # Tests should never need real credentials. Provide placeholders so
+          # the import-time env reads in routers don't crash.
+          JWT_SECRET_KEY: test-secret-do-not-use-in-prod
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_ANON_KEY: test-anon
+          SUPABASE_SERVICE_ROLE_KEY: test-service
+        run: pytest -q
+
+  frontend:
+    name: Frontend (vitest + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      # Lint and unit-test results are reported but not blocking yet — the
+      # repo has ~55 pre-existing lint errors and 2 failing tests carried
+      # over from before this CI workflow existed. Cleanup is tracked as a
+      # follow-up; once green, drop the continue-on-error.
+      - name: Lint (non-blocking, see follow-up issue)
+        working-directory: frontend
+        continue-on-error: true
+        run: npm run lint
+
+      - name: Test (non-blocking, see follow-up issue)
+        working-directory: frontend
+        continue-on-error: true
+        run: npm run test
+
+      - name: Build
+        working-directory: frontend
+        env:
+          VITE_API_URL: http://localhost:8000
+          VITE_SUPABASE_URL: https://example.supabase.co
+          VITE_SUPABASE_ANON_KEY: test-anon
+        run: npm run build

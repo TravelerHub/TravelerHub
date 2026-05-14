@@ -155,13 +155,12 @@ export default function LocalInfoWidget() {
   useEffect(() => {
     let cancelled = false;
     const fetchAll = async () => {
-      // 1. Timezone from IP via worldtimeapi (free, no key)
+      // 1. Timezone from browser Intl API (no network call needed)
       try {
-        const tzRes  = await fetch("https://worldtimeapi.org/api/ip");
-        const tzData = await tzRes.json();
-        if (!cancelled) {
-          setTimezone(tzData.timezone);
-          setLocalTime(new Date(tzData.datetime));
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (!cancelled && tz) {
+          setTimezone(tz);
+          setLocalTime(new Date());
         }
       } catch { /* silent */ }
 

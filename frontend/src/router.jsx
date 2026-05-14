@@ -1,56 +1,73 @@
+import { lazy, Suspense } from "react";
 import { createBrowserRouter, Outlet } from "react-router-dom";
-import NotFound from "./app/pages/NotFound";
 
+// Eager: public LCP-critical pages and shared layout pieces.
 import Landing from "./app/pages/Landing.jsx";
-import About from "./app/pages/About.jsx";
-import ContactUs from "./app/pages/ContactUs.jsx";
-import Service from "./app/pages/Service.jsx";
-import Feedback from "./app/pages/Feedback.jsx";
 import Login from "./app/pages/Login.jsx";
 import SignUp from "./app/pages/SignUp.jsx";
-import Dashboard from "./app/pages/Dashboard.jsx";
-import Settings from "./app/pages/Settings.jsx";
-import Profile  from "./app/pages/Profile.jsx";
-import Navigation from "./app/pages/Navigation.jsx";
-import ResetPassword from "./app/pages/ResetPassword.jsx";
+import NotFound from "./app/pages/NotFound";
 import OTP from "./app/pages/OTP.jsx";
-import NewPassword from "./app/pages/NewPassword.jsx";
-import Expenses from "./app/pages/Expenses.jsx";
-import Message from "./app/pages/Message.jsx";
-import Booking from "./app/pages/Booking.jsx";
-import Calendar from "./app/pages/Calendar.jsx";
-import TravelSuggestion from "./app/pages/TravelSuggestion.jsx";
-import Todo from "./app/pages/Todo.jsx";
 
-import Finance from "./app/pages/Finance.jsx";
-import GroupVote from "./app/pages/GroupVote.jsx";
-import WelcomeAfterLogin from "./app/pages/WelcomeAfterLogin.jsx";
 import ChatWidget from "./components/ChatWidget.jsx";
-import Emergency from "./app/pages/Emergency.jsx";
-import Gallery from "./app/pages/Gallery.jsx";
 import OfflineBanner from "./components/OfflineBanner.jsx";
 import InstallPrompt from "./components/InstallPrompt.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
-import StoryMode from "./components/StoryMode.jsx";
-import JoinTrip from "./app/pages/JoinTrip.jsx";
 import MobileNav from "./components/MobileNav.jsx";
-import Notifications from "./app/pages/Notifications";
+import RouteFallback from "./components/RouteFallback.jsx";
+
+// Lazy: every other page splits into its own chunk.
+const About = lazy(() => import("./app/pages/About.jsx"));
+const ContactUs = lazy(() => import("./app/pages/ContactUs.jsx"));
+const Service = lazy(() => import("./app/pages/Service.jsx"));
+const Feedback = lazy(() => import("./app/pages/Feedback.jsx"));
+const Dashboard = lazy(() => import("./app/pages/Dashboard.jsx"));
+const Settings = lazy(() => import("./app/pages/Settings.jsx"));
+const Profile = lazy(() => import("./app/pages/Profile.jsx"));
+const Navigation = lazy(() => import("./app/pages/Navigation.jsx"));
+const ResetPassword = lazy(() => import("./app/pages/ResetPassword.jsx"));
+const NewPassword = lazy(() => import("./app/pages/NewPassword.jsx"));
+const Expenses = lazy(() => import("./app/pages/Expenses.jsx"));
+const Message = lazy(() => import("./app/pages/Message.jsx"));
+const Booking = lazy(() => import("./app/pages/Booking.jsx"));
+const Calendar = lazy(() => import("./app/pages/Calendar.jsx"));
+const TravelSuggestion = lazy(() => import("./app/pages/TravelSuggestion.jsx"));
+const Todo = lazy(() => import("./app/pages/Todo.jsx"));
+const Finance = lazy(() => import("./app/pages/Finance.jsx"));
+const GroupVote = lazy(() => import("./app/pages/GroupVote.jsx"));
+const WelcomeAfterLogin = lazy(() => import("./app/pages/WelcomeAfterLogin.jsx"));
+const Emergency = lazy(() => import("./app/pages/Emergency.jsx"));
+const Gallery = lazy(() => import("./app/pages/Gallery.jsx"));
+const StoryMode = lazy(() => import("./components/StoryMode.jsx"));
+const PublicStory = lazy(() => import("./app/pages/PublicStory.jsx"));
+const JoinTrip = lazy(() => import("./app/pages/JoinTrip.jsx"));
+const Notifications = lazy(() => import("./app/pages/Notifications"));
+const Privacy = lazy(() => import("./app/pages/Privacy.jsx"));
+const Terms = lazy(() => import("./app/pages/Terms.jsx"));
 
 
-// Layout that injects the floating AI chat widget and network status on authenticated pages
+// Layout that injects the floating AI chat widget and network status on authenticated pages.
+// The Suspense boundary lives here so any lazy authenticated page can show RouteFallback.
 function AuthLayout() {
   return (
     <>
       <OfflineBanner />
       {/* pb-16 gives content room above the mobile bottom nav; cancelled on md+ */}
       <div className="pb-16 md:pb-0">
-        <Outlet />
+        <Suspense fallback={<RouteFallback />}>
+          <Outlet />
+        </Suspense>
       </div>
       <ChatWidget />
       <InstallPrompt />
       <MobileNav />
     </>
   );
+}
+
+// Wrap a single lazy element in Suspense (used for public lazy routes that
+// don't share a parent layout with its own Suspense boundary).
+function LazyRoute({ children }) {
+  return <Suspense fallback={<RouteFallback />}>{children}</Suspense>;
 }
 
 const router = createBrowserRouter([
@@ -64,16 +81,19 @@ const router = createBrowserRouter([
       children: [
         // Public routes (no chat widget)
         { path: "/", element: <Landing /> },
-        { path: "/about", element: <About /> },
-        { path: "/contactus", element: <ContactUs /> },
-        { path: "/service", element: <Service /> },
-        { path: "/feedback", element: <Feedback /> },
+        { path: "/about", element: <LazyRoute><About /></LazyRoute> },
+        { path: "/contactus", element: <LazyRoute><ContactUs /></LazyRoute> },
+        { path: "/service", element: <LazyRoute><Service /></LazyRoute> },
+        { path: "/feedback", element: <LazyRoute><Feedback /></LazyRoute> },
+        { path: "/privacy", element: <LazyRoute><Privacy /></LazyRoute> },
+        { path: "/terms", element: <LazyRoute><Terms /></LazyRoute> },
         { path: "/login", element: <Login /> },
         { path: "/signup", element: <SignUp /> },
-        { path: "/resetpassword", element: <ResetPassword /> },
+        { path: "/resetpassword", element: <LazyRoute><ResetPassword /></LazyRoute> },
         { path: "/otp", element: <OTP /> },
-        { path: "/newpassword", element: <NewPassword /> },
-        { path: "/join/:token", element: <JoinTrip /> },
+        { path: "/newpassword", element: <LazyRoute><NewPassword /></LazyRoute> },
+        { path: "/join/:token", element: <LazyRoute><JoinTrip /></LazyRoute> },
+        { path: "/story/public/:token", element: <LazyRoute><PublicStory /></LazyRoute> },
 
         // Authenticated routes (chat widget available)
         {

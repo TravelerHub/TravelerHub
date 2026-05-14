@@ -1,0 +1,71 @@
+# nginx vhost template for TravelerHub.
+#
+# Render with envsubst at install time:
+#   envsubst '$DOMAIN $API_DOMAIN' < travelhub.conf.template \
+#     > /etc/nginx/sites-available/travelhub
+#
+# scripts/server-setup.sh does this for you.
+
+# ── ${DOMAIN} — serves the React frontend ───────────────────────────────────
+server {
+    listen 80;
+    server_name ${DOMAIN};
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name ${DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    include             /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam         /etc/letsencrypt/ssl-dhparams.pem;
+
+    # SPA: serve static files from the deploy target, fall through to index.html.
+    root /var/www/${DOMAIN};
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Long-cache hashed assets, never cache index.html.
+    location ~* \.(?:js|css|png|jpg|jpeg|gif|svg|webp|ico|woff2?)$ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+}
+
+# ── ${API_DOMAIN} — serves the FastAPI backend ──────────────────────────────
+server {
+    listen 80;
+    server_name ${API_DOMAIN};
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name ${API_DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${API_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${API_DOMAIN}/privkey.pem;
+    include             /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam         /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Increase for file uploads (receipt scans, gallery photos)
+    client_max_body_size 20M;
+
+    location / {
+        proxy_pass         http://127.0.0.1:8001;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+
+        # WebSocket support (Supabase realtime, map tracking)
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade $http_upgrade;
+        proxy_set_header   Connection "upgrade";
+    }
+}

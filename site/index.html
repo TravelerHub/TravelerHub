@@ -1,0 +1,1134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Travelhub — Go where you all choose.</title>
+<meta name="description" content="A quiet, considered place to plan group travel. Vote on destinations, split costs, share routes — for the whole crew." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500;1,9..144,600&family=DM+Mono:wght@400;500&family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+<style>
+  /* ============================================================
+     TRAVELHUB — Hybrid theme: Golden Hour Editorial × Field Notes
+     Type system:
+       Fraunces      → display + italic emphasis
+       Manrope       → UI body
+       DM Mono       → coordinates, eyebrows, technical metadata
+     Color rules:
+       Cream + ink carry 80% of every screen.
+       Amber is the brand voice (italic emphasis, primary CTA).
+       Terracotta is the action/eyebrow color (≤ 5%).
+       Sage is reserved ONLY for "Booked / Confirmed / Done".
+       No blues, no pure black, no gradients > 160°.
+     IA spine: Dream · Plan · Travel · Remember
+     ============================================================ */
+
+  :root{
+    --amber:        #e8a33d;
+    --amber-2:      #c47d1f;
+    --amber-soft:   #f9ecd0;
+    --terracotta:   #c95f3a;
+    --terracotta-2: #a04826;
+    --sage:         #7a8a6f;
+    --cream:        #faf4e6;
+    --cream-2:      #f1e8d2;
+    --cream-3:      #ede0c3;
+    --ink:          #2a1a10;
+    --ink-2:        #5a3f2a;
+    --muted:        #8a7560;
+    --rule:         rgba(42,26,16,0.14);
+    --rule-strong:  rgba(42,26,16,0.4);
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html, body{ background: var(--cream); color: var(--ink); }
+  body{
+    font-family: "Manrope", -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 16px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a{ color: inherit; text-decoration: none; }
+  img{ display:block; max-width:100%; }
+
+  .serif{ font-family:"Fraunces",serif; font-weight:500; letter-spacing:-0.01em; font-variation-settings:"opsz" 144,"SOFT" 50; }
+  .mono{ font-family:"DM Mono", ui-monospace, monospace; }
+
+  .wrap{ max-width: 1320px; margin: 0 auto; padding: 0 32px; }
+  @media (max-width: 720px){ .wrap{ padding: 0 20px; } }
+
+  /* =========== NAV =========== */
+  nav.top{
+    position:fixed; top:0; left:0; right:0; z-index:50;
+    transition: background .3s ease, color .3s ease, border-color .3s ease;
+    color:#fff;
+  }
+  nav.top.solid{
+    background: rgba(250,244,230,0.92);
+    backdrop-filter: saturate(160%) blur(12px);
+    -webkit-backdrop-filter: saturate(160%) blur(12px);
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink);
+  }
+  .nav-inner{ display:flex; align-items:center; justify-content:space-between; height:72px; }
+  .brand{ display:flex; align-items:baseline; gap:10px; }
+  .brand .mark{
+    width:24px; height:24px; border-radius:50%;
+    background: currentColor; position:relative; transform:translateY(5px);
+  }
+  .brand .mark::after{
+    content:""; position:absolute; inset:5px; border-radius:50%;
+    background: var(--cream);
+  }
+  nav.top.solid .brand .mark{ background: var(--terracotta); }
+  .brand .name{ font-family:"Fraunces",serif; font-weight:600; font-size:24px; letter-spacing:-0.005em; }
+  .brand .name em{ font-style:italic; color: var(--amber); }
+  .nav-links{ display:flex; gap:28px; align-items:center; }
+  .nav-links a{ font-size:14px; opacity:0.85; }
+  .nav-links a:hover{ opacity:1; }
+  .nav-cta{
+    font-size:13px; font-weight:500;
+    padding:9px 18px; border-radius:999px;
+    background:#fff; color: var(--ink);
+    transition: transform .2s ease, background .2s ease;
+  }
+  nav.top.solid .nav-cta{ background: var(--terracotta); color:#fff; }
+  .nav-cta:hover{ transform: translateY(-1px); }
+  @media (max-width: 720px){ .nav-links a:not(.nav-cta){ display:none; } }
+
+  /* =========== HERO =========== */
+  .hero{ position:relative; height:100vh; min-height:720px; color:#fff; overflow:hidden; }
+  .hero-bg{
+    position:absolute; inset:0;
+    background-image: url("img/travelPic5.jpg");
+    background-size: cover; background-position: center;
+    transform: scale(1.06);
+    animation: kenburns 22s ease-in-out infinite alternate;
+  }
+  @keyframes kenburns{
+    from{ transform: scale(1.04) translate(0,0); }
+    to  { transform: scale(1.12) translate(-2%, -1%); }
+  }
+  .hero::after{
+    content:""; position:absolute; inset:0;
+    background: linear-gradient(180deg,
+      rgba(42,26,16,0.30) 0%,
+      rgba(42,26,16,0.10) 30%,
+      rgba(42,26,16,0.55) 75%,
+      rgba(42,26,16,0.92) 100%);
+    pointer-events:none;
+  }
+  .hero-meta{
+    position:relative; z-index:2;
+    padding-top:110px;
+    display:flex; justify-content:space-between; align-items:center;
+    font-family:"DM Mono",monospace;
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color: rgba(255,255,255,0.78);
+  }
+  .hero-meta .live{ display:inline-flex; align-items:center; gap:8px; }
+  .hero-meta .dot{ width:6px; height:6px; border-radius:50%; background:var(--amber); animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{ opacity:.4; } 50%{ opacity:1; } }
+
+  .hero-issue{
+    position:relative; z-index:2;
+    margin-top:18px; padding-bottom:14px;
+    border-bottom: 3px double rgba(255,255,255,0.55);
+    display:flex; justify-content:space-between;
+    font-family:"DM Mono",monospace;
+    font-size:10px; letter-spacing:.18em; text-transform:uppercase;
+    color: rgba(255,255,255,0.65);
+  }
+
+  .hero-content{ position:absolute; left:0; right:0; bottom:80px; z-index:2; }
+  .hero-content .wrap{ display:grid; grid-template-columns: 1.4fr 1fr; gap:48px; align-items:end; }
+  @media (max-width: 900px){
+    .hero-content .wrap{ grid-template-columns:1fr; }
+    .hero-content{ bottom:48px; }
+  }
+
+  h1.headline{
+    font-family:"Fraunces",serif;
+    font-weight:500;
+    font-size: clamp(56px, 9.5vw, 132px);
+    line-height: 0.95;
+    letter-spacing: -0.02em;
+    text-shadow: 0 6px 30px rgba(0,0,0,0.45);
+    text-wrap: pretty;
+  }
+  h1.headline .it{ font-style:italic; color: var(--amber); }
+
+  .hero-sub{
+    margin-top:20px;
+    font-size:17px; line-height:1.5;
+    color: rgba(255,255,255,0.85);
+    max-width: 38ch;
+  }
+  .hero-actions{ display:flex; gap:14px; align-items:center; margin-top:28px; flex-wrap:wrap; }
+  .btn{
+    display:inline-flex; align-items:center; gap:10px;
+    padding:14px 22px; border-radius:999px;
+    font-size:14px; font-weight:500;
+    transition: transform .2s ease, background .2s ease, color .2s ease;
+    cursor:pointer;
+  }
+  .btn-primary{ background: var(--cream); color: var(--ink); }
+  .btn-primary:hover{ background: var(--amber); color: var(--ink); transform: translateY(-1px); }
+  .btn-ghost{ color:#fff; border-bottom:1px solid rgba(255,255,255,0.7); border-radius:0; padding:6px 0; }
+  .btn-ghost:hover{ border-color: var(--amber); color: var(--amber); }
+  .arrow{ transition: transform .2s ease; }
+  .btn:hover .arrow{ transform: translateX(3px); }
+
+  .trip-card{
+    background: rgba(20,12,8,0.46);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius:18px;
+    padding:22px;
+    color:#fff;
+  }
+  .trip-card-row{ display:flex; justify-content:space-between; align-items:flex-start; gap:16px; }
+  .trip-card-label{ font-family:"DM Mono",monospace; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color: rgba(255,255,255,0.6); margin-bottom:4px; }
+  .trip-card-value{ font-family:"Fraunces",serif; font-size:26px; line-height:1; }
+  .trip-card-value.it{ font-style:italic; color: var(--amber); }
+  .trip-card-meta{ font-family:"DM Mono",monospace; font-size:11px; color: rgba(255,255,255,0.6); margin-top:4px; }
+  .trip-card-divider{ height:1px; background: rgba(255,255,255,0.16); margin:22px -8px 18px; position:relative; }
+  .trip-card-divider::before, .trip-card-divider::after{
+    content:""; position:absolute; top:-7px;
+    width:14px; height:14px; border-radius:50%;
+    background: rgba(20,12,8,0.92);
+  }
+  .trip-card-divider::before{ left:-15px; }
+  .trip-card-divider::after { right:-15px; }
+  .avatars{ display:flex; }
+  .avatars span{
+    width:28px; height:28px; border-radius:50%;
+    color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:500;
+    border:2px solid rgba(20,12,8,0.6);
+    margin-left:-8px;
+  }
+  .avatars span:first-child{ margin-left:0; background: var(--terracotta); }
+  .avatars span:nth-child(2){ background: var(--amber-2); }
+  .avatars span:nth-child(3){ background: var(--sage); }
+  .avatars span:nth-child(4){ background: var(--amber); color: var(--ink); }
+
+  .live-ticker{
+    position:absolute; bottom:104px; left:32px; z-index:2;
+    display:flex; gap:24px;
+    font-family:"DM Mono",monospace;
+    color: rgba(255,255,255,0.85);
+    font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+  }
+  .live-ticker .stat{ border-left:2px solid var(--terracotta); padding-left:12px; }
+  .live-ticker .num{
+    display:block;
+    font-family:"Fraunces",serif;
+    font-size:28px; font-style:italic;
+    color:#fff; line-height:1; margin-bottom:4px;
+    letter-spacing:0; text-transform:none;
+  }
+  @media (max-width:1100px){ .live-ticker{ display:none; } }
+
+  .scroll-hint{
+    position:absolute; bottom:24px; left:50%; transform:translateX(-50%);
+    z-index:2;
+    font-family:"DM Mono",monospace;
+    font-size:10px; letter-spacing:.2em; color: rgba(255,255,255,0.7);
+    text-transform:uppercase;
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+    animation: hintBob 2.6s ease-in-out infinite;
+  }
+  @keyframes hintBob{ 0%,100%{ transform: translate(-50%,0); } 50%{ transform: translate(-50%,6px); } }
+  .scroll-hint::after{ content:""; width:1px; height:28px; background: rgba(255,255,255,0.5); }
+
+  /* =========== MARQUEE =========== */
+  .marquee-wrap{
+    background: var(--terracotta);
+    color:#fff;
+    overflow:hidden; padding:16px 0;
+    border-top:1px solid rgba(255,255,255,0.08);
+    border-bottom:1px solid rgba(255,255,255,0.08);
+  }
+  .marquee{ display:flex; gap:56px; white-space:nowrap; animation: marq 60s linear infinite; width: max-content; }
+  .marquee span{ font-family:"Fraunces",serif; font-size:26px; }
+  .marquee span.it{ font-style:italic; color: var(--amber); }
+  .marquee .star{ color: var(--amber); font-size:14px; transform: translateY(-4px); }
+  @keyframes marq{ to{ transform: translateX(-50%); } }
+
+  /* =========== STAGE-BREAK BAND =========== */
+  .stage-break{
+    padding: 56px 0;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    background: var(--cream);
+  }
+  .stage-break .wrap{ display:grid; grid-template-columns: 1fr auto 1fr; gap:32px; align-items:center; }
+  .stage-break .num{
+    font-family:"Fraunces",serif; font-style:italic;
+    font-size:64px; line-height:1; color: var(--terracotta); font-weight:500;
+  }
+  .stage-break .lbl{
+    font-family:"DM Mono",monospace;
+    font-size:11px; letter-spacing:.22em; text-transform:uppercase;
+    color: var(--ink-2); text-align:center;
+  }
+  .stage-break .lbl strong{ color: var(--ink); font-weight:500; }
+  .stage-break .rule{ height:0; border-top: 3px double var(--rule-strong); }
+  @media (max-width: 720px){
+    .stage-break .wrap{ grid-template-columns: 1fr; gap:18px; text-align:center; }
+    .stage-break .rule{ display:none; }
+  }
+
+  /* =========== SECTIONS =========== */
+  section.block{ padding: 140px 0; }
+  .eyebrow{
+    font-family:"DM Mono",monospace;
+    font-size:11px; letter-spacing:.18em; text-transform:uppercase;
+    color: var(--terracotta);
+    display:flex; align-items:center; gap:10px;
+    margin-bottom:24px;
+  }
+  .eyebrow::before{ content:""; width:24px; height:1px; background: var(--terracotta); }
+
+  .section-title{
+    font-family:"Fraunces",serif;
+    font-size: clamp(40px, 6.4vw, 80px);
+    line-height:1; letter-spacing:-0.02em;
+    max-width:18ch; text-wrap: balance;
+    font-weight:500;
+  }
+  .section-title em{ color: var(--terracotta); font-style:italic; }
+  .section-lede{ font-size:18px; color: var(--ink-2); max-width:56ch; margin-top:24px; }
+
+  /* SPLIT */
+  .split{ display:grid; grid-template-columns: 1.05fr 1fr; gap:64px; align-items:center; margin-top:80px; }
+  .split.flip{ grid-template-columns: 1fr 1.05fr; }
+  .split.flip .split-img{ order:2; }
+  @media (max-width: 900px){
+    .split, .split.flip{ grid-template-columns:1fr; gap:32px; }
+    .split.flip .split-img{ order:0; }
+  }
+  .split-img{
+    position:relative; border-radius:22px; overflow:hidden;
+    aspect-ratio: 4/5;
+    box-shadow: 0 30px 80px -30px rgba(42,26,16,0.35);
+  }
+  .split-img img{ width:100%; height:100%; object-fit:cover; transition: transform 1.2s ease; }
+  .split-img:hover img{ transform: scale(1.04); }
+  .split-img .badge{
+    position:absolute; top:20px; left:20px;
+    background: var(--terracotta);
+    border-radius:999px;
+    padding:8px 14px;
+    font-family:"DM Mono",monospace;
+    font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+    color:#fff;
+    box-shadow: 0 6px 18px -6px rgba(201,95,58,0.6);
+  }
+  .split-img .badge.sage{ background: var(--sage); box-shadow: 0 6px 18px -6px rgba(122,138,111,0.55); }
+  .split-img .badge.amber{ background: var(--amber); color: var(--ink); box-shadow: 0 6px 18px -6px rgba(232,163,61,0.65); }
+  .split-img .stamp{
+    position:absolute; bottom:20px; right:20px;
+    font-family:"DM Mono",monospace;
+    font-size:10px; letter-spacing:.14em;
+    color: rgba(255,255,255,0.85);
+    text-transform:uppercase;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  }
+  .split-text h3{
+    font-family:"Fraunces",serif; font-weight:500;
+    font-size: clamp(36px, 5vw, 56px); line-height:1.05;
+    letter-spacing:-0.015em;
+  }
+  .split-text h3 em{ color: var(--terracotta); font-style:italic; }
+  .split-text p{ font-size:17px; color: var(--ink-2); margin-top:20px; max-width:48ch; }
+  .split-text ul{ list-style:none; margin-top:28px; }
+  .split-text li{
+    padding:14px 0;
+    border-top:1px solid var(--rule);
+    display:flex; gap:14px; align-items:baseline;
+    font-size:15px;
+  }
+  .split-text li:last-child{ border-bottom:1px solid var(--rule); }
+  .split-text li .num{ font-family:"DM Mono",monospace; font-size:11px; color: var(--terracotta); letter-spacing:.14em; min-width:38px; }
+
+  /* BENTO */
+  .bento{ margin-top:64px; display:grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: 200px; gap:16px; }
+  .photo-card{
+    position:relative; border-radius:18px; overflow:hidden; cursor:pointer;
+    box-shadow: 0 14px 40px -20px rgba(42,26,16,0.35);
+  }
+  .photo-card img{ width:100%; height:100%; object-fit:cover; transition: transform 1s ease; }
+  .photo-card:hover img{ transform: scale(1.06); }
+  .photo-card::after{
+    content:""; position:absolute; inset:0;
+    background: linear-gradient(180deg, transparent 50%, rgba(42,26,16,0.7) 100%);
+  }
+  .photo-card .cap{ position:absolute; bottom:18px; left:20px; right:20px; z-index:1; color:#fff; }
+  .photo-card .cap .ttl{ font-family:"Fraunces",serif; font-size:22px; line-height:1.1; }
+  .photo-card .cap .ttl em{ font-style:italic; color: var(--amber); }
+  .photo-card .cap .meta{
+    font-family:"DM Mono",monospace; font-size:10px; letter-spacing:.14em; text-transform:uppercase;
+    color: rgba(255,255,255,0.78); margin-top:4px;
+  }
+  .b-1{ grid-column: span 4; grid-row: span 2; }
+  .b-2{ grid-column: span 2; grid-row: span 1; }
+  .b-3{ grid-column: span 2; grid-row: span 1; }
+  .b-4{ grid-column: span 2; grid-row: span 2; }
+  .b-5{ grid-column: span 2; grid-row: span 1; }
+  .b-6{ grid-column: span 2; grid-row: span 1; }
+  @media (max-width: 900px){
+    .bento{ grid-template-columns: 1fr 1fr; }
+    .b-1, .b-2, .b-3, .b-4, .b-5, .b-6{ grid-column: span 1; grid-row: span 1; }
+    .b-1{ grid-column: span 2; grid-row: span 2; }
+  }
+
+  /* IMMERSIVE */
+  .immersive{ position:relative; min-height:620px; display:flex; align-items:center; color:#fff; overflow:hidden; }
+  .immersive .bg{
+    position:absolute; inset:0;
+    background-image: url("img/travelPic11.jpg");
+    background-size: cover; background-position: center;
+  }
+  .immersive::after{
+    content:""; position:absolute; inset:0;
+    background: linear-gradient(90deg, rgba(42,26,16,0.78) 0%, rgba(42,26,16,0.4) 60%, rgba(42,26,16,0.1) 100%);
+  }
+  .immersive .wrap{ position:relative; z-index:1; padding:120px 32px; }
+  .pq-frame{
+    max-width:32ch;
+    border-top: 3px double rgba(255,255,255,0.55);
+    border-bottom: 3px double rgba(255,255,255,0.55);
+    padding: 32px 0;
+  }
+  blockquote{
+    font-family:"Fraunces",serif;
+    font-weight:500; font-style:italic;
+    font-size: clamp(28px, 4vw, 48px);
+    line-height:1.18;
+    text-wrap:pretty;
+  }
+  blockquote .accent{ color: var(--amber); }
+  .cite{
+    margin-top:28px;
+    font-family:"DM Mono",monospace;
+    font-size:11px; letter-spacing:.14em; color: rgba(255,255,255,0.78); text-transform:uppercase;
+  }
+
+  /* HOW IT WORKS */
+  .steps{ margin-top:80px; display:grid; grid-template-columns: repeat(3, 1fr); gap:32px; }
+  .step{ border-radius:18px; overflow:hidden; background: var(--cream-2); display:flex; flex-direction:column; }
+  .step-img{ position:relative; aspect-ratio: 16/10; overflow:hidden; }
+  .step-img img{ width:100%; height:100%; object-fit:cover; transition: transform 1s ease; }
+  .step:hover .step-img img{ transform: scale(1.05); }
+  .step-img .num{
+    position:absolute; top:16px; left:16px;
+    background: rgba(42,26,16,0.6);
+    backdrop-filter: blur(8px);
+    color:#fff;
+    font-family:"DM Mono",monospace;
+    font-size:11px; letter-spacing:.14em;
+    padding:6px 12px; border-radius:999px;
+  }
+  .step-body{ padding:28px 28px 32px; }
+  .step-body h4{
+    font-family:"Fraunces",serif; font-weight:500;
+    font-size:28px; line-height:1.1; letter-spacing:-0.01em;
+  }
+  .step-body h4 em{ color: var(--terracotta); font-style:italic; }
+  .step-body p{ font-size:15px; color: var(--ink-2); margin-top:12px; }
+  @media (max-width: 900px){ .steps{ grid-template-columns:1fr; } }
+
+  /* PLANNER BAND */
+  .planner-band{
+    background: linear-gradient(180deg, var(--amber-soft) 0%, var(--cream) 100%);
+    padding: 140px 0; position:relative; overflow:hidden;
+  }
+  .planner-band::before{
+    content:""; position:absolute; top:-120px; right:-140px;
+    width:480px; height:480px; border-radius:50%;
+    background: radial-gradient(circle, rgba(232,163,61,0.28) 0%, transparent 65%);
+  }
+  .planner-band::after{
+    content:""; position:absolute; bottom:-150px; left:-150px;
+    width:500px; height:500px; border-radius:50%;
+    background: radial-gradient(circle, rgba(201,95,58,0.18) 0%, transparent 70%);
+  }
+  .planner-grid{ margin-top:64px; display:grid; grid-template-columns: 1fr 1.3fr; gap:32px; position:relative; z-index:1; }
+  @media (max-width: 900px){ .planner-grid{ grid-template-columns:1fr; } }
+
+  .itinerary{
+    background:#fff; border-radius:22px; padding:28px;
+    box-shadow: 0 30px 60px -30px rgba(42,26,16,0.25);
+    border: 1px solid var(--rule);
+  }
+  .itinerary h5{ font-family:"Fraunces",serif; font-size:24px; font-weight:500; margin-bottom:4px; }
+  .itinerary .subt{ font-family:"DM Mono",monospace; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color: var(--muted); margin-bottom:24px; }
+
+  .day{ display:grid; grid-template-columns: 76px 1fr auto; gap:18px; align-items:start; padding:18px 0; border-top:1px solid var(--rule); }
+  .day:first-of-type{ border-top:none; }
+  .day .when{ font-family:"DM Mono",monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color: var(--terracotta); }
+  .day .when .big{
+    display:block; font-family:"Fraunces",serif;
+    font-size:26px; font-style:italic; color: var(--ink);
+    letter-spacing:0; text-transform:none; line-height:1; margin-top:2px;
+  }
+  .day .what{ font-family:"Fraunces",serif; font-size:18px; color: var(--ink); }
+  .day .what em{ font-style:italic; color: var(--terracotta); }
+  .day .where{ font-size:13px; color: var(--muted); margin-top:4px; display:flex; align-items:center; gap:8px; }
+  .day .chip{
+    align-self:center;
+    font-family:"DM Mono",monospace; font-size:10px;
+    letter-spacing:.1em; text-transform:uppercase;
+    background: var(--amber-soft); color: var(--amber-2);
+    padding:4px 10px; border-radius:999px; white-space: nowrap;
+  }
+  .day .chip.terra{ background: rgba(201,95,58,0.12); color: var(--terracotta); }
+  .day .chip.sage{ background: rgba(122,138,111,0.18); color: var(--sage); }
+
+  .planner-side{ display:flex; flex-direction:column; gap:24px; }
+  .stat-card{
+    background:#fff; border-radius:22px; padding:24px;
+    border:1px solid var(--rule);
+    box-shadow: 0 20px 50px -30px rgba(42,26,16,0.18);
+  }
+  .stat-card h6{ font-family:"DM Mono",monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color: var(--muted); margin-bottom:16px; font-weight:500; }
+  .budget-row{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+  .budget-row .amt{ font-family:"Fraunces",serif; font-size:32px; font-weight:500; line-height:1; }
+  .budget-row .amt em{ color: var(--sage); font-style:italic; font-weight:500; font-size:0.66em; margin-left:6px; letter-spacing:0; }
+  .budget-row .of{ font-family:"DM Mono",monospace; font-size:11px; color: var(--muted); letter-spacing:.1em; }
+  .progress{ height:8px; background: var(--cream-3); border-radius:999px; overflow:hidden; }
+  .progress .fill{
+    height:100%; width:64%;
+    background: linear-gradient(90deg, var(--sage), var(--amber));
+    border-radius:999px;
+  }
+  .split-list{ margin-top:20px; }
+  .split-row{ display:flex; justify-content:space-between; align-items:center; padding:10px 0; font-size:14px; border-top:1px dashed var(--rule); }
+  .split-row:first-child{ border-top:none; }
+  .split-row .who{ display:flex; align-items:center; gap:10px; }
+  .split-row .av{ width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600; color:#fff; }
+  .split-row .amt{ font-family:"DM Mono",monospace; font-weight:500; }
+  .split-row .owe{ color: var(--terracotta); }
+  .split-row .gets{ color: var(--sage); }
+
+  .weather-card{
+    background: linear-gradient(155deg, #f0b85a 0%, #e8a33d 45%, #d97a4f 100%);
+    color:#fff;
+    border-radius:22px; padding:24px;
+    position:relative; overflow:hidden;
+  }
+  .weather-card .sun-deco{
+    position:absolute; top:-30px; right:-30px;
+    width:140px; height:140px; border-radius:50%;
+    background: rgba(255,255,255,0.15);
+  }
+  .weather-card h6{ font-family:"DM Mono",monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; opacity:0.85; margin-bottom:12px; font-weight:500; }
+  .weather-card .temp{ font-family:"Fraunces",serif; font-size:56px; font-weight:500; line-height:1; }
+  .weather-card .temp em{ font-style:italic; }
+  .weather-card .place{ font-family:"Fraunces",serif; font-size:18px; font-style:italic; margin-top:8px; }
+  .weather-card .forecast{ display:flex; gap:16px; margin-top:20px; font-family:"DM Mono",monospace; font-size:11px; letter-spacing:.08em; flex-wrap:wrap; }
+  .weather-card .forecast div{ opacity:0.85; }
+
+  /* PRICING */
+  .pricing-grid{ margin-top:64px; display:grid; grid-template-columns: 1fr 1fr; gap:24px; }
+  @media (max-width: 720px){ .pricing-grid{ grid-template-columns:1fr; } }
+  .price-card{ border-radius:18px; padding:40px; }
+  .price-card.free{ background: var(--cream-2); }
+  .price-card.pro{
+    background: linear-gradient(155deg, #d4892a 0%, #c47d1f 50%, #b85a2e 100%);
+    color:#fff; position:relative; overflow:hidden;
+  }
+  .price-card .plan{ font-family:"DM Mono",monospace; font-size:11px; letter-spacing:.14em; color: var(--muted); text-transform:uppercase; }
+  .price-card.pro .plan{ color: var(--cream); }
+  .price-card .price{ font-family:"Fraunces",serif; font-size:64px; line-height:1; margin-top:16px; font-weight:500; }
+  .price-card .price .per{ font-size:18px; color: rgba(255,255,255,0.65); font-family:"DM Mono",monospace; margin-left:6px; }
+  .price-card.free .price .per{ color: var(--muted); }
+  .price-card .blurb{ font-size:14px; margin-top:8px; }
+  .price-card.free .blurb{ color: var(--ink-2); }
+  .price-card.pro .blurb{ color: rgba(255,255,255,0.75); }
+  .price-card ul{ list-style:none; margin-top:32px; font-size:14px; }
+  .price-card li{ padding:12px 0; border-top:1px solid var(--rule); }
+  .price-card.pro li{ border-top-color: rgba(255,255,255,0.18); color: rgba(255,255,255,0.9); }
+  .price-card li:last-child{ border-bottom:1px solid var(--rule); }
+  .price-card.pro li:last-child{ border-bottom-color: rgba(255,255,255,0.18); }
+  .price-card .cta{ margin-top:32px; }
+  .price-card.free .cta{ background: var(--ink); color: var(--cream); }
+  .price-card.pro .cta{ background: var(--cream); color: var(--ink); }
+
+  /* CTA */
+  .cta-band{ position:relative; color:#fff; overflow:hidden; padding:0; }
+  .cta-bg{
+    position:absolute; inset:0;
+    background-image: url("img/travelPic14.jpg");
+    background-size: cover; background-position: center;
+    transform: scale(1.04);
+    animation: kenburns 24s ease-in-out infinite alternate;
+  }
+  .cta-band::after{
+    content:""; position:absolute; inset:0;
+    background:
+      radial-gradient(ellipse 80% 60% at 50% 110%, rgba(232,163,61,0.45) 0%, transparent 60%),
+      linear-gradient(180deg, rgba(28,22,18,0.20) 0%, rgba(28,22,18,0.55) 100%);
+  }
+  .cta-band .wrap{ position:relative; z-index:1; padding:160px 32px; text-align:center; }
+  .cta-band h2{
+    font-family:"Fraunces",serif; font-weight:500;
+    font-size: clamp(48px, 8.5vw, 116px);
+    line-height:0.95; letter-spacing:-0.025em;
+    text-wrap:balance; margin:0 auto; max-width:14ch;
+  }
+  .cta-band h2 em{ font-style:italic; color: var(--amber); }
+  .cta-band p{ margin-top:20px; font-size:18px; color: rgba(255,255,255,0.85); }
+  .cta-actions{ margin-top:40px; display:flex; gap:16px; flex-wrap:wrap; justify-content:center; }
+
+  /* FOOTER */
+  footer{ padding:96px 0 40px; background: var(--cream-2); color: var(--ink); border-top: 1px solid var(--rule); }
+  .foot-grid{ display:grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap:32px; }
+  @media (max-width: 720px){ .foot-grid{ grid-template-columns: 1fr 1fr; } }
+  .foot h6{ font-family:"DM Mono",monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color: var(--terracotta); margin-bottom:18px; font-weight:500; }
+  .foot a{ display:block; padding:5px 0; font-size:14px; color: var(--ink-2); transition: color .15s ease; }
+  .foot a:hover{ color: var(--terracotta); }
+  .foot-brand .name{ font-family:"Fraunces",serif; font-size:36px; font-weight:600; letter-spacing:-0.01em; }
+  .foot-brand .name em{ font-style:italic; color: var(--terracotta); }
+  .foot-brand p{ font-size:14px; color: var(--ink-2); max-width:32ch; margin-top:14px; line-height:1.55; }
+  .foot-bot{
+    margin-top:64px; padding-top:24px;
+    border-top:1px solid var(--rule);
+    display:flex; justify-content:space-between;
+    font-family:"DM Mono",monospace;
+    font-size:11px; letter-spacing:.08em; color: var(--muted);
+    flex-wrap:wrap; gap:16px;
+  }
+
+  /* Reveal */
+  .reveal{ opacity:0; transform:translateY(24px); transition: opacity .9s ease, transform .9s ease; }
+  .reveal.in{ opacity:1; transform:none; }
+</style>
+</head>
+<body>
+<!-- NAV -->
+<nav class="top" id="nav">
+  <div class="wrap nav-inner">
+    <a href="#" class="brand">
+      <span class="mark"></span>
+      <span class="name">Travel<em>hub</em></span>
+    </a>
+    <div class="nav-links">
+      <a href="#dream">Dream</a>
+      <a href="#plan">Plan</a>
+      <a href="#travel">Travel</a>
+      <a href="#remember">Remember</a>
+      <a href="#start" class="nav-cta">Start a trip →</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="hero" data-screen-label="Hero">
+  <div class="hero-bg"></div>
+
+  <div class="wrap" style="position:relative; z-index:2;">
+    <div class="hero-meta">
+      <span class="live"><span class="dot"></span>Now planning · APR 26</span>
+      <span class="mono">N 38°43′ · W 9°09′</span>
+    </div>
+    <div class="hero-issue">
+      <span>An almanac for group travel</span>
+      <span>Vol. IV · No. 26</span>
+      <span>San Francisco ↔ Lisbon ↔ Tokyo</span>
+    </div>
+  </div>
+
+  <div class="hero-content">
+    <div class="wrap">
+      <div>
+        <h1 class="headline">
+          Go where<br/>
+          <span class="it">you all</span> choose.
+        </h1>
+        <p class="hero-sub">
+          Travelhub is one calm place to vote on destinations, split costs, share routes,
+          and keep every reservation in order — for the whole crew.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#start">Start a trip <span class="arrow">→</span></a>
+          <a class="btn btn-ghost" href="#plan">See how it works</a>
+        </div>
+      </div>
+
+      <div class="trip-card">
+        <div class="trip-card-row">
+          <div>
+            <div class="trip-card-label">From</div>
+            <div class="trip-card-value">San Francisco</div>
+            <div class="trip-card-meta">SFO · 19 JUN</div>
+          </div>
+          <div style="text-align:right">
+            <div class="trip-card-label">To</div>
+            <div class="trip-card-value it">Lisbon</div>
+            <div class="trip-card-meta">LIS · 03 JUL</div>
+          </div>
+        </div>
+        <div class="trip-card-divider"></div>
+        <div class="trip-card-row" style="align-items:center">
+          <div>
+            <div class="trip-card-label">Travelers</div>
+            <div class="avatars">
+              <span>MK</span><span>AR</span><span>JL</span><span>+3</span>
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div class="trip-card-label">Status</div>
+            <div class="mono" style="font-size:12px; color: var(--amber);">VOTING · 4 / 6</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="live-ticker">
+    <div class="stat"><span class="num">4,200+</span>Trips planned</div>
+    <div class="stat"><span class="num">68</span>Countries</div>
+    <div class="stat"><span class="num">12K</span>Travelers</div>
+  </div>
+
+  <div class="scroll-hint">Scroll</div>
+</header>
+
+<!-- DESTINATION MARQUEE -->
+<div class="marquee-wrap">
+  <div class="marquee">
+    <span>Tokyo</span><span class="star">✶</span>
+    <span class="it">Lisbon</span><span class="star">✶</span>
+    <span>Reykjavík</span><span class="star">✶</span>
+    <span class="it">Cape Town</span><span class="star">✶</span>
+    <span>Kyoto</span><span class="star">✶</span>
+    <span class="it">Mexico City</span><span class="star">✶</span>
+    <span>Patagonia</span><span class="star">✶</span>
+    <span class="it">Marrakech</span><span class="star">✶</span>
+    <span>Hanoi</span><span class="star">✶</span>
+    <span class="it">Queenstown</span><span class="star">✶</span>
+    <span>Tokyo</span><span class="star">✶</span>
+    <span class="it">Lisbon</span><span class="star">✶</span>
+    <span>Reykjavík</span><span class="star">✶</span>
+    <span class="it">Cape Town</span><span class="star">✶</span>
+    <span>Kyoto</span><span class="star">✶</span>
+    <span class="it">Mexico City</span><span class="star">✶</span>
+    <span>Patagonia</span><span class="star">✶</span>
+    <span class="it">Marrakech</span><span class="star">✶</span>
+    <span>Hanoi</span><span class="star">✶</span>
+    <span class="it">Queenstown</span><span class="star">✶</span>
+  </div>
+</div>
+
+<!-- STAGE I — DREAM -->
+<div class="stage-break" id="dream">
+  <div class="wrap">
+    <span class="rule"></span>
+    <span class="lbl"><strong>I · DREAM</strong> &nbsp; — &nbsp; before you've picked a place</span>
+    <span class="rule"></span>
+  </div>
+</div>
+
+<!-- BENTO -->
+<section class="block">
+  <div class="wrap">
+    <div class="eyebrow">Dream · 001</div>
+    <h2 class="section-title">A passport for your <em>group's</em> story.</h2>
+    <p class="section-lede">Save the places you've all been wondering about. Vote when you're ready. Travelhub is built for the long arc — from "should we?" to "we did."</p>
+
+    <div class="bento">
+      <div class="photo-card b-1">
+        <img src="img/travelPic7.jpg" alt="Tropical beach" />
+        <div class="cap">
+          <div class="ttl"><em>Coastal</em> escapes</div>
+          <div class="meta">SEYCHELLES · GROUP OF FOUR</div>
+        </div>
+      </div>
+      <div class="photo-card b-2">
+        <img src="img/travelPic2.jpg" alt="Mountain morning" />
+        <div class="cap">
+          <div class="ttl">Mountain <em>mornings</em></div>
+          <div class="meta">SWISS ALPS</div>
+        </div>
+      </div>
+      <div class="photo-card b-3">
+        <img src="img/travelPic3.jpg" alt="Travel scene" />
+        <div class="cap">
+          <div class="ttl">Hidden <em>gems</em></div>
+          <div class="meta">LOCAL FAVORITES</div>
+        </div>
+      </div>
+      <div class="photo-card b-4">
+        <img src="img/travelPic1.jpg" alt="City nights" />
+        <div class="cap">
+          <div class="ttl">City <em>nights</em></div>
+          <div class="meta">NEW YORK · TIMES SQUARE</div>
+        </div>
+      </div>
+      <div class="photo-card b-5">
+        <img src="img/travelPic6.jpg" alt="Urban escape" />
+        <div class="cap">
+          <div class="ttl">Urban <em>escapes</em></div>
+          <div class="meta">NEW PERSPECTIVES</div>
+        </div>
+      </div>
+      <div class="photo-card b-6">
+        <img src="img/travelPic8.jpg" alt="Weekend reset" />
+        <div class="cap">
+          <div class="ttl">Weekend <em>resets</em></div>
+          <div class="meta">QUICK GETAWAYS</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STAGE II — PLAN -->
+<div class="stage-break" id="plan">
+  <div class="wrap">
+    <span class="rule"></span>
+    <span class="lbl"><strong>II · PLAN</strong> &nbsp; — &nbsp; from a maybe to a booking</span>
+    <span class="rule"></span>
+  </div>
+</div>
+
+<section class="block">
+  <div class="wrap">
+    <div class="eyebrow">Plan · 002</div>
+    <h2 class="section-title">Six friends. <em>One trip.</em><br/>Zero spreadsheets.</h2>
+    <p class="section-lede">Group travel breaks down on the small stuff — where, when, how to split the bill. Travelhub keeps every decision in one place, with a quiet kind of consensus.</p>
+
+    <div class="split">
+      <div class="split-img">
+        <img src="img/travelPic9.jpg" alt="Mountain sunrise" />
+        <span class="badge">Voting · Round 02</span>
+        <span class="stamp">N 46°33′ · E 8°00′</span>
+      </div>
+      <div class="split-text">
+        <h3>Vote on <em>where to go.</em></h3>
+        <p>Ranked-choice polls for destinations, restaurants, neighborhoods. Everyone gets a say — no one has to chase down replies in a 47-message group chat.</p>
+        <ul>
+          <li><span class="num">01</span><span>Drag to rank — the winner emerges automatically.</span></li>
+          <li><span class="num">02</span><span>Anonymous mode for the awkward calls.</span></li>
+          <li><span class="num">03</span><span>Live tally so no one waits up for the result.</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="split flip" style="margin-top: 120px;">
+      <div class="split-img">
+        <img src="img/travelPic10.jpg" alt="City lights" />
+        <span class="badge amber">Receipts · 14 New</span>
+        <span class="stamp">N 40°45′ · W 73°59′</span>
+      </div>
+      <div class="split-text">
+        <h3>Split <em>without the math.</em></h3>
+        <p>Snap a receipt, tag the people in, and we square it up automatically — across currencies and cards. Everyone settles up at the end, in one tap.</p>
+        <ul>
+          <li><span class="num">01</span><span>Multi-currency, live FX baked in.</span></li>
+          <li><span class="num">02</span><span>Card rewards optimizer for big bookings.</span></li>
+          <li><span class="num">03</span><span>End-of-trip ledger, ready to send.</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STAGE III — TRAVEL -->
+<div class="stage-break" id="travel">
+  <div class="wrap">
+    <span class="rule"></span>
+    <span class="lbl"><strong>III · TRAVEL</strong> &nbsp; — &nbsp; on the ground, together</span>
+    <span class="rule"></span>
+  </div>
+</div>
+
+<section class="block">
+  <div class="wrap">
+    <div class="eyebrow">Travel · 003</div>
+    <h2 class="section-title">Everyone where <em>they need to be.</em></h2>
+
+    <div class="split">
+      <div class="split-img">
+        <img src="img/homepage_img.jpg" alt="Tropical lagoon" />
+        <span class="badge sage">Live · Day 03</span>
+        <span class="stamp">N 11°15′ · W 74°13′</span>
+      </div>
+      <div class="split-text">
+        <h3>Travel <em>like one.</em></h3>
+        <p>Real-time maps, smart routes, live location for the group. Drop a pin, save a place, find each other again when someone wandered off into a market alley.</p>
+        <ul>
+          <li><span class="num">01</span><span>Smart routing reorders by traffic, weather, hours.</span></li>
+          <li><span class="num">02</span><span>Shared pins, saved places, shortlists.</span></li>
+          <li><span class="num">03</span><span>Geofence nudges when someone's off-plan.</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- LIVE PLANNER PREVIEW -->
+<section class="planner-band">
+  <div class="wrap">
+    <div class="eyebrow">Travel · 004</div>
+    <h2 class="section-title">Your trip, <em>in one quiet place.</em></h2>
+    <p class="section-lede">A glimpse of what your group sees while planning. Itinerary, budget, weather — all live, all shared.</p>
+
+    <div class="planner-grid">
+      <div class="itinerary">
+        <h5>Lisbon — Group of Six</h5>
+        <div class="subt">19 JUN → 03 JUL · Day 03 of 14</div>
+
+        <div class="day">
+          <div class="when">DAY 03<span class="big">21</span>JUN</div>
+          <div>
+            <div class="what">Breakfast at <em>Manteigaria</em></div>
+            <div class="where">→ Chiado · 09:00</div>
+          </div>
+          <span class="chip sage">Booked</span>
+        </div>
+        <div class="day">
+          <div class="when">DAY 03<span class="big">21</span>JUN</div>
+          <div>
+            <div class="what">Tram 28 to <em>Alfama</em></div>
+            <div class="where">→ Praça Luís de Camões · 11:30</div>
+          </div>
+          <span class="chip">Route saved</span>
+        </div>
+        <div class="day">
+          <div class="when">DAY 03<span class="big">21</span>JUN</div>
+          <div>
+            <div class="what">Sunset at <em>Miradouro da Graça</em></div>
+            <div class="where">→ 19:46 sunset · 12 min walk</div>
+          </div>
+          <span class="chip terra">Voting</span>
+        </div>
+        <div class="day">
+          <div class="when">DAY 04<span class="big">22</span>JUN</div>
+          <div>
+            <div class="what">Day trip to <em>Sintra</em></div>
+            <div class="where">→ Train from Rossio · 08:15</div>
+          </div>
+          <span class="chip sage">Booked</span>
+        </div>
+      </div>
+
+      <div class="planner-side">
+        <div class="weather-card">
+          <div class="sun-deco"></div>
+          <h6>Weather · today</h6>
+          <div class="temp">26°<em>C</em></div>
+          <div class="place">Lisbon · Sunny</div>
+          <div class="forecast">
+            <div>SAT 27° ☀</div>
+            <div>SUN 25° ⛅</div>
+            <div>MON 23° ☔</div>
+            <div>TUE 24° ☀</div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <h6>Group budget</h6>
+          <div class="budget-row">
+            <span class="amt">€3,840 <em>spent</em></span>
+            <span class="of">OF €6,000 BUDGETED</span>
+          </div>
+          <div class="progress"><div class="fill"></div></div>
+          <div class="split-list">
+            <div class="split-row">
+              <div class="who"><div class="av" style="background:var(--terracotta)">MK</div>Maya covered Airbnb</div>
+              <div class="amt gets">+€480</div>
+            </div>
+            <div class="split-row">
+              <div class="who"><div class="av" style="background:var(--amber-2)">AR</div>Alex — dinner at Ramiro</div>
+              <div class="amt owe">−€72</div>
+            </div>
+            <div class="split-row">
+              <div class="who"><div class="av" style="background:var(--sage)">JL</div>Jade — train to Sintra</div>
+              <div class="amt owe">−€24</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- IMMERSIVE QUOTE -->
+<section class="immersive">
+  <div class="bg"></div>
+  <div class="wrap">
+    <div class="pq-frame">
+      <blockquote>
+        "Six friends, four time zones, <span class="accent">zero</span> spreadsheets. We voted on Lisbon on a Tuesday and were all booked by Friday."
+      </blockquote>
+      <p class="cite">— Maya K., Trip Lead · Lisbon 2026 · Group of six</p>
+    </div>
+  </div>
+</section>
+
+<!-- STAGE IV — REMEMBER -->
+<div class="stage-break" id="remember">
+  <div class="wrap">
+    <span class="rule"></span>
+    <span class="lbl"><strong>IV · REMEMBER</strong> &nbsp; — &nbsp; after you're home</span>
+    <span class="rule"></span>
+  </div>
+</div>
+
+<!-- HOW IT WORKS -->
+<section class="block">
+  <div class="wrap">
+    <div class="eyebrow">Remember · 005</div>
+    <h2 class="section-title">Three steps. <em>One trip.</em></h2>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-img">
+          <img src="img/travelPic12.jpg" alt="" />
+          <span class="num">STEP 01</span>
+        </div>
+        <div class="step-body">
+          <h4>Create a <em>trip</em></h4>
+          <p>Add a destination — or a few, if you can't decide yet — pick dates, invite the group. Under a minute.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-img">
+          <img src="img/travelPic4.jpg" alt="" />
+          <span class="num">STEP 02</span>
+        </div>
+        <div class="step-body">
+          <h4>Plan <em>together</em></h4>
+          <p>Vote, book, save places, drop pins. Every change syncs for everyone in real time.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-img">
+          <img src="img/travelPic13.jpg" alt="" />
+          <span class="num">STEP 03</span>
+        </div>
+        <div class="step-body">
+          <h4>Travel, <em>relax</em></h4>
+          <p>Live maps, smart reroutes, automatic expense splits. We handle the logistics, you stay in the moment.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="block" id="pricing" style="padding-top: 0;">
+  <div class="wrap">
+    <div class="eyebrow">Pricing · 006</div>
+    <h2 class="section-title">Free for groups. <em>Pro for power users.</em></h2>
+
+    <div class="pricing-grid">
+      <div class="price-card free">
+        <div class="plan">Plan A · Free</div>
+        <div class="price">Free</div>
+        <p class="blurb">Forever, for any group.</p>
+        <ul>
+          <li>Up to 8 travelers per trip</li>
+          <li>Voting, chat, expense splits</li>
+          <li>Real-time maps & routes</li>
+          <li>3 active trips</li>
+        </ul>
+        <a class="btn cta" href="#start">Get started <span class="arrow">→</span></a>
+      </div>
+      <div class="price-card pro">
+        <div class="plan">Plan B · Pro</div>
+        <div class="price">$6<span class="per">/ MO</span></div>
+        <p class="blurb">For frequent travelers and bigger groups.</p>
+        <ul>
+          <li>Unlimited travelers & trips</li>
+          <li>Offline maps & itineraries</li>
+          <li>Card rewards optimizer</li>
+          <li>Priority support, 24h</li>
+        </ul>
+        <a class="btn cta" href="#start">Try Pro free <span class="arrow">→</span></a>
+      </div>
+    </div>
+    <p class="mono" style="font-size: 11px; color: var(--muted); margin-top: 24px; letter-spacing: .12em;">NO CARDS REQUIRED · CANCEL ANY TIME · USED BY 4,200+ GROUPS</p>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-band" id="start">
+  <div class="cta-bg"></div>
+  <div class="wrap">
+    <h2>Your next trip <em>starts here.</em></h2>
+    <p>Free forever, no card required.</p>
+    <div class="cta-actions">
+      <a class="btn btn-primary" href="#">Create a trip <span class="arrow">→</span></a>
+      <a class="btn btn-ghost" href="#plan">Browse features</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="wrap">
+    <div class="foot-grid foot">
+      <div class="foot-brand">
+        <div class="name">Travel<em>hub</em></div>
+        <p>One calm place for the whole group to plan, book, and remember the trip.</p>
+        <p class="mono" style="margin-top: 18px; font-size: 11px; color: var(--muted); letter-spacing: .12em;">© 2026 · MADE IN TRANSIT</p>
+      </div>
+      <div>
+        <h6>Product</h6>
+        <a href="#dream">Dream</a>
+        <a href="#plan">Plan</a>
+        <a href="#travel">Travel</a>
+        <a href="#remember">Remember</a>
+      </div>
+      <div>
+        <h6>Company</h6>
+        <a href="#">About</a>
+        <a href="#">Field notes</a>
+        <a href="#">Press kit</a>
+        <a href="#">Contact</a>
+      </div>
+      <div>
+        <h6>Legal</h6>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="#">Security</a>
+        <a href="#">Status</a>
+      </div>
+    </div>
+    <div class="foot-bot">
+      <span>TRAVELHUB · v.4.2 · APR 2026</span>
+      <span>SAN FRANCISCO ↔ LISBON ↔ TOKYO</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // Nav becomes solid after scrolling past hero
+  const nav = document.getElementById('nav');
+  const onScroll = () => {
+    if (window.scrollY > window.innerHeight - 80) nav.classList.add('solid');
+    else nav.classList.remove('solid');
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+    });
+  }, { threshold: 0, rootMargin: '0px 0px -8% 0px' });
+  const revealEls = document.querySelectorAll('.reveal');
+  revealEls.forEach(el => io.observe(el));
+  setTimeout(() => revealEls.forEach(el => el.classList.add('in')), 1500);
+</script>
+</body>
+</html>

@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS document_checklists (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID NOT NULL,
-  trip_id UUID REFERENCES trip(id),
+  trip_id UUID REFERENCES trips(id),
   document_title TEXT,
   document_type TEXT,
   source_location TEXT,

@@ -1,0 +1,57 @@
+/* ──────────────────────────────────────────────────────────────────
+   Design tokens — single source of truth for color, type, geometry,
+   motion. Lifted from the marketing site (site/index.html) so that
+   the app and the marketing surface look like the same product.
+
+   Editing rule of thumb:
+     - Always reach for these vars; never hard-code a brand color in
+       a component file. If a value isn't here, add it here.
+     - Clay and sky are *spices, not sauces*. Together they should
+       cover well under ~10% of any view. Default backgrounds are
+       paper, default text is ink.
+   ──────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Color ─────────────────────────────────────────────────────── */
+  --paper:    #f3ede2;   /* default surface — warm off-white */
+  --paper-2:  #ebe3d4;   /* recessed surfaces / cards / wells */
+  --ink:      #0e1a19;   /* primary text, dark CTAs */
+  --ink-2:    #2a3837;   /* secondary text */
+  --teal:     #183a37;   /* brand. primary actions, italic accents */
+  --teal-2:   #2a5752;   /* hover, secondary teals */
+  --clay:     #c25e3c;   /* warm accent — live dots, "leading" pills */
+  --sky:      #3d6b80;   /* travel accent — info pills, online dots,
+                            ocean references. Used as sparingly as clay. */
+  --rule:     #c9bfae;   /* 1px borders, dividers */
+  --muted:    #6b6356;   /* mono labels, captions */
+
+  /* ── Type ──────────────────────────────────────────────────────── */
+  --font-display:  "Instrument Serif", "Times New Roman", serif;
+  --font-mono:     "JetBrains Mono", ui-monospace, monospace;
+  --font-body:     "Geist", -apple-system, BlinkMacSystemFont,
+                   "Segoe UI", Helvetica, Arial, sans-serif;
+
+  /* ── Geometry ──────────────────────────────────────────────────── */
+  --radius-grid:   4px;     /* dense grids, image cells */
+  --radius-card:   12px;    /* default card */
+  --radius-card-lg: 14px;   /* preview, elevated card */
+  --radius-ticket: 18px;    /* boarding-pass ticket */
+  --radius-pill:   999px;   /* buttons, pills */
+
+  /* ── Spacing scale (px) ────────────────────────────────────────── */
+  --s-1:  8px;
+  --s-2:  12px;
+  --s-3:  16px;
+  --s-4:  24px;
+  --s-5:  32px;
+  --s-6:  40px;
+  --s-7:  56px;
+  --s-8:  80px;
+  --s-9:  120px;
+
+  /* ── Motion ────────────────────────────────────────────────────── */
+  --ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --duration-snap:    150ms;
+  --duration-rest:    200ms;
+  --duration-reveal:  900ms;
+}

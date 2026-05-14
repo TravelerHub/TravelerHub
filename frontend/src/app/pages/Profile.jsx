@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { API_BASE } from '../../config';
 import Navbar_Dashboard from "../../components/navbar/Navbar_dashboard.jsx";
-import { SIDEBAR_ITEMS } from "../../constants/sidebarItems.js";
+import AppSidebar from "../../components/navbar/AppSidebar.jsx";
 import TravelPreferences from "../../components/TravelPreferences";
 import {
   addEncryptedCard,
@@ -12,6 +12,7 @@ import {
   getSavedCards,
   removeSavedCard,
 } from "../../services/billingService";
+import { deleteMyAccount } from "../../services/userService";
 
 function Profile() {
   const navigate = useNavigate();
@@ -34,6 +35,7 @@ function Profile() {
     return { username: "", email: "", street: "", city: "", state: "", zipcode: "" };
   };
 
+  const [menuOpen,  setMenuOpen]  = useState(false);
   const [user,      setUser]      = useState(getStoredUser);
   const [isEditing, setIsEditing] = useState(false);
   const [formData,  setFormData]  = useState(user);
@@ -54,7 +56,10 @@ function Profile() {
   const [passwordSaving,  setPasswordSaving]  = useState(false);
   const [passwordError,   setPasswordError]   = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDeleteModal,  setShowDeleteModal]  = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleting,          setDeleting]          = useState(false);
+  const [deleteError,       setDeleteError]       = useState("");
   const [billingMessage,  setBillingMessage]  = useState("");
   const [savedCards, setSavedCards] = useState([]);
   const [cardsLoading, setCardsLoading] = useState(false);
@@ -119,8 +124,8 @@ function Profile() {
       setPasswordError("New passwords do not match");
       return;
     }
-    if (passwordData.newPassword.length < 6) {
-      setPasswordError("New password must be at least 6 characters");
+    if (passwordData.newPassword.length < 8) {
+      setPasswordError("New password must be at least 8 characters");
       return;
     }
     setPasswordSaving(true);
@@ -150,7 +155,26 @@ function Profile() {
     }
   };
 
-  const handleDeleteAccount = () => navigate("/");
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== "DELETE") return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await deleteMyAccount();
+      localStorage.clear();
+      window.location.href = '/';
+    } catch (err) {
+      console.error("Delete account error:", err);
+      setDeleteError(err.message || "Failed to delete account. Please try again.");
+      setDeleting(false);
+    }
+  };
+
+  const handleCloseDeleteModal = () => {
+    setShowDeleteModal(false);
+    setDeleteConfirmText("");
+    setDeleteError("");
+  };
 
   const loadSavedCards = async () => {
     setCardsLoading(true);
@@ -320,44 +344,26 @@ function Profile() {
     <div className="flex h-screen overflow-hidden">
 
       {/* ══ Black sidebar ══════════════════════════════════════════════════════ */}
-      <aside className="w-52 shrink-0 flex flex-col" style={{ background: "#000000" }}>
-
-        {/* Avatar + name */}
-        <div className="px-5 pt-6 pb-5 shrink-0 border-b" style={{ borderColor: "#374151" }}>
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold mb-3"
-            style={{ background: "#183a37", color: "#fbfbf2" }}
-          >
-            {getInitials(user.username)}
-          </div>
-          <p className="font-bold text-sm leading-tight truncate" style={{ color: "#f9fafb" }}>
-            {user.username || "My Account"}
-          </p>
-          <p className="text-xs truncate mt-0.5" style={{ color: "#6b7280" }}>
-            {user.email}
-          </p>
-        </div>
-
-        {/* Page nav */}
-        <nav className="flex flex-col gap-1 px-3 py-4">
-          {SIDEBAR_ITEMS.map((item) => {
-            const isDisabled = !item.path;
-            return (
-              <button
-                key={item.label}
-                onClick={() => item.path && navigate(item.path)}
-                disabled={isDisabled}
-                className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition ${isDisabled ? "cursor-not-allowed" : "hover:bg-white/10"}`}
-                style={{ color: isDisabled ? "#4b5563" : "#9ca3af" }}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* Log out at bottom */}
-        <div className="mt-auto px-3 pb-5">
+      <AppSidebar
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        header={
+          <>
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold mb-3"
+              style={{ background: "#183a37", color: "#fbfbf2" }}
+            >
+              {getInitials(user.username)}
+            </div>
+            <p className="font-bold text-sm leading-tight truncate" style={{ color: "#f9fafb" }}>
+              {user.username || "My Account"}
+            </p>
+            <p className="text-xs truncate mt-0.5" style={{ color: "#6b7280" }}>
+              {user.email}
+            </p>
+          </>
+        }
+        footer={
           <button
             onClick={handleLogout}
             className="w-full py-2.5 rounded-lg text-sm font-semibold transition hover:bg-gray-800"
@@ -365,15 +371,15 @@ function Profile() {
           >
             Log Out
           </button>
-        </div>
-      </aside>
+        }
+      />
 
       {/* ══ Main column ════════════════════════════════════════════════════════ */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Navbar_Dashboard />
+        <Navbar_Dashboard onMenuClick={() => setMenuOpen(true)} />
 
-        <main className="flex-1 overflow-y-auto" style={{ background: "#f3f4f6" }}>
-          <div className="max-w-2xl mx-auto px-6 py-8">
+        <main className="flex-1 overflow-y-auto pb-24 md:pb-0" style={{ background: "#f3f4f6" }}>
+          <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
 
             {/* ── Hero banner ─────────────────────────────────────────────── */}
             <div className="rounded-2xl overflow-hidden mb-4" style={{ background: "#160f29" }}>
@@ -394,16 +400,16 @@ function Profile() {
                 </div>
               </div>
 
-              {/* Tab pills inside hero */}
+              {/* Tab pills inside hero — horizontally scrollable on mobile */}
               <div
-                className="flex px-8 gap-1 pb-1"
+                className="flex px-4 sm:px-8 gap-1 pb-1 overflow-x-auto scrollbar-hide"
                 style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
               >
                 {TABS.map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className="px-4 py-2.5 text-xs font-semibold transition rounded-t-lg"
+                    className="shrink-0 px-3 sm:px-4 py-2.5 text-xs font-semibold transition rounded-t-lg whitespace-nowrap"
                     style={
                       activeTab === tab.id
                         ? { color: "#fbfbf2", borderBottom: "2px solid #fbfbf2" }
@@ -834,17 +840,14 @@ function Profile() {
                       <span style={{ color: "#9ca3af" }}>→</span>
                     </button>
 
-                    <div className="rounded-xl p-4" style={{ background: "#fef2f2", border: "1px solid #fecaca" }}>
-                      <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#dc2626" }}>Danger Zone</p>
-                      <p className="text-xs mb-3" style={{ color: "#9ca3af" }}>
-                        Permanently delete your account and all associated data. This cannot be undone.
+                    <div className="mt-8 border border-red-500/30 rounded-xl p-6">
+                      <h3 className="text-red-400 font-semibold mb-2">Danger Zone</h3>
+                      <p className="text-white/50 text-sm mb-4">
+                        Once you delete your account, there is no going back.
                       </p>
                       <button
                         onClick={() => setShowDeleteModal(true)}
-                        className="w-full py-2.5 rounded-xl text-sm font-semibold transition"
-                        style={{ background: "#dc2626", color: "#fff" }}
-                        onMouseEnter={e => e.currentTarget.style.background = "#b91c1c"}
-                        onMouseLeave={e => e.currentTarget.style.background = "#dc2626"}
+                        className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-sm transition"
                       >
                         Delete Account
                       </button>
@@ -858,22 +861,57 @@ function Profile() {
         </main>
       </div>
 
-      {/* ── Delete Account Modal ──────────────────────────────────────────────── */}
+      {/* ── Delete Account Modal (two-step confirmation) ─────────────────────── */}
       {showDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)" }}>
-          <div className="w-full rounded-2xl overflow-hidden" style={{ maxWidth: 420, background: "#fff", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.6)" }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-account-title"
+        >
+          <div className="w-full rounded-2xl overflow-y-auto" style={{ maxWidth: 440, maxHeight: "90vh", background: "#fff", boxShadow: "var(--shadow-lg)" }}>
             <div className="px-6 pt-6 pb-4">
               <div className="w-10 h-10 rounded-full flex items-center justify-center mb-4" style={{ background: "#fef2f2" }}>
-                <span style={{ color: "#dc2626", fontSize: 18 }}>⚠</span>
+                <span style={{ color: "#dc2626", fontSize: 18 }} aria-hidden="true">&#9888;</span>
               </div>
-              <h3 className="text-base font-bold mb-2" style={{ color: "#160f29" }}>Delete Account?</h3>
-              <p className="text-sm" style={{ color: "#5c6b73" }}>
-                This action cannot be undone. All your data, trips, and settings will be permanently deleted.
+              <h3 id="delete-account-title" className="text-base font-bold mb-2" style={{ color: "#160f29" }}>Delete Account?</h3>
+              <p className="text-sm mb-4" style={{ color: "#5c6b73" }}>
+                This will permanently delete your account. Your trip history and photos will remain
+                visible to other group members but your name will show as <strong>[deleted]</strong>.
               </p>
+
+              <label className="block text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: "#9ca3af" }}>
+                Type <span style={{ color: "#dc2626", fontFamily: "monospace" }}>DELETE</span> to confirm
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="DELETE"
+                className="w-full px-4 py-2.5 rounded-xl text-sm outline-none transition"
+                style={{
+                  border: "1px solid #fecaca",
+                  background: "#fef2f2",
+                  color: "#160f29",
+                }}
+                onFocus={e => e.target.style.borderColor = "#dc2626"}
+                onBlur={e => e.target.style.borderColor = "#fecaca"}
+                autoComplete="off"
+                spellCheck={false}
+              />
+
+              {deleteError && (
+                <p className="text-xs mt-2 px-3 py-2 rounded-lg" style={{ background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }}>
+                  {deleteError}
+                </p>
+              )}
             </div>
+
             <div className="flex gap-3 px-6 pb-6 pt-2">
               <button
-                onClick={() => setShowDeleteModal(false)}
+                onClick={handleCloseDeleteModal}
+                disabled={deleting}
                 className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
                 style={{ background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb" }}
               >
@@ -881,10 +919,15 @@ function Profile() {
               </button>
               <button
                 onClick={handleDeleteAccount}
+                disabled={deleteConfirmText !== "DELETE" || deleting}
                 className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
-                style={{ background: "#dc2626", color: "#fff" }}
+                style={
+                  deleteConfirmText === "DELETE" && !deleting
+                    ? { background: "#dc2626", color: "#fff", cursor: "pointer" }
+                    : { background: "#fca5a5", color: "#fff", cursor: "not-allowed", opacity: 0.6 }
+                }
               >
-                Delete
+                {deleting ? "Deleting…" : "Yes, delete my account"}
               </button>
             </div>
           </div>

@@ -1,0 +1,24 @@
+{
+	"appId": "com.travelhub.app",
+	"appName": "TravelerHub",
+	"webDir": "dist",
+	"plugins": {
+		"PushNotifications": {
+			"presentationOptions": [
+				"badge",
+				"sound",
+				"alert"
+			]
+		},
+		"Geolocation": {},
+		"SplashScreen": {
+			"launchShowDuration": 2000,
+			"backgroundColor": "#160f29",
+			"showSpinner": false
+		},
+		"StatusBar": {
+			"style": "dark",
+			"backgroundColor": "#183a37"
+		}
+	}
+}

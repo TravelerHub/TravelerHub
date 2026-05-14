@@ -2,50 +2,111 @@ name: Deploy TravelerHub
 
 on:
   push:
-    branches: [main, Booking-and-Maps]
+    branches: [main, deployment]
 
 jobs:
   deploy:
-    name: Build & deploy on Hetzner
+    name: Build & Deploy to Hetzner
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
-      - name: Deploy via SSH
+      # ── 1. Checkout ───────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # ── 2. Build React frontend ───────────────────────────────────────────────
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Write frontend env
+        working-directory: frontend
+        run: |
+          # Write the secret blob first (Supabase keys, Mapbox token, etc.)
+          echo "${{ secrets.VITE_FRONTEND_ENV }}" > .env.production
+          # Always pin the production API URL so a missing/blank secret can't
+          # silently fall back to http://localhost:8000 in the browser.
+          echo "VITE_API_URL=https://travelhub-api.fozhan.dev" >> .env.production
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      # ── 3. SSH setup ──────────────────────────────────────────────────────────
+      - name: Set up SSH agent
+        uses: webfactory/ssh-agent@v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.SERVER_SSH_KEY }}
+
+      - name: Add server to known_hosts
+        run: ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+
+      # ── 4. Deploy frontend (built static files) ───────────────────────────────
+      - name: Deploy frontend to server
+        run: |
+          rsync -avz --delete \
+            frontend/dist/ \
+            root@${{ secrets.SERVER_IP }}:/var/www/travelhub.fozhan.dev/
+
+      # ── 5. Deploy backend source code ─────────────────────────────────────────
+      - name: Deploy backend to server
+        run: |
+          rsync -avz --delete \
+            --exclude '__pycache__' \
+            --exclude '*.pyc' \
+            --exclude '.env' \
+            --exclude '.env.*' \
+            backend/ \
+            root@${{ secrets.SERVER_IP }}:/opt/travelhub/backend/
+
+      # ── 6. Rebuild Docker image and restart container ─────────────────────────
+      - name: Rebuild & restart backend container
         env:
           SERVER_IP: ${{ secrets.SERVER_IP }}
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "$SERVER_IP" >> ~/.ssh/known_hosts
-
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@$SERVER_IP << 'ENDSSH'
+          ssh root@$SERVER_IP << 'ENDSSH'
             set -e
             cd /opt/travelhub
-
-            echo "==> Pulling latest code..."
-            git pull origin Booking-and-Maps
 
             echo "==> Building Docker image..."
             docker build -t travelhub-backend:latest ./backend
 
-            echo "==> Replacing container..."
-            docker stop travelhub 2>/dev/null || true
-            docker rm   travelhub 2>/dev/null || true
+            echo "==> Stopping old container..."
+            docker stop travelhub-backend 2>/dev/null || true
+            docker rm   travelhub-backend 2>/dev/null || true
 
+            echo "==> Starting new container..."
             docker run -d \
               --restart always \
-              --name travelhub \
-              -p 8000:8000 \
+              --name travelhub-backend \
+              -p 127.0.0.1:8001:8000 \
               --env-file /opt/travelhub/.env \
               travelhub-backend:latest
 
-            echo "==> Waiting for startup..."
-            sleep 5
-            curl -sf http://localhost:8000/health \
-              || (echo "--- Container logs ---" && docker logs travelhub --tail 40 && exit 1)
+            echo "==> Waiting for startup (up to 60s)..."
+            for i in $(seq 1 12); do
+              sleep 5
+              if curl -sf http://localhost:8001/health > /dev/null 2>&1; then
+                echo "==> Health check passed after $((i*5))s ✓"
+                break
+              fi
+              echo "    ... not ready yet (${i}/12)"
+              if [ $i -eq 12 ]; then
+                echo "=== Container logs ===" && docker logs travelhub-backend --tail 50
+                exit 1
+              fi
+            done
 
+            echo "==> Pruning old images..."
             docker image prune -f
+
             echo "==> Deploy complete ✓"
           ENDSSH

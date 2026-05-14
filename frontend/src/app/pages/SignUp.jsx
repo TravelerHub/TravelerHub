@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { API_BASE } from '../../config';
 import Navbar_empty from "../../components/navbar/Navbar_empty";
+import { encryptionUtils } from "../../lib/encryption";
+import { chatApi } from "../../components/chatbox/chatAPI";
 
 function SignUp() {
   const navigate = useNavigate();
@@ -25,6 +27,19 @@ function SignUp() {
     // Confirm password check
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
+      return;
+    }
+
+    // Match the backend Pydantic constraints so the user gets a
+    // friendly inline message instead of staring at a generic
+    // "Error creating account" toast that came from a 422 with a
+    // detail array we couldn't render. The server enforces these too.
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (!/^[A-Za-z0-9_.-]{3,32}$/.test(username)) {
+      setError("Username must be 3–32 characters and use only letters, numbers, '_', '-' or '.'.");
       return;
     }
 
@@ -52,11 +67,42 @@ function SignUp() {
         if (data.symmetric_key) {
           localStorage.setItem("card_symmetric_key", data.symmetric_key);
         }
+
+        // Derive the chat keypair deterministically from the user's
+        // symmetric_key so this device matches every other device the
+        // user logs into. See Login.jsx for the multi-device rationale.
+        if (data.symmetric_key) {
+          try {
+            const keypair = encryptionUtils.generateKeypairFromSeed(data.symmetric_key);
+            encryptionUtils.storeKeypair(keypair);
+            await chatApi.uploadPublicKey(keypair.public_key);
+          } catch (err) {
+            console.error("Keypair setup failed:", err);
+          }
+        }
+
       // Redirect to Dashboard
         navigate("/dashboard");
       }
       else {
-        setError(data.detail || "Error creating account. Please try again!");
+        // Pydantic 422 returns `detail` as an *array* of error objects:
+        // [{ type, loc: ["body", "password"], msg: "...", ... }, ...]
+        // Stuffing that into setError used to render either
+        // "[object Object]" or crash the page silently — leaving the
+        // user with no idea why signup failed. Format the first error
+        // into a single readable line; fall back to the string detail
+        // for handler-raised HTTPException (e.g. "Email already exists").
+        let msg = "Error creating account. Please try again!";
+        if (Array.isArray(data?.detail) && data.detail.length > 0) {
+          const first = data.detail[0];
+          const field = Array.isArray(first?.loc)
+            ? first.loc.filter((p) => p !== "body").join(".")
+            : "";
+          msg = field ? `${field}: ${first.msg}` : (first.msg || msg);
+        } else if (typeof data?.detail === "string") {
+          msg = data.detail;
+        }
+        setError(msg);
         return;
       }
 
@@ -92,6 +138,11 @@ function SignUp() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  autoComplete="email"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                 />
               </div>
@@ -107,6 +158,10 @@ function SignUp() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                 />
               </div>
@@ -122,6 +177,7 @@ function SignUp() {
                   value={street}
                   onChange={(e) => setStreet(e.target.value)}
                   required
+                  autoComplete="street-address"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                 />
               </div>
@@ -137,6 +193,7 @@ function SignUp() {
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     required
+                    autoComplete="address-level2"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                   />
                 </div>
@@ -151,6 +208,7 @@ function SignUp() {
                     value={stateValue}
                     onChange={(e) => setStateValue(e.target.value)}
                     required
+                    autoComplete="address-level1"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                   />
                 </div>
@@ -166,6 +224,8 @@ function SignUp() {
                   value={zipCode}
                   onChange={(e) => setZipCode(e.target.value)}
                   required
+                  autoComplete="postal-code"
+                  inputMode="numeric"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                 />
               </div>
@@ -181,6 +241,7 @@ function SignUp() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  autoComplete="new-password"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                 />
               </div>
@@ -196,6 +257,7 @@ function SignUp() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
+                  autoComplete="new-password"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                 />
               </div>

@@ -1,10 +1,30 @@
 import os
+import secrets
 import time
+import logging
+import traceback
+from contextvars import ContextVar
 from fastapi import FastAPI, Request
+from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+
+logger = logging.getLogger("travelhub")
+
+# Per-request ID stamped by the request_id middleware below and surfaced
+# back to clients in both the X-Request-ID response header and the body of
+# any error envelope. Lets a user paste a short ID into a bug report and
+# us grep the matching log line out of the structured logger.
+request_id_var: ContextVar[str] = ContextVar("request_id", default="")
+
+
+def _new_request_id() -> str:
+    # 8 url-safe chars (~48 bits) is plenty to uniquely identify a request
+    # within a few hours of logs and short enough for a human to copy-paste.
+    return f"req_{secrets.token_urlsafe(6)}"
 
 from routers import auth
 from routers import user
@@ -44,21 +64,106 @@ from routers import invites
 from routers import export as export_router
 from routers import notifications
 from routers import push
+from routers import currency
+from routers import trip_wrapup
+from routers import feedback as feedback_router
+from routers import itinerary
 
 limiter = Limiter(key_func=get_remote_address)
-app = FastAPI()
+
+# /docs and /redoc leak the entire route surface and request schemas. Keep
+# them on in dev, off in prod unless an operator opts in via env.
+_enable_docs = os.getenv("ENABLE_API_DOCS", "false").lower() in ("1", "true", "yes")
+
+# redirect_slashes=False prevents FastAPI from issuing 307 redirects when a
+# client posts to "/trips/{id}/upload/" (or any other trailing-slash variant).
+# Browsers re-issue cross-origin POSTs after a 307 WITHOUT the body for
+# multipart requests — which surfaces in the UI as "Failed to fetch". Pin
+# the routes to exactly the registered paths instead.
+app = FastAPI(
+    redirect_slashes=False,
+    docs_url="/docs" if _enable_docs else None,
+    redoc_url="/redoc" if _enable_docs else None,
+    openapi_url="/openapi.json" if _enable_docs else None,
+)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-_cors_env = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch-all handler: log every unhandled exception with structured context."""
+    rid = request_id_var.get() or _new_request_id()
+    logger.error(
+        "Unhandled exception",
+        extra={
+            "request_id": rid,
+            "method": request.method,
+            "path": request.url.path,
+            "error": str(exc),
+            "traceback": traceback.format_exc(),
+        },
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal server error",
+            "request_id": rid,
+            "code": "internal_error",
+        },
+        headers={"X-Request-ID": rid},
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Mirror FastAPI's default handler but tack the request ID onto the
+    body and headers so 4xx responses are also traceable. We don't
+    inflate the body when the original detail is already a structured
+    object — only when it's a plain string."""
+    rid = request_id_var.get() or _new_request_id()
+    detail = exc.detail
+    if isinstance(detail, dict):
+        body = dict(detail)
+        body.setdefault("request_id", rid)
+    else:
+        body = {"detail": detail, "request_id": rid}
+    headers = dict(exc.headers or {})
+    headers.setdefault("X-Request-ID", rid)
+    return JSONResponse(status_code=exc.status_code, content=body, headers=headers)
+
+
+_cors_env = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173",
+)
 _allowed_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    """Stamp every request with a short ID, propagate it via contextvar so
+    handlers and the exception handler can pick it up, and echo it back
+    in the X-Request-ID response header for the frontend to surface in
+    error toasts."""
+    incoming = request.headers.get("x-request-id")
+    rid = incoming if incoming and len(incoming) <= 64 else _new_request_id()
+    token = request_id_var.set(rid)
+    try:
+        response = await call_next(request)
+    finally:
+        request_id_var.reset(token)
+    response.headers.setdefault("X-Request-ID", rid)
+    return response
+
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start = time.time()
     response = await call_next(request)
     ms = round((time.time() - start) * 1000)
-    print(f"{request.method} {request.url.path} → {response.status_code} ({ms}ms)")
+    rid = request_id_var.get() or "-"
+    print(f"[{rid}] {request.method} {request.url.path} → {response.status_code} ({ms}ms)")
     return response
 
 
@@ -68,6 +173,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
 
 
@@ -105,11 +211,16 @@ app.include_router(cards.router)           # /cards (credit card optimizer)
 app.include_router(cards.budget_router)    # /finance/budget (trip budgets)
 app.include_router(suggestion.router)     # /suggestions (POI ranking)
 app.include_router(story.router)          # /trips/{trip_id}/story (shareable timeline)
+app.include_router(story.public_router)   # /public/story/{token} (no-auth public story)
 app.include_router(search.router)         # /search (global search across trips, expenses, photos)
 app.include_router(invites.router)        # /groups/invite/* (invite links)
 app.include_router(export_router.router)  # /export (iCal, CSV, JSON summary)
 app.include_router(notifications.router)  # /notifications
 app.include_router(push.router)            # /push (web push subscriptions)
+app.include_router(currency.router)       # /api/currency (exchange rates)
+app.include_router(trip_wrapup.router)    # /trips/{trip_id}/wrapup-data|complete
+app.include_router(feedback_router.router) # /feedback (auth) + /contact (public)
+app.include_router(itinerary.router)        # /itinerary/build (deterministic day planner)
 
 
 
@@ -121,4 +232,19 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    from supabase_client import supabase
+    db_ok = False
+    db_error = None
+    try:
+        supabase.table("users").select("id").limit(1).execute()
+        db_ok = True
+    except Exception as e:
+        db_error = str(e)
+        logger.warning("Health check DB ping failed: %s", e)
+
+    if not db_ok:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "degraded", "db": "unreachable", "detail": db_error},
+        )
+    return {"status": "ok", "db": "reachable"}

@@ -42,6 +42,8 @@ export default function MapSnapshot() {
       <img
         src={mapUrl}
         alt="Map snapshot"
+        loading="lazy"
+        decoding="async"
         className="w-full h-full object-cover"
         style={{ display: "block" }}
       />

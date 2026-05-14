@@ -7,6 +7,7 @@ export default function ImageUpload({ onUploadSuccess }) {
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -27,10 +28,10 @@ export default function ImageUpload({ onUploadSuccess }) {
       const result = await uploadImage(file);
       console.log("Upload success:", result);
       
-      // Fixed typo here: removed 'U7'
       if (onUploadSuccess) onUploadSuccess(result);
-      
-      alert("Image uploaded successfully!");
+
+      setSuccess("Image uploaded.");
+      setTimeout(() => setSuccess(""), 2500);
       setFile(null);
       setPreview(null);
     } catch (err) {
@@ -61,16 +62,22 @@ export default function ImageUpload({ onUploadSuccess }) {
       {preview && (
         <div className="mt-4">
           <p className="text-sm text-gray-500 mb-2">Preview:</p>
-          <img 
-            src={preview} 
-            alt="Preview" 
-            className="w-full h-48 object-cover rounded-md border" 
+          <img
+            src={preview}
+            alt="Preview"
+            loading="lazy"
+            decoding="async"
+            className="w-full h-48 object-cover rounded-md border"
           />
         </div>
       )}
 
       {error && (
         <p className="text-red-500 text-sm mt-2">{error}</p>
+      )}
+
+      {success && (
+        <p className="text-green-600 text-sm mt-2">{success}</p>
       )}
 
       <button

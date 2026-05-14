@@ -1,20 +1,25 @@
-from pydantic import BaseModel, EmailStr, BaseModel
+from pydantic import BaseModel, EmailStr, Field, BaseModel
 from datetime import datetime
 from typing import List, Optional
 
+# Username allows letters, numbers, underscore, hyphen, period, between 3 and
+# 32 characters — mirrors the constraint we want enforced in the DB.
+USERNAME_PATTERN = r"^[A-Za-z0-9_.-]{3,32}$"
+
+
 class SignupRequest(BaseModel):
-    email: str
-    username: str
-    password: str
-    street: str | None = None
-    city: str | None = None
-    state: str | None = None
-    zip_code: str | None = None
+    email: EmailStr
+    username: str = Field(min_length=3, max_length=32, pattern=USERNAME_PATTERN)
+    password: str = Field(min_length=8, max_length=128)
+    street: str | None = Field(default=None, max_length=200)
+    city: str | None = Field(default=None, max_length=100)
+    state: str | None = Field(default=None, max_length=100)
+    zip_code: str | None = Field(default=None, max_length=20)
 
 
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=128)
 
 
 # USER SCHEMAS
