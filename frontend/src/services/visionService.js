@@ -4,7 +4,7 @@ function getToken() {
   return localStorage.getItem("token");
 }
 
-export const analyzeReceipt = async (file) => {
+export const analyzeReceipt = async (file, { signal } = {}) => {
   const token = getToken();
   const formData = new FormData();
   formData.append("file", file);
@@ -15,6 +15,7 @@ export const analyzeReceipt = async (file) => {
       Authorization: `Bearer ${token}`,
     },
     body: formData,
+    signal,
   });
 
   if (!response.ok) {
@@ -24,7 +25,7 @@ export const analyzeReceipt = async (file) => {
   return response.json();
 };
 
-export const analyzeDocument = async (file) => {
+export const analyzeDocument = async (file, { signal } = {}) => {
   const token = getToken();
   const formData = new FormData();
   formData.append("file", file);
@@ -35,6 +36,7 @@ export const analyzeDocument = async (file) => {
       Authorization: `Bearer ${token}`,
     },
     body: formData,
+    signal,
   });
 
   if (!response.ok) {

@@ -54,6 +54,27 @@ const MEDICAL_KEY  = "emergency_medical";
 const loadContacts = () => JSON.parse(localStorage.getItem(CONTACTS_KEY) || "[]");
 const loadMedical  = () => JSON.parse(localStorage.getItem(MEDICAL_KEY)  || "{}");
 
+// Map ISO-3166 region codes (the bit after the dash in `navigator.language`)
+// to the matching country name in EMERGENCY_DB. We use the region portion
+// rather than the language because "en-GB" should pick UK numbers, not US.
+const REGION_TO_COUNTRY = {
+  US: "United States", GB: "United Kingdom", AU: "Australia", CA: "Canada",
+  DE: "Germany", FR: "France", JP: "Japan", KR: "South Korea", CN: "China",
+  IN: "India", BR: "Brazil", MX: "Mexico", IT: "Italy", ES: "Spain",
+  NL: "Netherlands", SE: "Sweden", NO: "Norway", CH: "Switzerland",
+  NZ: "New Zealand", SG: "Singapore", TH: "Thailand", PH: "Philippines",
+  ID: "Indonesia", AE: "UAE", ZA: "South Africa", AR: "Argentina",
+  TR: "Turkey", RU: "Russia", PT: "Portugal", GR: "Greece",
+};
+
+function detectLocaleCountry() {
+  if (typeof navigator === "undefined") return null;
+  const lang = navigator.language || (navigator.languages && navigator.languages[0]) || "";
+  const region = lang.includes("-") ? lang.split("-")[1].toUpperCase() : "";
+  const name = REGION_TO_COUNTRY[region];
+  return name ? EMERGENCY_DB.find((c) => c.country === name) : null;
+}
+
 const uid = () => `ec_${Math.random().toString(16).slice(2)}_${Date.now()}`;
 
 const RELATION_OPTIONS = ["Spouse", "Parent", "Child", "Sibling", "Friend", "Doctor", "Other"];
@@ -65,6 +86,13 @@ export default function Emergency() {
   const [menuOpen,       setMenuOpen]       = useState(false);
   const [countrySearch,  setCountrySearch]  = useState("");
   const [pinnedCountry,  setPinnedCountry]  = useState(null);   // { country, ... }
+  // Locale-detected country (memoised; navigator.language doesn't change at runtime).
+  const [activeLocaleCountry] = useState(() => detectLocaleCountry());
+  // Inline-confirm state for contact delete. A panicking user shouldn't lose
+  // a contact to a misplaced tap on the trash icon, so we require a second
+  // tap to confirm. We use inline confirm rather than a modal so the user
+  // never loses sight of the row they're about to delete.
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [contacts,       setContacts]       = useState(loadContacts);
   const [medical,        setMedical]        = useState(loadMedical);
   const [location,       setLocation]       = useState(null);
@@ -241,23 +269,33 @@ export default function Emergency() {
                   Tap to flash the screen. Use your device's emergency call for real emergencies.
                 </p>
 
-                {/* Quick action rows */}
-                <div className="w-full space-y-2">
-                  <a
-                    href="tel:911"
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition hover:opacity-90 active:scale-95"
-                    style={{ background: "#dc2626", color: "#ffffff" }}
-                  >
-                    📞 Call 911 (US)
-                  </a>
-                  <a
-                    href="tel:112"
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition hover:opacity-90 active:scale-95"
-                    style={{ background: "#374151", color: "#ffffff" }}
-                  >
-                    📞 Call 112 (Intl)
-                  </a>
-                </div>
+                {/* Quick action rows
+                    The primary button follows the user's active country: a
+                    pinned country wins, otherwise we fall back to the locale
+                    detected from navigator.language, otherwise US 911. The
+                    secondary button is 112 (international / EU fallback). */}
+                {(() => {
+                  const active = pinnedCountry || activeLocaleCountry || EMERGENCY_DB[0];
+                  const primaryNumber = active.police;
+                  return (
+                    <div className="w-full space-y-2">
+                      <a
+                        href={`tel:${primaryNumber}`}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition hover:opacity-90 active:scale-95"
+                        style={{ background: "#dc2626", color: "#ffffff" }}
+                      >
+                        📞 Call {primaryNumber} ({active.flag} {active.country})
+                      </a>
+                      <a
+                        href="tel:112"
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition hover:opacity-90 active:scale-95"
+                        style={{ background: "#374151", color: "#ffffff" }}
+                      >
+                        📞 Call 112 (Intl / EU)
+                      </a>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Location card */}
@@ -564,31 +602,59 @@ export default function Emergency() {
                           <p className="text-sm font-semibold truncate" style={{ color: "#160f29" }}>{c.name}</p>
                           <p className="text-xs" style={{ color: "#6b7280" }}>{c.relation} · {c.phone}</p>
                         </div>
-                        <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <a
-                            href={`tel:${c.phone}`}
-                            className="w-7 h-7 flex items-center justify-center rounded-lg transition hover:bg-green-50"
-                            title={`Call ${c.name}`}
-                          >
-                            <span className="text-sm">📞</span>
-                          </a>
-                          <button
-                            onClick={() => startEditContact(c)}
-                            className="w-7 h-7 flex items-center justify-center rounded-lg transition hover:bg-gray-100"
-                          >
-                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => deleteContact(c.id)}
-                            className="w-7 h-7 flex items-center justify-center rounded-lg transition hover:bg-red-50"
-                          >
-                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
+                        {confirmDeleteId === c.id ? (
+                          // Two-tap confirm. Always visible (no group-hover gate)
+                          // so a contact never disappears from a fat-finger tap.
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-xs font-medium" style={{ color: "#dc2626" }}>
+                              Delete?
+                            </span>
+                            <button
+                              onClick={() => {
+                                deleteContact(c.id);
+                                setConfirmDeleteId(null);
+                              }}
+                              className="px-2 py-1 rounded-lg text-xs font-bold text-white"
+                              style={{ background: "#dc2626" }}
+                            >
+                              Yes
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="px-2 py-1 rounded-lg text-xs font-medium"
+                              style={{ background: "#f3f4f6", color: "#374151" }}
+                            >
+                              No
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <a
+                              href={`tel:${c.phone}`}
+                              className="w-7 h-7 flex items-center justify-center rounded-lg transition hover:bg-green-50"
+                              title={`Call ${c.name}`}
+                            >
+                              <span className="text-sm">📞</span>
+                            </a>
+                            <button
+                              onClick={() => startEditContact(c)}
+                              className="w-7 h-7 flex items-center justify-center rounded-lg transition hover:bg-gray-100"
+                            >
+                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteId(c.id)}
+                              className="w-7 h-7 flex items-center justify-center rounded-lg transition hover:bg-red-50"
+                              title={`Delete ${c.name}`}
+                            >
+                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

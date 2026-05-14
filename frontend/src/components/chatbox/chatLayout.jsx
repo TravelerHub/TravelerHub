@@ -4,6 +4,38 @@ import { EmptyState, Panel } from "./ui";
 import ConversationList from "./ConversationList";
 import ChatWindow from "./ChatWindow";
 
+// Map raw fetch / Supabase / FastAPI error strings to text a user can act on.
+// Without this we'd render things like `500 Internal Server Error` or a raw
+// Postgres `relation "x" does not exist` straight into the toast.
+function friendlyChatError(err, fallback = "Something went wrong.") {
+  const msg = String(err?.message || err || "").toLowerCase();
+  if (!msg || msg === "undefined") return fallback;
+  if (msg.includes("401") || msg.includes("unauthorized") || msg.includes("token")) {
+    return "Your session expired. Please sign in again.";
+  }
+  if (msg.includes("403") || msg.includes("forbidden") || msg.includes("not a member") || msg.includes("membership")) {
+    return "You don't have access to this conversation.";
+  }
+  if (msg.includes("404") || msg.includes("not found")) {
+    return "Conversation not found. It may have been deleted.";
+  }
+  if (msg.includes("rate") || msg.includes("429")) {
+    return "Too many requests. Please slow down for a moment.";
+  }
+  if (
+    msg.includes("failed to fetch") ||
+    msg.includes("networkerror") ||
+    msg.includes("network request failed") ||
+    msg.includes("network error")
+  ) {
+    return "Can't reach the server. Check your connection.";
+  }
+  if (msg.includes("500") || msg.includes("internal server") || msg.includes("relation ") || msg.includes("supabase")) {
+    return "Something went wrong on our end. Please try again in a moment.";
+  }
+  return fallback;
+}
+
 export default function ChatLayout({ currentUser, onNewChat, tripId }) {
   const [conversations,         setConversations]         = useState([]);
   const [selectedId,            setSelectedId]            = useState(null);
@@ -27,7 +59,7 @@ export default function ChatLayout({ currentUser, onNewChat, tripId }) {
         setConversations(list);
         setSelectedId((prev) => prev ?? list[0]?.conversation_id ?? null);
       } catch (e) {
-        if (alive) setError(e.message || "Failed to load conversations");
+        if (alive) setError(friendlyChatError(e, "Couldn't load your conversations. Please try again."));
       } finally {
         if (alive) setLoadingLeft(false);
       }
@@ -57,7 +89,7 @@ export default function ChatLayout({ currentUser, onNewChat, tripId }) {
           }));
         }
       } catch (e) {
-        if (alive) setError(e.message || "Failed to load conversation");
+        if (alive) setError(friendlyChatError(e, "Couldn't load this conversation. Please try again."));
       } finally {
         if (alive) setLoadingRight(false);
       }
