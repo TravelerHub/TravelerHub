@@ -67,6 +67,6 @@
     "svgo": "^4.0.1",
     "vite": "^7.2.4",
     "vite-plugin-image-optimizer": "^2.0.3",
-    "vitest": "^2.0.0"
+    "vitest": "^4.1.0"
   }
 }
